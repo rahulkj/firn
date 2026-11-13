@@ -1,0 +1,25 @@
+# Binaries
+/eventingd
+/eventing-cli
+*.exe
+*.test
+*.out
+/bin/
+/dist/
+
+# Secrets & local config
+.env
+.env.*
+*.local.json
+
+# Data directories
+/data/
+/tmp/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Go
+vendor/
