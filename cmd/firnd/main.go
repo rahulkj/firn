@@ -161,6 +161,8 @@ func main() {
 	tokenBucketRate := flag.Float64("rate", 100, "per-key rate limit in operations per second")
 	adminHTML := flag.Bool("admin-ui", true, "serve the read-only admin UI at / on the HTTP listener")
 	metricsAuth := flag.Bool("metrics-auth", true, "require a viewer key on /metrics (set false for Prometheus scrape without credentials; not recommended)")
+	anonRate := flag.Int("anon-rate", 20, "max anonymous ops per -anon-window per source IP on unauthenticated endpoints (healthz, refusal attempts). 0 = unlimited.")
+	anonWindow := flag.Duration("anon-window", time.Minute, "sliding window for -anon-rate")
 	meshAddr := flag.String("mesh-addr", "", "mesh (internal) gRPC listen address — defaults to -grpc-addr with the port bumped by 10; serves only QuorumService/ReplicaService behind mTLS")
 	meshCABundle := flag.String("mesh-ca-bundle", "", "pre-provisioned mesh cluster CA certificate PEM (alternative to auto-provision; required for non-loopback clusters)")
 	meshCAKey := flag.String("mesh-ca-key", "", "pre-provisioned mesh cluster CA private key PEM (paired with -mesh-ca-bundle)")
@@ -424,7 +426,8 @@ func main() {
 	}
 	authorizer := api.NewAuthorizer(keysStore, ratelimit.New(*tokenBucketRate, *tokenBucketRate), auditStore,
 		api.WithOpenBootstrap(*dev || *allowOpen),
-		api.WithBootstrapToken(bootstrapToken))
+		api.WithBootstrapToken(bootstrapToken),
+		api.WithAnonRate(*anonRate, *anonWindow))
 
 	// HTTP admin + health + metrics + admin UI.
 	mux := http.NewServeMux()

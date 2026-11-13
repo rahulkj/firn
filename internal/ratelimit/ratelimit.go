@@ -47,3 +47,38 @@ func (b *Bucket) Allow(key string) bool {
 	}
 	return false
 }
+
+// SlidingWindow is a strict per-key sliding-window counter for anonymous
+// surfaces (healthz probes, refused-auth attempts). It is cheap on the hot
+// path — a single map and a single mutex per process.
+type SlidingWindow struct {
+	mu      sync.Mutex
+	buckets map[string][]time.Time
+	window  time.Duration
+	max     int
+}
+
+// NewSlidingWindow allows at most max hits per window per key.
+func NewSlidingWindow(max int, window time.Duration) *SlidingWindow {
+	return &SlidingWindow{buckets: map[string][]time.Time{}, window: window, max: max}
+}
+
+// Allow records one hit for key and reports whether it fits in the window.
+func (w *SlidingWindow) Allow(key string) bool {
+	now := time.Now()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	cutoff := now.Add(-w.window)
+	kept := make([]time.Time, 0, len(w.buckets[key])+1)
+	for _, t := range w.buckets[key] {
+		if t.After(cutoff) {
+			kept = append(kept, t)
+		}
+	}
+	if len(kept) >= w.max {
+		w.buckets[key] = kept
+		return false
+	}
+	w.buckets[key] = append(kept, now)
+	return true
+}

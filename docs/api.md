@@ -24,8 +24,10 @@ Everything in this document was cross-checked against `internal/api/firn.proto` 
   - `operator`: produce/fetch/queue pull+ack/commit-offset/topic create/group ops.
   - `admin`: everything + key create/revoke.
 - Per-key token-bucket rate limit, default 100 ops/s (`-rate` flag); excess → HTTP `429` / gRPC `RESOURCE_EXHAUSTED`.
+- Anonymous traffic is capped per IP (`-anon-rate` / `-anon-window`, default 20 ops per minute); refusals audit-recorded in every mode.
+- Keys may carry an `allowed_ips` CIDR allowlist; mismatched callers get HTTP `403` / gRPC `PERMISSION_DENIED` with `authz-refused:ip-not-allowed` in `__audit`.
 - *(Cluster mode)* Internal-topic writes (`__consumer_offsets` commits, `__queue_attempts`, `__audit`, `__api_keys`) are fenced by the internal lease: only the holder may write. Other nodes fail closed with **HTTP 503 / gRPC `FailedPrecondition`** containing the marker `fenced` plus the holder. Apps must retry (the CLI's `create-apikey`/`revoke-apikey` already retry across seed nodes on 503). Reads are open on every node.
-- Error bodies on refusal: `{"error":"<reason>"}` with HTTP `401` (missing/unknown/revoked key), `403` (insufficient role), `429` (rate limited), `503` (fenced). *(live — see verification logs)*
+- Error bodies on refusal: `{"error":"<reason>"}` with HTTP `401` (missing/unknown/revoked key), `403` (insufficient role or IP not in key allowlist), `429` (rate limited or anonymous rate limit), `503` (fenced). *(live — see verification logs)*
 
 ---
 

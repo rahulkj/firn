@@ -240,14 +240,15 @@ func NewAdminHandler(reg *meta.Registry, coord *groups.Coordinator, q *queue.Man
 			return
 		}
 		var req struct {
-			Name string `json:"name"`
-			Role string `json:"role"`
+			Name       string   `json:"name"`
+			Role       string   `json:"role"`
+			AllowedIPs []string `json:"allowed_ips,omitempty"`
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON body")
 			return
 		}
-		key, err := cfg.keys.Create(req.Name, req.Role)
+		key, err := cfg.keys.Create(req.Name, req.Role, req.AllowedIPs...)
 		if err != nil {
 			if errors.Is(err, fence.ErrFenced) {
 				writeError(w, http.StatusServiceUnavailable, err.Error())

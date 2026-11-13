@@ -33,6 +33,9 @@ firnd \
 | `-tls-cert` | `""` | PEM path | TLS certificate for **both** listeners. Empty (with `-tls-key`) = plaintext. Both must be set together. |
 | `-tls-key` | `""` | PEM path | TLS private key for both listeners. Minimum version TLS 1.2; single cert for both, so give SANs covering both hostnames/IPs. |
 | `-metrics-auth` | `true` | bool | Require a viewer key on `/metrics` (set false for Prometheus scrape without credentials; not recommended). |
+| `-metrics-auth` | `true` | bool | Require a viewer key on `/metrics` (set false for Prometheus scrape without credentials; not recommended). |
+| `-anon-rate` | `20` | int | Max anonymous operations per `-anon-window` per source IP (covers `/healthz` probes and all unauthenticated refusals). `0` = unlimited. |
+| `-anon-window` | `1m` | duration | Window for `-anon-rate`. |
 | `-rate` | `100` | float ops/s | Per-key token-bucket rate limit, enforced at the HTTP and gRPC interceptors. Applies once auth is enforced (any key exists); limits are per key, not per IP. |
 | `-admin-ui` | `true` | bool | Serve the read-only admin UI at `/ui/`. Cheap; safe to leave on behind TLS+auth. |
 | `-mesh-addr` | derived | host:port | Mesh (internal) gRPC listener address — defaults to `-grpc-addr` port+10 (crash if colliding). Serves only `ReplicaService`/`QuorumService` behind mesh mTLS. |

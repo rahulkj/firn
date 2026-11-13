@@ -55,6 +55,6 @@ type recordingResponseWriter struct {
 	code   int
 }
 
-func (w *recordingResponseWriter) Header() http.Header        { return w.header }
+func (w *recordingResponseWriter) Header() http.Header         { return w.header }
 func (w *recordingResponseWriter) Write(p []byte) (int, error) { return w.body.Write(p) }
 func (w *recordingResponseWriter) WriteHeader(code int)        { w.code = code }

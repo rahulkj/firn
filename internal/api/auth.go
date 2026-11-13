@@ -5,9 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
+
+	"google.golang.org/grpc/peer"
 
 	"github.com/rahulkj/firn/internal/apikeys"
 	"github.com/rahulkj/firn/internal/audit"
@@ -32,6 +36,7 @@ type authKeyContextKey struct{}
 type auth struct {
 	store   *apikeys.Store
 	limiter *ratelimit.Bucket
+	anon    *ratelimit.SlidingWindow
 	audit   *audit.Store
 
 	// Security-by-default (ADR-011 slice 1): an unopened broker refuses
@@ -54,6 +59,12 @@ func WithOpenBootstrap(on bool) AuthOption { return func(a *auth) { a.allowOpen 
 // WithBootstrapToken enables one-time-bootstrap mode: the daemon prints the
 // token on stderr; POST /apikeys with that bearer creates the first key.
 func WithBootstrapToken(token string) AuthOption { return func(a *auth) { a.bootstrapToken = token } }
+
+// WithAnonRate caps anonymous traffic (pre-auth requests and refused-key
+// attempts) to `max` hits per `window` per source IP. Zero max disables.
+func WithAnonRate(max int, window time.Duration) AuthOption {
+	return func(a *auth) { a.anon = ratelimit.NewSlidingWindow(max, window) }
+}
 
 // NewAuthorizer returns an authenticator wired to these dependencies.
 // Default (no options) fails closed.
@@ -109,6 +120,15 @@ func roleFor(method, path string) (apikeys.Role, bool) {
 // Default is fail-closed (see WithOpenBootstrap).
 func (a *auth) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := net.ParseIP(clientIP(r))
+		if a.anon != nil && !a.anon.Allow(clientIP(r)) {
+			if a.audit != nil {
+				_ = a.audit.Append("anonymous", "anon-rate-limit", r.Method+" "+r.URL.Path, "rate limited")
+			}
+			writeError(w, http.StatusTooManyRequests, "rate limited")
+			return
+		}
+		_ = ip
 		switch {
 		case isPublic(r.URL.Path):
 			openCtx := context.WithValue(r.Context(), authKeyContextKey{}, apikeys.Key{Name: "anonymous", Role: "admin"})
@@ -140,6 +160,13 @@ func (a *auth) Wrap(next http.Handler) http.Handler {
 		if !ok {
 			a.auditRefused(r, "unknown or revoked key")
 			writeError(w, http.StatusUnauthorized, "unknown or revoked key")
+			return
+		}
+		if !authzKeyAllowsIP(a.store, key, ip) {
+			if a.audit != nil {
+				_ = a.audit.Append(key.Name, "authz-refused:ip-not-allowed", r.Method+" "+r.URL.Path, "client IP rejected by key allowlist")
+			}
+			writeError(w, http.StatusForbidden, "ip not allowed")
 			return
 		}
 		minRole, needs := roleFor(r.Method, r.URL.Path)
@@ -196,6 +223,13 @@ func (a *auth) GRPCInterceptor() grpc.UnaryServerInterceptor {
 		key, ok := a.store.Verify(tok)
 		if !ok {
 			return nil, status.Error(codes.Unauthenticated, "unknown or revoked key")
+		}
+		ip := net.ParseIP(gRPCClientIP(ctx))
+		if !authzKeyAllowsIP(a.store, key, ip) {
+			if a.audit != nil {
+				_ = a.audit.Append(key.Name, "authz-refused:ip-not-allowed", info.FullMethod, "client IP rejected by key allowlist")
+			}
+			return nil, status.Error(codes.PermissionDenied, "ip not allowed")
 		}
 		min, mapped := grpcRoles[info.FullMethod]
 		if !mapped {
@@ -267,6 +301,59 @@ type statusRecorder struct {
 func (w *statusRecorder) WriteHeader(code int) {
 	w.httpCode = code
 	w.ResponseWriter.WriteHeader(code)
+}
+
+// clientIP extracts the caller's bare IP from the request, stripping any
+// port. Falls back to the raw RemoteAddr if parsing fails.
+func clientIP(r *http.Request) string {
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// Trust only the first hop; if you're behind a chain of proxies the
+		// caller is responsible for set it correctly or you'll allow spurious
+		// identities through. Document.
+		if i := strings.Index(xff, ","); i > 0 {
+			xff = strings.TrimSpace(xff[:i])
+		}
+		return xff
+	}
+	host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr))
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
+// authzIpCheck enforces the per-key allowlist against the caller's IP.
+// Returns true if allowed (or no allowlist configured).
+func authzKeyAllowsIP(store *apikeys.Store, k apikeys.Key, ip net.IP) bool {
+	if len(k.AllowedIPs) == 0 {
+		return true
+	}
+	if ip == nil {
+		return false
+	}
+	for _, cidr := range k.AllowedIPs {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if ipNet.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// gRPCClientIP extracts a bare IP from peer metadata.
+func gRPCClientIP(ctx context.Context) string {
+	p, ok := peer.FromContext(ctx)
+	if !ok {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(p.Addr.String())
+	if err != nil {
+		return p.Addr.String()
+	}
+	return host
 }
 
 // whoFromCtx returns a readable identity for audit logs.

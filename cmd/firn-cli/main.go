@@ -189,14 +189,28 @@ func cmdCreateAPIKey(args []string) error {
 	fs := flag.NewFlagSet("create-apikey", flag.ContinueOnError)
 	name := fs.String("name", "", "key name (required)")
 	role := fs.String("role", "operator", "role: viewer|operator|admin")
+	allowedIPs := fs.String("allowed-ips", "", "comma-separated CIDRs restricting use (e.g. 203.0.113.0/24,198.51.100.0/24)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *name == "" {
 		return fmt.Errorf("--name is required")
 	}
+	vBody := map[string]any{"name": *name, "role": *role}
+	if *allowedIPs != "" {
+		parts := strings.Split(*allowedIPs, ",")
+		cidrs := []string{}
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				cidrs = append(cidrs, p)
+			}
+		}
+		vBody["allowed_ips"] = cidrs
+	}
+	reqBody, _ := json.Marshal(vBody)
 	code, body, err := doSeedCall(func(seed string) (int, []byte, error) {
-		req, err := http.NewRequest("POST", httpScheme()+"://"+seed+"/apikeys", bytes.NewReader([]byte(fmt.Sprintf(`{"name":%q,"role":%q}`, *name, *role))))
+		req, err := http.NewRequest("POST", httpScheme()+"://"+seed+"/apikeys", bytes.NewReader(reqBody))
 		if err != nil {
 			return 0, nil, err
 		}
@@ -227,9 +241,16 @@ func cmdCreateAPIKey(args []string) error {
 	if *jsonOut {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(map[string]string{"name": out.Name, "role": out.Role, "key": out.Key})
+		jout := map[string]any{"name": out.Name, "role": out.Role, "key": out.Key}
+		if *allowedIPs != "" {
+			jout["allowed_ips"] = strings.Split(*allowedIPs, ",")
+		}
+		return enc.Encode(jout)
 	}
 	fmt.Printf("created api key %q (role: %s): %s\n", out.Name, out.Role, out.Key)
+	if *allowedIPs != "" {
+		fmt.Printf("allowed IPs: %s\n", *allowedIPs)
+	}
 	fmt.Printf("note: the key is shown exactly once; store it now.\n")
 	return nil
 }

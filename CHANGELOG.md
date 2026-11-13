@@ -62,6 +62,7 @@ Manual-run caveats: (1) a clean-VM run was not available to the agent; all check
 
 ## Unreleased
 
+- ADR-011 slice 4 delivered: anonymous traffic capped per source IP (`-anon-rate`, default 20 ops per minute) on /healthz and all unauthenticated refusals; API keys may carry an `allowed_ips` CIDR allowlist with mismatched callers receiving HTTP 403 / gRPC PERMISSION_DENIED (`firn-cli create-apikey --allowed-ips 203.0.113.0/24`); `authz-refused:ip-not-allowed` is audited; audit logging in every mode (not just enforced).
 - ADR-011 slice 2 delivered: **mesh mTLS**. `ReplicaService`/`QuorumService` served only on a dedicated mesh listener behind mTLS — invisible to the public gRPC port. Cluster CA pre-provisioned once via `firn mesh-ca init` (or `-mesh-ca-bundle`/`-mesh-ca-key`) and copied per node; node certificates issued at first start. Untrusted clients cannot complete the handshake; streaming/replication verified live on 3 nodes (produce on holder, fetch on replicas, kill -9 survives).
   - **Note**: mixing old/new mesh builds on a live cluster is not supported; rolling upgrade requires a full restart window.
 

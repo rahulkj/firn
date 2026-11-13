@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"strings"
 	"sync"
 	"time"
@@ -60,11 +61,12 @@ func ParseRole(s string) (Role, error) {
 // Key is one API key record. Hash is the full SHA-256 (hex-encoded) of the
 // plaintext key; the plaintext itself is never persisted.
 type Key struct {
-	Name        string `json:"name"`
-	Role        string `json:"role"`
-	Hash        string `json:"hash"`
-	CreatedUnix int64  `json:"created_unix"`
-	Revoked     bool   `json:"revoked"`
+	Name        string   `json:"name"`
+	Role        string   `json:"role"`
+	Hash        string   `json:"hash"`
+	CreatedUnix int64    `json:"created_unix"`
+	Revoked     bool     `json:"revoked"`
+	AllowedIPs  []string `json:"allowed_ips,omitempty"`
 }
 
 // Store folds the __api_keys log into an in-memory map. Single-handle sharing
@@ -96,17 +98,24 @@ func OpenDir(dir string) (*Store, error) {
 }
 
 type record struct {
-	Action    string `json:"action"` // "upsert" | "revoke"
-	Name      string `json:"name"`
-	Role      string `json:"role,omitempty"`
-	Hash      string `json:"hash"`
-	CreatedAt int64  `json:"created_at"`
-	Revoked   bool   `json:"revoked,omitempty"`
+	Action     string   `json:"action"` // "upsert" | "revoke"
+	Name       string   `json:"name"`
+	Role       string   `json:"role,omitempty"`
+	Hash       string   `json:"hash"`
+	CreatedAt  int64    `json:"created_at"`
+	Revoked    bool     `json:"revoked,omitempty"`
+	AllowedIPs []string `json:"allowed_ips,omitempty"`
 }
 
 // Create generates a new key (plaintext returned once) and persists it.
-func (s *Store) Create(name, role string) (string, error) {
+// allowedIPs is an optional CIDR allowlist; empty means unrestricted.
+func (s *Store) Create(name, role string, allowedIPs ...string) (string, error) {
 	if err := s.gate.Allow("__api_keys"); err != nil {
+		return "", err
+	}
+	var err error
+	allowedIPs, err = parseCIDRs(allowedIPs)
+	if err != nil {
 		return "", err
 	}
 	if name == "" {
@@ -128,7 +137,7 @@ func (s *Store) Create(name, role string) (string, error) {
 		return "", err
 	}
 	plaintext := "ev-" + base64.RawURLEncoding.EncodeToString(buf)
-	rec := record{Action: "upsert", Name: name, Role: strings.ToLower(role), Hash: hashKey(plaintext), CreatedAt: time.Now().UnixMilli()}
+	rec := record{Action: "upsert", Name: name, Role: strings.ToLower(role), Hash: hashKey(plaintext), CreatedAt: time.Now().UnixMilli(), AllowedIPs: allowedIPs}
 	payload, _ := json.Marshal(rec)
 	s.fl.Append([]byte("key:"+name), payload)
 	s.foldedHWM = s.fl.HighWatermark()
@@ -137,6 +146,7 @@ func (s *Store) Create(name, role string) (string, error) {
 		Role:        strings.ToLower(role),
 		Hash:        hashKey(plaintext),
 		CreatedUnix: rec.CreatedAt,
+		AllowedIPs:  allowedIPs,
 	}
 	return plaintext, nil
 }
@@ -204,6 +214,45 @@ func (s *Store) Verify(plaintext string) (Key, bool) {
 		}
 	}
 	return Key{}, false
+}
+
+// VerifyFrom returns the key if it matches AND the caller IP is permitted
+// by the key's allowlist.
+func (s *Store) VerifyFrom(plaintext string, callerIP string) (Key, bool) {
+	k, ok := s.Verify(plaintext)
+	if !ok {
+		return Key{}, false
+	}
+	if len(k.AllowedIPs) == 0 {
+		return k, true
+	}
+	ip := net.ParseIP(callerIP)
+	if ip == nil {
+		return Key{}, false
+	}
+	for _, cidr := range k.AllowedIPs {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			continue
+		}
+		if ipNet.Contains(ip) {
+			return k, true
+		}
+	}
+	return Key{}, false
+}
+
+// AllowFrom reports whether the key is permitted from callerIP with role ≥ min.
+func (s *Store) AllowFrom(plaintext string, callerIP string, min Role) bool {
+	k, ok := s.VerifyFrom(plaintext, callerIP)
+	if !ok {
+		return false
+	}
+	r, err := ParseRole(k.Role)
+	if err != nil {
+		return false
+	}
+	return r >= min
 }
 
 // Allow reports whether the key (verified) meets the minimum role.
@@ -304,6 +353,7 @@ func applyRecord(out *map[string]Key, payload []byte) {
 			Hash:        rec.Hash,
 			CreatedUnix: rec.CreatedAt,
 			Revoked:     rec.Revoked,
+			AllowedIPs:  rec.AllowedIPs,
 		}
 	case "revoke":
 		if k, ok := (*out)[rec.Name]; ok {
@@ -325,4 +375,29 @@ func orDefault(s, def string) string {
 		return def
 	}
 	return s
+}
+
+// parseCIDRs validates CIDR notation. Bare IPs are accepted as /32 (IPv4) or /128 (IPv6).
+func parseCIDRs(cidrs []string) ([]string, error) {
+	out := make([]string, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			continue
+		}
+		if !strings.Contains(cidr, "/") {
+			if ip := net.ParseIP(cidr); ip != nil {
+				if ip.To4() != nil {
+					cidr = cidr + "/32"
+				} else {
+					cidr = cidr + "/128"
+				}
+			}
+		}
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			return nil, fmt.Errorf("apikeys: invalid CIDR %q: %w", cidr, err)
+		}
+		out = append(out, cidr)
+	}
+	return out, nil
 }
