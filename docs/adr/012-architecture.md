@@ -29,9 +29,9 @@ flowchart TB
     end
 
     subgraph firnd[firnd — one process]
-        httpapi["HTTP admin :9092<br/>(/healthz, /metrics, /ui/, /topics, /groups, /queues, /federation)"]
-        grpcapi["FirnService gRPC :9093<br/>(produce, fetch, groups, queue, metadata)"]
-        mesh["Mesh gRPC :9093+10<br/>(ReplicaService, QuorumService, FederationService)<br/>mTLS + bearer only"]
+        httpapi["HTTP admin :9460<br/>(/healthz, /metrics, /ui/, /topics, /groups, /queues, /federation)"]
+        grpcapi["FirnService gRPC :9461<br/>(produce, fetch, groups, queue, metadata)"]
+        mesh["Mesh gRPC :9461+10<br/>(ReplicaService, QuorumService, FederationService)<br/>mTLS + bearer only"]
 
         broker["internal/broker<br/>produce/fetch orchestration, partition assignment,<br/>lease + federation fences, internal shared logs"]
         queue["internal/queue<br/>claim/lease/DLQ engine, __queue_attempts"]
@@ -268,7 +268,7 @@ Six shared, single-partition internal logs in every deployment. In clusters they
 flowchart TB
     client["gRPC clients / firn-cli"] --> node
     admin["HTTP admin / UI"] --> node
-    subgraph node[firnd :9092 / :9093 / :9093+10]
+    subgraph node[firnd :9460 / :9461 / :9461+10]
         direction LR
         subgraph internals[embedded]
             flog["FileLog → local disk<br/>(<data-dir>)"]
@@ -395,8 +395,8 @@ Defaults (all overridable):
 
 | Listener | Flag | Default | Contents | Auth |
 |---|---|---|---|---|
-| HTTP admin | `-http-addr` | `:9092` | `/healthz` (public), `/metrics`, `/ui/`, admin API | Bearer once any key exists |
-| Client gRPC | `-grpc-addr` | `:9093` | `FirnService` (all client RPCs) | Bearer + role |
+| HTTP admin | `-http-addr` | `:9460` | `/healthz` (public), `/metrics`, `/ui/`, admin API | Bearer once any key exists |
+| Client gRPC | `-grpc-addr` | `:9461` | `FirnService` (all client RPCs) | Bearer + role |
 | Mesh gRPC | `-mesh-addr` | `grpc-addr` + 10 ports | `ReplicaService`, `QuorumService`, `FederationService` | mTLS (mesh CA) + bearer (federation only for FederationService) |
 
 ## Operator documentation map

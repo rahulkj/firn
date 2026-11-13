@@ -9,14 +9,14 @@
 //
 // Surfaces:
 //
-//	HTTP  :9092  /healthz, /topics, /groups, /metrics — override with -http-addr
+//	HTTP  :9460  /healthz, /topics, /groups, /metrics — override with -http-addr
 //
 // Security (ADR-011): the broker fails closed. If no API keys exist it
 // prints a one-time BOOTSTRAP TOKEN on stderr; POST /apikeys with that
 // token mints exactly one admin key, then auth is enforced. -dev disables
 // it (development only). /metrics is keyed by default.
 //
-//	gRPC  :9093  FirnService                              — override with -grpc-addr
+//	gRPC  :9461  FirnService                              — override with -grpc-addr
 //
 // Logging is JSON via log/slog on stderr.
 package main
@@ -64,7 +64,7 @@ import (
 )
 
 // meshPeerAddr maps a peer's client gRPC address to their mesh gRPC address
-// (port+1, same host). The mesh listener defaults to :9094 for the client.
+// (port+1, same host). The mesh listener defaults to :9471 for the client.
 func meshPeerAddr(addr string) string {
 	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -221,8 +221,8 @@ const version = "0.3.0"
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
 
-	httpAddr := flag.String("http-addr", ":9092", "HTTP admin/health listen address")
-	grpcAddr := flag.String("grpc-addr", ":9093", "gRPC listen address")
+	httpAddr := flag.String("http-addr", ":9460", "HTTP admin/health listen address")
+	grpcAddr := flag.String("grpc-addr", ":9461", "gRPC listen address")
 	dataDir := flag.String("data-dir", "./data", "partition log data directory (\"\" = in-memory)")
 	dirModeCheck := flag.Bool("dir-mode-check", true, "refuse to start if any file under -data-dir is not 0600/dirs not 0700 (set false for exotic filesystems; logs a loud warning)")
 	retentionTTL := flag.Duration("retention-ttl", 0, "delete whole segments whose newest record is older than this (0 = disabled)")

@@ -8,8 +8,8 @@ Defaults (in-memory except `./data`):
 
 ```sh
 firnd \
-  -http-addr :9092 \
-  -grpc-addr :9093 \
+  -http-addr :9460 \
+  -grpc-addr :9461 \
   -data-dir ./data \
   -session-timeout 10s \
   -retention-interval 1m
@@ -18,8 +18,8 @@ firnd \
 
 | Flag | Default | Type | Effect |
 |---|---|---|---|
-| `-http-addr` | `:9092` | host:port | HTTP admin/health listener (`/healthz`, `/metrics`, admin API, `/ui/`). Auth enforced on the admin mux once any key exists. |
-| `-grpc-addr` | `:9093` | host:port | gRPC listener: `FirnService` + (cluster) `ReplicaService`/`QuorumService`. This is the port clients dial. |
+| `-http-addr` | `:9460` | host:port | HTTP admin/health listener (`/healthz`, `/metrics`, admin API, `/ui/`). Auth enforced on the admin mux once any key exists. |
+| `-grpc-addr` | `:9461` | host:port | gRPC listener: `FirnService` + (cluster) `ReplicaService`/`QuorumService`. This is the port clients dial. |
 | `-data-dir` | `./data` | path or `""` | Partition logs + internal topics + `topics.json` + (cluster) quorum state. `""` selects in-memory `MemLog` — dev/tests only; **restart loses everything**, no durability. |
 | `-retention-ttl` | `0` (disabled) | duration | Delete **whole segments** whose newest record is older than this. Active (newest) segment is never deleted. `0` disables. |
 | `-retention-max-bytes` | `0` (disabled) | bytes | Max on-disk bytes per partition log; oldest whole segments deleted first. Active segment never deleted. |
@@ -28,7 +28,7 @@ firnd \
 | `-block-seal-interval` | `0` | duration | Roll (seal) a partition's active segment once it has outlived this age, even with no size pressure (applied on the next append / replication tick). `0` = seal on size only. |
 | `-session-timeout` | `10s` | duration | Consumer-group member liveness lease. Members that miss this window are evicted and re-balance. |
 | `-node-id` | `""` | string | Cluster mode: this node's ID. Empty = single-node (no quorum, no replication). |
-| `-peers` | `""` | `id=addr,...` | Cluster mode, **including self**: `n1=127.0.0.1:9311,n2=127.0.0.1:9312,n3=127.0.0.1:9313`. Must list every node; must include this node's `-node-id`. |
+| `-peers` | `""` | `id=addr,...` | Cluster mode, **including self**: `n1=127.0.0.1:9538,n2=127.0.0.1:9540,n3=127.0.0.1:9542`. Must list every node; must include this node's `-node-id`. |
 | `-lease-ttl` | `3s` | duration | Cluster mode: write-lease TTL per partition. Leases expire (crashed holder loses the slot); the quorum re-grants. |
 | `-tls-cert` | `""` | PEM path | TLS certificate for **both** listeners. Empty (with `-tls-key`) = plaintext. Both must be set together. |
 | `-tls-key` | `""` | PEM path | TLS private key for both listeners. Minimum version TLS 1.2; single cert for both, so give SANs covering both hostnames/IPs. |
@@ -65,12 +65,12 @@ In bootstrap mode gRPC returns `Unauthenticated` for every call; minting happens
 
 ## `firn-cli` — operational CLI
 
-Defaults `localhost:9093` / `localhost:9092`, overridable per flag or env.
+Defaults `localhost:9461` / `localhost:9460`, overridable per flag or env.
 
 | Flag | Env var | Default | Effect |
 |---|---|---|---|
-| `-addr` | `FIRN_ADDR` | `localhost:9093` | Seed gRPC address. In cluster mode the CLI still asks this seed for metadata first, then routes to the lease holder for the partition (2s metadata cache, refresh-on-retry). |
-| `-http-addr` | `FIRN_HTTP_ADDR` | `localhost:9092` | Seed HTTP admin address for topic creation, API keys, groups. |
+| `-addr` | `FIRN_ADDR` | `localhost:9461` | Seed gRPC address. In cluster mode the CLI still asks this seed for metadata first, then routes to the lease holder for the partition (2s metadata cache, refresh-on-retry). |
+| `-http-addr` | `FIRN_HTTP_ADDR` | `localhost:9460` | Seed HTTP admin address for topic creation, API keys, groups. |
 | `-peers` | `FIRN_PEERS` | `""` | Cluster mode: comma-separated node gRPC addresses (`host:port,host:port,…`). CLI picks seeds round-robin when metadata is unavailable. |
 | `-http-peers` | `FIRN_HTTP_PEERS` | derived | Cluster mode: comma-separated HTTP admin addresses. Defaults to `-peers` with each port decremented by 1. |
 | `-json` | — | `false` | Machine-readable output for list/produce/groups/dlq/apikeys commands. |

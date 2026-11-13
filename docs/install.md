@@ -39,7 +39,7 @@ Run the broker:
 
 ```sh
 go run ./cmd/firnd
-# HTTP admin/health on :9092, gRPC on :9093; data in ./data ("" = in-memory)
+# HTTP admin/health on :9460, gRPC on :9461; data in ./data ("" = in-memory)
 # first-ever run prints "BOOTSTRAP TOKEN: <hex64>" on stderr — see next section
 ```
 
@@ -49,7 +49,7 @@ On first start the daemon prints a one-time `BOOTSTRAP TOKEN` to stderr (64 hex 
 # copy BOOTSTRAP TOKEN from the daemon stderr/log
 TOKEN=<the 64-hex token you saw>
 
-KEY=$(curl -s -X POST localhost:9092/apikeys \
+KEY=$(curl -s -X POST localhost:9460/apikeys \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"name":"root","role":"admin"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["key"])')
@@ -60,7 +60,7 @@ Then — everything needs the key:
 
 ```sh
 # Create a stream topic with 3 partitions
-curl -H "Authorization: Bearer $KEY" -X POST localhost:9092/topics -d '{"name":"orders","partitions":3}'
+curl -H "Authorization: Bearer $KEY" -X POST localhost:9460/topics -d '{"name":"orders","partitions":3}'
 
 # Produce (FNV(key) partitions the record) via the CLI
 firn-cli -api-key "$KEY" produce --topic orders --key user-42 --value '{"order":123}'
@@ -72,10 +72,10 @@ firn-cli -api-key "$KEY" fetch --topic orders --partition 0
 Or drive everything over the HTTP admin API:
 
 ```sh
-curl -H "Authorization: Bearer $KEY" -X POST localhost:9092/topics -d '{"name":"orders","partitions":3}'
-curl -H "Authorization: Bearer $KEY" localhost:9092/topics
-curl localhost:9092/healthz                                        # anonymous
-curl -H "Authorization: Bearer $KEY" localhost:9092/metrics
+curl -H "Authorization: Bearer $KEY" -X POST localhost:9460/topics -d '{"name":"orders","partitions":3}'
+curl -H "Authorization: Bearer $KEY" localhost:9460/topics
+curl localhost:9460/healthz                                        # anonymous
+curl -H "Authorization: Bearer $KEY" localhost:9460/metrics
 ```
 
 Checkpoint, full examples, and the API reference: [`docs/api.md`](api.md).
@@ -94,7 +94,7 @@ go run ./cmd/firnd -tls-cert cert.pem -tls-key key.pem
 TOKEN=$(...)   # copy from stderr output
 
 # 3. create the first (admin) key — plaintext is shown exactly once
-curl --cacert cert.pem -X POST https://localhost:9092/apikeys \
+curl --cacert cert.pem -X POST https://localhost:9460/apikeys \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"name":"root","role":"admin"}'
 
@@ -119,23 +119,23 @@ for d in n1 n2 n3; do mkdir -p data-$d/mesh-ca && cp mesh-ca/ca.* data-$d/mesh-c
 
 # 1. terminal 1
 go run ./cmd/firnd -node-id n1 \
-  -peers n1=127.0.0.1:9311,n2=127.0.0.1:9312,n3=127.0.0.1:9313 \
-  -http-addr 127.0.0.1:9211 -grpc-addr 127.0.0.1:9311 -data-dir ./data-n1
+  -peers n1=127.0.0.1:9538,n2=127.0.0.1:9540,n3=127.0.0.1:9542 \
+  -http-addr 127.0.0.1:9537 -grpc-addr 127.0.0.1:9538 -data-dir ./data-n1
 
 # terminal 2
 go run ./cmd/firnd -node-id n2 \
-  -peers n1=127.0.0.1:9311,n2=127.0.0.1:9312,n3=127.0.0.1:9313 \
-  -http-addr 127.0.0.1:9212 -grpc-addr 127.0.0.1:9312 -data-dir ./data-n2
+  -peers n1=127.0.0.1:9538,n2=127.0.0.1:9540,n3=127.0.0.1:9542 \
+  -http-addr 127.0.0.1:9539 -grpc-addr 127.0.0.1:9540 -data-dir ./data-n2
 
 # terminal 3 — same pattern
 ```
 
 ```sh
 # client side: the CLI finds the leader/lease holder itself from metadata
-firn-cli -peers 127.0.0.1:9311,127.0.0.1:9312,127.0.0.1:9313 \
-  -http-peers 127.0.0.1:9211,127.0.0.1:9212,127.0.0.1:9213 \
+firn-cli -peers 127.0.0.1:9538,127.0.0.1:9540,127.0.0.1:9542 \
+  -http-peers 127.0.0.1:9537,127.0.0.1:9539,127.0.0.1:9541 \
   create-topic --name orders --partitions 3
-firn-cli -peers 127.0.0.1:9311,127.0.0.1:9312,127.0.0.1:9313 \
+firn-cli -peers 127.0.0.1:9538,127.0.0.1:9540,127.0.0.1:9542 \
   produce --topic orders --key k --value hello
 ```
 

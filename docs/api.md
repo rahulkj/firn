@@ -4,8 +4,8 @@ Firn exposes two surfaces:
 
 | Surface | Port (default) | Protocol | Audience |
 |---|---|---|---|
-| Admin / operations | `:9092` | HTTP + JSON | Operators, CLI, health checks |
-| Broker / data plane | `:9093` | gRPC (HTTP/2, protobuf) | Applications, `firn-cli` |
+| Admin / operations | `:9460` | HTTP + JSON | Operators, CLI, health checks |
+| Broker / data plane | `:9461` | gRPC (HTTP/2, protobuf) | Applications, `firn-cli` |
 
 Plus three **internal** services on the gRPC port used between nodes — documented here for completeness, not for client use: `QuorumService` (Raft messages), `ReplicaService` (block push/pull), and the gRPC path of `GetMetadata`.
 
@@ -31,12 +31,12 @@ Everything in this document was cross-checked against `internal/api/firn.proto` 
 
 ---
 
-## HTTP admin surface (`:9092`)
+## HTTP admin surface (`:9460`)
 
 ### `GET /healthz`
 
 ```sh
-curl localhost:9092/healthz
+curl localhost:9460/healthz
 ```
 ```json
 {"status":"ok","version":"0.1.0"}
@@ -51,7 +51,7 @@ Prometheus text exposition format (ADR-006). Rate-limited counters, group/queue 
 Create a topic. Stream or queue.
 
 ```sh
-curl -X POST localhost:9092/topics -d '{"name":"orders","partitions":3,"mode":"stream"}'
+curl -X POST localhost:9460/topics -d '{"name":"orders","partitions":3,"mode":"stream"}'
 ```
 ```json
 {"name":"orders","partitions":3,"mode":"stream"}
@@ -63,7 +63,7 @@ Errors: `400` invalid partitions/mode · `409` topic exists · `500` internal ·
 ### `GET /topics`
 
 ```sh
-curl localhost:9092/topics
+curl localhost:9460/topics
 ```
 ```json
 {"topics":[{"name":"orders","partitions":3,"mode":"stream"}]}
@@ -72,7 +72,7 @@ curl localhost:9092/topics
 ### `GET /groups`
 
 ```sh
-curl -H "Authorization: Bearer $KEY" localhost:9092/groups
+curl -H "Authorization: Bearer $KEY" localhost:9460/groups
 ```
 ```json
 {
@@ -98,7 +98,7 @@ curl -H "Authorization: Bearer $KEY" localhost:9092/groups
 ### `GET /groups/{name}/offsets`
 
 ```sh
-curl -H "Authorization: Bearer $KEY" localhost:9092/groups/checkout/offsets
+curl -H "Authorization: Bearer $KEY" localhost:9460/groups/checkout/offsets
 ```
 ```json
 {
@@ -114,7 +114,7 @@ curl -H "Authorization: Bearer $KEY" localhost:9092/groups/checkout/offsets
 Claim up to N messages for `visibility_timeout_ms` (default 30 000, hard cap 500 messages).
 
 ```sh
-curl -X POST localhost:9092/queues/jobs/pull \
+curl -X POST localhost:9460/queues/jobs/pull \
   -d '{"max_messages":10,"visibility_timeout_ms":30000}'
 ```
 ```json
@@ -138,7 +138,7 @@ Errors: `404` queue not found / unknown delivery · `400` not a queue topic · `
 ### `POST /queues/{name}/ack`
 
 ```sh
-curl -X POST localhost:9092/queues/jobs/ack -d '{"delivery_id":"d-3f2a9c…"}'
+curl -X POST localhost:9460/queues/jobs/ack -d '{"delivery_id":"d-3f2a9c…"}'
 ```
 ```json
 {"status":"ok"}
@@ -149,7 +149,7 @@ curl -X POST localhost:9092/queues/jobs/ack -d '{"delivery_id":"d-3f2a9c…"}'
 Plaintext key is returned **exactly once**; it is never stored and cannot be recovered.
 
 ```sh
-curl -X POST localhost:9092/apikeys \
+curl -X POST localhost:9460/apikeys \
   -H 'Authorization: Bearer $ADMIN_KEY' -H 'Content-Type: application/json' \
   -d '{"name":"ci-deploy","role":"operator"}'
 ```
@@ -174,7 +174,7 @@ curl -X POST localhost:9092/apikeys \
 ### `DELETE /apikeys/{name}` *(admin)*
 
 ```sh
-curl -X DELETE localhost:9092/apikeys/ci-deploy -H 'Authorization: Bearer $ADMIN_KEY'
+curl -X DELETE localhost:9460/apikeys/ci-deploy -H 'Authorization: Bearer $ADMIN_KEY'
 ```
 ```json
 {"status":"revoked","name":"ci-deploy"}
@@ -186,7 +186,7 @@ Read-only HTML dashboard (topics, groups, generation/leader/members). Renders be
 
 ---
 
-## gRPC FirnService (`:9093`)
+## gRPC FirnService (`:9461`)
 
 Package `firn.v1` — full definitions in `internal/api/firn.proto`. All RPCs are unary; streaming is deliberately not in v1.
 
@@ -256,7 +256,7 @@ message GetMetadataResponse {
 }
 ```
 
-- Single-node: one broker entry, `id: "single"`, `addr` = the node's `-grpc-addr` (wildcards folded to `localhost`), `leader: ""`/`leader_addr: ""` in `PartitionMetadata`. *(fixed in this pass — previously advertised a hardcoded `localhost:9093`; now reflects `-grpc-addr`.)*
+- Single-node: one broker entry, `id: "single"`, `addr` = the node's `-grpc-addr` (wildcards folded to `localhost`), `leader: ""`/`leader_addr: ""` in `PartitionMetadata`. *(fixed in this pass — previously advertised a hardcoded `localhost:9461`; now reflects `-grpc-addr`.)*
 - Cluster: one entry per `-peers` member with its advertised gRPC address; `PartitionMetadata.leader_addr` is the lease holder's dial address.
 - CLI caches this for 2s; stale entries self-heal via retry-with-refresh.
 

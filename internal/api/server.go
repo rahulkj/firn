@@ -272,7 +272,10 @@ func (s *Server) GetMetadata(ctx context.Context, req *firnpb.GetMetadataRequest
 
 	view := s.b.ClusterView()
 	if view == nil {
-		out.Brokers = []*firnpb.BrokerMetadata{{Id: "single", Addr: "localhost:9093", IsLeader: true}}
+		// Never happens under firnd (a SingleNodeView is always wired).
+		// Advertise "" so clients fall back to their seed list rather than
+		// dial a wrong hardcoded port.
+		out.Brokers = []*firnpb.BrokerMetadata{{Id: "single", Addr: "", IsLeader: true}}
 	} else {
 		leader := view.Leader()
 		for _, id := range view.AllNodes() {

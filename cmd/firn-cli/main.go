@@ -5,7 +5,7 @@
 //
 // Usage:
 //
-//	firn-cli [--addr localhost:9093] [--http-addr localhost:9092] [--json] <command> [flags]
+//	firn-cli [--addr localhost:9461] [--http-addr localhost:9460] [--json] <command> [flags]
 //
 // Commands:
 //
@@ -49,8 +49,8 @@ import (
 )
 
 var (
-	addr      = flag.String("addr", envOr("FIRN_ADDR", "localhost:9093"), "gRPC address of a node (or FIRN_ADDR)")
-	httpAddr  = flag.String("http-addr", envOr("FIRN_HTTP_ADDR", "localhost:9092"), "HTTP admin address (or FIRN_HTTP_ADDR)")
+	addr      = flag.String("addr", envOr("FIRN_ADDR", "localhost:9461"), "gRPC address of a node (or FIRN_ADDR)")
+	httpAddr  = flag.String("http-addr", envOr("FIRN_HTTP_ADDR", "localhost:9460"), "HTTP admin address (or FIRN_HTTP_ADDR)")
 	peers     = flag.String("peers", envOr("FIRN_PEERS", ""), "cluster mode: comma-separated node gRPC addresses (route decisions come from the freshest metadata)")
 	httpPeers = flag.String("http-peers", envOr("FIRN_HTTP_PEERS", ""), "cluster mode: comma-separated node HTTP admin addresses (default: -peers with each port decremented by 1)")
 	jsonOut   = flag.Bool("json", false, "machine-readable JSON output")

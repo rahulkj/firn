@@ -15,14 +15,14 @@ Status: **v0.4.0-preview — Firn, the durable event broker (secure by default).
 ```sh
 make build   # go build ./...
 make verify  # go vet ./... && go test ./...
-go run ./cmd/firnd   # HTTP admin/health on :9092, gRPC on :9093; data persisted in ./data
+go run ./cmd/firnd   # HTTP admin/health on :9460, gRPC on :9461; data persisted in ./data
 ```
 
 ```sh
-curl localhost:9092/healthz
-curl localhost:9092/metrics   # Prometheus exposition (ADR-006)
-curl -X POST localhost:9092/topics -d '{"name":"orders","partitions":3}'
-curl localhost:9092/topics
+curl localhost:9460/healthz
+curl localhost:9460/metrics   # Prometheus exposition (ADR-006)
+curl -X POST localhost:9460/topics -d '{"name":"orders","partitions":3}'
+curl localhost:9460/topics
 ```
 
 **Status: v0.1.0 — MVP (slices 1–6).** See [`CHANGELOG.md`](CHANGELOG.md) for the release notes and the ADR-005 acceptance checklist. `/metrics` is served on the admin port; logs are JSON via `log/slog`; `firn-cli` wraps the same APIs (`create-topic|create-queue|list|produce|fetch|groups|dlq|create-apikey|revoke-apikey|list-apikeys`).
@@ -31,13 +31,13 @@ curl localhost:9092/topics
 
 ```sh
 # create a queue topic (produces with the usual produce path; consumers Pull+Ack)
-curl -X POST localhost:9092/topics -d '{"name":"jobs","partitions":1,"mode":"queue"}'
+curl -X POST localhost:9460/topics -d '{"name":"jobs","partitions":1,"mode":"queue"}'
 
 # pull up to 10 messages (30s default visibility lease; attempts tracked in __queue_attempts)
-curl -X POST localhost:9092/queues/jobs/pull -d '{"max_messages":10,"visibility_timeout_ms":30000}'
+curl -X POST localhost:9460/queues/jobs/pull -d '{"max_messages":10,"visibility_timeout_ms":30000}'
 
 # ack a delivery
-curl -X POST localhost:9092/queues/jobs/ack -d '{"delivery_id":"<id from pull>"}'
+curl -X POST localhost:9460/queues/jobs/ack -d '{"delivery_id":"<id from pull>"}'
 ```
 
 Unacked messages are redelivered after the visibility lease expires; after 3 delivery attempts a message is diverted to `jobs.dlq` (auto-created stream topic). Guarantee: at-least-once, per-message, ordering best-effort.
@@ -56,17 +56,17 @@ buf generate internal/api --template buf.gen.yaml   # needs buf + protoc-gen-go 
 
 ```sh
 # terminal 1
-go run ./cmd/firnd -node-id n1 -peers n1=127.0.0.1:9311,n2=127.0.0.1:9312,n3=127.0.0.1:9313 \
-  -http-addr 127.0.0.1:9211 -grpc-addr 127.0.0.1:9311 -data-dir ./data-n1
-# terminal 2 / 3: same with n2/n3 and ports 9312/9313 + 9212/9213, -data-dir ./data-n2 / ./data-n3
+go run ./cmd/firnd -node-id n1 -peers n1=127.0.0.1:9538,n2=127.0.0.1:9540,n3=127.0.0.1:9542 \
+  -http-addr 127.0.0.1:9537 -grpc-addr 127.0.0.1:9538 -data-dir ./data-n1
+# terminal 2 / 3: same with n2/n3 and ports 9540/9542 + 9539/9541, -data-dir ./data-n2 / ./data-n3
 ```
 
 Topics and their blocks replicate via an embedded Raft quorum (no ZK/etcd). The client
 (`firn-cli`) needs the node list:
 
 ```sh
-firn-cli -peers 127.0.0.1:9311,127.0.0.1:9312,127.0.0.1:9313 \
-  -http-peers 127.0.0.1:9211,127.0.0.1:9212,127.0.0.1:9213 \
+firn-cli -peers 127.0.0.1:9538,127.0.0.1:9540,127.0.0.1:9542 \
+  -http-peers 127.0.0.1:9537,127.0.0.1:9539,127.0.0.1:9541 \
   create-topic --name orders --partitions 3
 firn-cli -peers ... produce --topic orders --key k --value hello
 firn-cli -peers ... fetch --topic orders --partition 0
@@ -86,7 +86,7 @@ Firn is **secure by default**: a fresh daemon with zero keys refuses to serve ev
 
 ```sh
 # bootstrap: create the first (admin) key before serving traffic
-curl -X POST localhost:9092/apikeys -d '{"name":"root","role":"admin"}'
+curl -X POST localhost:9460/apikeys -d '{"name":"root","role":"admin"}'
 firn-cli -api-key 'ev-…' list
 ```
 
