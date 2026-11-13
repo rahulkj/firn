@@ -9,7 +9,7 @@ test:
 vet:
 	go vet ./...
 
-# Requires: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# Requires: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 lint:
 	golangci-lint run
 

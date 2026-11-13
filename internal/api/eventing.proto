@@ -1,0 +1,249 @@
+syntax = "proto3";
+
+// EventingService is the v1 hot path (docs/adr/002-api.md): clean API,
+// not a Kafka wire protocol. HTTP/JSON is used only for admin (create
+// list topics, health), not for produce/fetch.
+package eventing.v1;
+
+option go_package = "github.com/rahulkj/eventing/internal/api/eventingpb";
+
+service EventingService {
+  rpc Produce(ProduceRequest) returns (ProduceResponse);
+  rpc Fetch(FetchRequest) returns (FetchResponse);
+
+  rpc JoinGroup(JoinGroupRequest) returns (JoinGroupResponse);
+  rpc SyncGroup(SyncGroupRequest) returns (SyncGroupResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+  rpc LeaveGroup(LeaveGroupRequest) returns (LeaveGroupResponse);
+  rpc CommitOffset(CommitOffsetRequest) returns (CommitOffsetResponse);
+  rpc FetchOffset(FetchOffsetRequest) returns (FetchOffsetResponse);
+  rpc FetchGroupOffsets(FetchGroupOffsetsRequest) returns (FetchGroupOffsetsResponse);
+
+  rpc Pull(PullRequest) returns (PullResponse);
+  rpc Ack(AckRequest) returns (AckResponse);
+
+  rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse);
+}
+
+message ProduceRequest {
+  string topic = 1;
+  // Optional. When set, the record is routed to FNV(key) % partitions.
+  // When unset, the broker round-robins across partitions.
+  bytes key = 2;
+  bytes value = 3;
+}
+
+message ProduceResponse {
+  int32 partition = 1;
+  int64 offset = 2;
+}
+
+message FetchRequest {
+  string topic = 1;
+  int32 partition = 2;
+  int64 offset = 3;
+  // Maximum records to return. Must be >= 1.
+  int32 max_records = 4;
+}
+
+message FetchResponse {
+  repeated Record records = 1;
+}
+
+message Record {
+  int64 offset = 1;
+  bytes key = 2;
+  bytes value = 3;
+}
+
+// --- Slice 4: consumer groups (__consumer_offsets) ---
+
+message TopicAssignment {
+  string topic = 1;
+  repeated int32 partitions = 2;
+}
+
+message JoinGroupRequest {
+  string group_id = 1;
+  string member_id = 2;  // empty = new member; server assigns
+  repeated string topics = 3;
+  string protocol = 4;   // "range" (default) | "roundrobin"
+  int64 session_timeout_ms = 5;  // 0 = server default
+}
+
+message JoinGroupResponse {
+  string member_id = 1;
+  int64 generation_id = 2;
+  bool leader = 3;
+  repeated TopicAssignment assignment = 4;
+  repeated string members = 5;
+  string protocol = 6;
+}
+
+message SyncGroupRequest {
+  string group_id = 1;
+  string member_id = 2;
+  int64 generation_id = 3;
+}
+
+message SyncGroupResponse {
+  repeated TopicAssignment assignment = 1;
+  int64 generation_id = 2;
+}
+
+message HeartbeatRequest {
+  string group_id = 1;
+  string member_id = 2;
+  int64 generation_id = 3;
+}
+
+message HeartbeatResponse {
+  int64 generation_id = 1;
+  bool rebalance_required = 2; // true when the member's generation is stale
+}
+
+message LeaveGroupRequest {
+  string group_id = 1;
+  string member_id = 2;
+}
+
+message LeaveGroupResponse {}
+
+message CommitOffsetRequest {
+  string group_id = 1;
+  string topic = 2;
+  int32 partition = 3;
+  int64 offset = 4;
+  int64 generation_id = 5;  // 0 = unchecked; non-zero stale generations are rejected
+  bool allow_reset = 6;     // permit committing below the committed offset (invariant 4)
+}
+
+message CommitOffsetResponse {}
+
+message FetchOffsetRequest {
+  string group_id = 1;
+  string topic = 2;
+  int32 partition = 3;
+}
+
+message FetchOffsetResponse {
+  int64 offset = 1;
+  bool found = 2;
+  int64 generation_id = 3;
+  string leader = 4;
+}
+
+message OffsetEntry {
+  string topic = 1;
+  int32 partition = 2;
+  int64 offset = 3;
+  int64 generation_id = 4;
+  string leader = 5;
+}
+
+message FetchGroupOffsetsRequest {
+  string group_id = 1;
+}
+
+message FetchGroupOffsetsResponse {
+  repeated OffsetEntry offsets = 1;
+}
+
+// --- Slice 5: queue mode (ack / visibility / DLQ) ---
+
+message QueueDelivery {
+  string delivery_id = 1;
+  string queue = 2;
+  int32 partition = 3;
+  int64 offset = 4;
+  bytes key = 5;
+  bytes value = 6;
+  int32 attempts = 7;      // delivery attempt number, 1-based
+  int64 deadline_ms = 8;   // unix millis at which the lease expires
+}
+
+message PullRequest {
+  string queue = 1;
+  int32 max_messages = 2;        // 0 = default (10), hard cap 500
+  int64 visibility_timeout_ms = 3; // 0 = default (30000)
+}
+
+message PullResponse {
+  repeated QueueDelivery deliveries = 1;
+}
+
+message AckRequest {
+  string queue = 1;
+  string delivery_id = 2;
+}
+
+message AckResponse {}
+
+// --- ADR-007 phase C: internal broker-broker replication (not for clients) ---
+
+service QuorumService {
+  rpc QuorumMessage(QuorumMessageRequest) returns (QuorumMessageResponse);
+}
+
+message QuorumMessageRequest {
+  bytes payload = 1; // JSON quorum.Message
+}
+
+message QuorumMessageResponse {}
+
+message ReplicaFetchRequest {
+  string topic = 1;
+  int32 partition = 2;
+  int64 first_offset = 3;
+  int64 last_offset = 4; // inclusive; frames in [first_offset, last_offset]
+}
+
+message ReplicaFetchResponse {
+  bytes frames = 1; // raw frames, length-prefixed + CRC'd, in order
+}
+
+message ReplicaPutRequest {
+  string topic = 1;
+  int32 partition = 2;
+  bytes frames = 3; // raw frames in order; first frame must have offset == base_offset
+  int64 base_offset = 4;
+}
+
+message ReplicaPutResponse {
+  int64 high_watermark = 1; // follower HWM after applying the frames
+}
+
+service ReplicaService {
+  rpc ReplicaFetch(ReplicaFetchRequest) returns (ReplicaFetchResponse);
+  rpc ReplicaPut(ReplicaPutRequest) returns (ReplicaPutResponse);
+}
+
+// --- ADR-007 phase D: client routing surface ---
+
+message PartitionMetadata {
+  int32 partition_id = 1;
+  string leader = 2;      // node id of the lease holder, "" in single-node mode
+  string leader_addr = 3; // advertised gRPC address of the lease holder, "" in single-node mode
+}
+
+message TopicMetadata {
+  string name = 1;
+  int32 partitions = 2;
+  string mode = 3;
+  repeated PartitionMetadata partitions_meta = 4;
+}
+
+message BrokerMetadata {
+  string id = 1;
+  string addr = 2; // advertised gRPC address
+  bool is_leader = 3; // quorum leader
+}
+
+message GetMetadataRequest {
+  repeated string topics = 1; // empty = all known topics
+}
+
+message GetMetadataResponse {
+  repeated BrokerMetadata brokers = 1;
+  repeated TopicMetadata topics = 2;
+}
