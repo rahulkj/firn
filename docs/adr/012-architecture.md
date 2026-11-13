@@ -46,7 +46,7 @@ flowchart TB
         fence["internal/fence<br/>write gates for internal topics"]
     end
 
-    subgraph disk["Local disk — <data-dir>"]
+    subgraph disk["Local disk — (data-dir)"]
         filelog["FileLog segments<br/>(user + internal topics)<br/>__consumer_offsets __queue_attempts __audit __api_keys<br/>__federation_peers __federation_cursors"]
     end
 
@@ -437,7 +437,7 @@ flowchart TB
     subgraph node["firnd :9460 / :9461 / :9461+10"]
         direction LR
         subgraph internals[embedded]
-            flog["FileLog → local disk<br/>(<data-dir>)"]
+            flog["FileLog → local disk<br/>(data-dir)"]
         end
     end
     node --> disk["topics.json + segments<br/>__consumer_offsets __queue_attempts __audit __api_keys<br/>__federation_peers __federation_cursors"]
