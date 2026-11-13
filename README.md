@@ -2,7 +2,7 @@
 
 A from-scratch event broker in Go providing **streaming** (topics, partitions, offsets, consumer groups) and **queue** (ack, redelivery, DLQ) semantics over a shared append-only log.
 
-Status: **v0.3.0-preview — Firn, the durable event broker.** See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/adr/`](docs/adr/). License: [MIT](LICENSE).
+Status: **v0.4.0-preview — Firn, the durable event broker (secure by default).** See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/adr/`](docs/adr/). License: [MIT](LICENSE).
 
 ## Documentation
 
@@ -75,6 +75,10 @@ firn-cli -peers ... fetch --topic orders --partition 0
 Design: [`docs/adr/007-scaled-deployment.md`](docs/adr/007-scaled-deployment.md) — block log, lease tails, embedded metadata quorum.
 
 **Status: cluster mode (ADR-007) is experimental and lives behind `-node-id`/`-peers`. Caveats:** (1) lease re-grants land on the current quorum leader, not a re-balanced owner — expect leader affinity after failovers; (2) unsealed tails (≤ `--lease-ttl`/`SealInterval`) are the at-risk window; (3) membership is currently fixed at startup — no dynamic join/leave; (4) `GetMetadata` serves routing hints but the CLI still tolerates stale hints with retry; (5) internal-topic writes (`__consumer_offsets`/`__queue_attempts`/`__audit`/`__api_keys`) are single-writer-fenced by the internal lease — non-holder nodes fail closed (HTTP 503 / gRPC FailedPrecondition) and apps/CLI retry the holder.
+
+## Secure by default (v0.4.0)
+
+**A fresh broker serves only `/healthz` until you mint the first API key** via the one-time bootstrap token printed on stderr (or restart with `-dev` to re-enable open dev mode, which is loud). /metrics is keyed; mesh RPCs live on a dedicated mTLS listener; data dirs are 0700/files 0600; anonymous traffic is rate-limited per IP; audit logging is bounded and append-only. See [`docs/migration-v0.3-to-v0.4.md`](docs/migration-v0.3-to-v0.4.md).
 
 ## Authentication, TLS & admin UI (phase E, 2026-11-13)
 

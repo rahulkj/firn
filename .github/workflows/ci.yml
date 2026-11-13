@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -15,7 +18,7 @@ jobs:
           go-version: '1.27'
       - name: Vet
         run: go vet ./...
-      - name: Test
+      - name: Test (with build cache)
         run: go test ./... -count=1
       - name: Build
         run: go build ./...
@@ -23,3 +26,41 @@ jobs:
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.15.0
+
+  distribution:
+    runs-on: ubuntu-latest
+    # Only on main pushes — keeps PRs fast while still gating every release.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+
+      - name: Build release tarball
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/firnd ./cmd/firnd
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o dist/firn-cli ./cmd/firn-cli
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./dist
+          format: spdx-json
+          artifact-name: sbom
+          output-file: dist/sbom.spdx.json
+          upload-artifact: true
+
+      - name: Grype scan (fail on critical)
+        uses: anchore/scan-action@v5
+        with:
+          path: ./dist
+          fail-build: true
+          severity-cutoff: critical
+          only-fixed: false
+
+      # Cosign sign-blob is intentionally left to the human cutting a tag
+      # (see docs/distribution.md); enabling id-token: write inside CI without
+      # an owner-owned OIDC exchange is out of scope for this slice.

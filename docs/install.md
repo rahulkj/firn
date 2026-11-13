@@ -2,6 +2,10 @@
 
 Firn is a from-scratch event broker: **streaming** (topics, partitions, consumer groups, replay) and **queue** (ack, redelivery, DLQ) semantics over a shared append-only log. This page takes you from a clean checkout to a running broker with traffic flowing.
 
+## Secure by default (read this before the first command)
+
+**A fresh Firn broker serves nothing except `/healthz` until you mint the first API key.** On first start the daemon prints a one-time `BOOTSTRAP TOKEN` to stderr. Mint the first (admin) key with that token, then every other endpoint requires a bearer key forever after. See [migration-v0.3-to-v0.4.md](migration-v0.3-to-v0.4.md) if you are upgrading from v0.3.
+
 ## Prerequisites
 
 - **Go 1.27+** (`go version` ≥ go1.27). No other runtime dependencies for the broker itself; everything is the standard library plus grpc + protobuf (already vendored in `go.sum`).

@@ -15,7 +15,7 @@ Non-negotiables: storage/quorum diffs always human-reviewed; plan changes land h
 | 3 (**delivered 2026-11-13**) | **Classification tightening**: `/metrics` now requires viewer key by default; `-metrics-auth=false` escape hatch; HTTP hardening headers on admin/UI responses (CSP, XFO, Referrer-Policy, no-store); `/ui/` unchanged behavior (already keyed) | API review |
 | 4 (**delivered 2026-11-13**) | **Rate limiting everywhere**: `-anon-rate` global per-IP sliding window on unauth endpoints; per-key `allowed_ips` CIDR allowlist persisted in `__api_keys`; refusals audit-recorded in **all** modes | API review |
 | 5 (**delivered 2026-11-13 — pending storage review**) | **Storage private**: data dir `0700`/files `0600` enforced at open (warn+continue only under `-dir-mode-check=false`); `-audit-max-bytes` rotation; audit always wired; `authz-refused` always recorded | **mandatory (storage-adjacent)** |
-| 6 | **Distribution hardening**: SBOM (`syft`), cosign-signature of release tarballs, `grype` fail-on-critical CI gate; release notes; install/config docs updated; migration guide v0.3→v0.4 | docs review |
+| 6 (**delivered 2026-11-13 — pending CI verification**) | **Distribution hardening**: SBOM (`syft`), cosign-signature of release tarballs, `grype` fail-on-critical CI gate; release notes; install/config docs updated; migration guide v0.3→v0.4 | docs review |
 
 ## Slice details
 
