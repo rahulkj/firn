@@ -160,6 +160,7 @@ func main() {
 	allowOpen := flag.Bool("allow-open-bootstrap", false, "DEVELOPMENT ONLY: serve without any keys (alias for -dev). WARNING: broker is open to anyone who can reach the port.")
 	tokenBucketRate := flag.Float64("rate", 100, "per-key rate limit in operations per second")
 	adminHTML := flag.Bool("admin-ui", true, "serve the read-only admin UI at / on the HTTP listener")
+	metricsAuth := flag.Bool("metrics-auth", true, "require a viewer key on /metrics (set false for Prometheus scrape without credentials; not recommended)")
 	meshAddr := flag.String("mesh-addr", "", "mesh (internal) gRPC listen address — defaults to -grpc-addr with the port bumped by 10; serves only QuorumService/ReplicaService behind mTLS")
 	meshCABundle := flag.String("mesh-ca-bundle", "", "pre-provisioned mesh cluster CA certificate PEM (alternative to auto-provision; required for non-loopback clusters)")
 	meshCAKey := flag.String("mesh-ca-key", "", "pre-provisioned mesh cluster CA private key PEM (paired with -mesh-ca-bundle)")
@@ -431,12 +432,16 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": version})
 	})
-	mux.Handle("/metrics", authorizer.Wrap(met.Handler()))
+	if *metricsAuth {
+		mux.Handle("/metrics", authorizer.Wrap(met.Handler()))
+	} else {
+		mux.Handle("/metrics", met.Handler()) // scrape without key (-metrics-auth=false)
+	}
 	if *adminHTML {
 		mux.Handle("/ui/", authorizer.Wrap(http.StripPrefix("/ui", adminui.Handler(b))))
 	}
 	mux.Handle("/", authorizer.Wrap(api.NewAdminHandler(registry, b.Groups(), qm, api.WithClusterAdmin(ca), api.WithAPIKeys(keysStore), api.WithAudit(auditStore))))
-	httpSrv := &http.Server{Addr: *httpAddr, Handler: api.LoggingMiddleware(mux), ReadHeaderTimeout: 5 * time.Second}
+	httpSrv := &http.Server{Addr: *httpAddr, Handler: api.LoggingMiddleware(api.HardeningMiddleware(mux)), ReadHeaderTimeout: 5 * time.Second}
 	if tlsCfg != nil {
 		httpSrv.TLSConfig = tlsCfg
 	}

@@ -45,3 +45,31 @@ func LoggingUnaryInterceptor(ctx context.Context, req any, info *grpc.UnaryServe
 	}
 	return resp, err
 }
+
+// HardeningMiddleware adds conservative security headers to every response.
+// Content-Security-Policy is default-src 'self' with no inline scripts or
+// styles — the admin UI and JSON APIs serve no inline code. Health/metrics
+// are excluded on purpose (telemetry consumers are not browsers).
+func HardeningMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !isHealthzOrMetricsPath(r.URL.Path) {
+			h := w.Header()
+			h.Set("Content-Security-Policy", "default-src 'self'; base-uri 'self'; frame-ancestors 'none'")
+			h.Set("X-Frame-Options", "DENY")
+			h.Set("X-Content-Type-Options", "nosniff")
+			h.Set("Referrer-Policy", "no-referrer")
+			h.Set("Cache-Control", "no-store")
+			h.Set("Cross-Origin-Resource-Policy", "same-origin")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func isHealthzOrMetricsPath(p string) bool {
+	switch p {
+	case "/healthz", "/metrics":
+		return true
+	default:
+		return false
+	}
+}
