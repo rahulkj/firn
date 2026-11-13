@@ -24,3 +24,4 @@ Replication; exactly-once semantics/transactions; Kafka **wire protocol** compat
 - We optimize for correctness and operability of one storage engine, not protocol breadth.
 - Client compatibility comes from SDKs we write, not wire compatibility.
 - "Kafka AND RabbitMQ" in v1 means *semantics* parity within one deployment, not two brokers in a trench coat.
+- Replication remains a non-goal for the MVP (v0.1.0). It is explicitly scoped for the v-next milestone by [ADR-007](007-scaled-deployment.md); that ADR defines HA, cross-node replication, election, security, and admin UI.

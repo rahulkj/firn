@@ -1,0 +1,344 @@
+# API reference
+
+Eventing exposes two surfaces:
+
+| Surface | Port (default) | Protocol | Audience |
+|---|---|---|---|
+| Admin / operations | `:9092` | HTTP + JSON | Operators, CLI, health checks |
+| Broker / data plane | `:9093` | gRPC (HTTP/2, protobuf) | Applications, `eventing-cli` |
+
+Plus three **internal** services on the gRPC port used between nodes — documented here for completeness, not for client use: `QuorumService` (Raft messages), `ReplicaService` (block push/pull), and the gRPC path of `GetMetadata`.
+
+Everything in this document was cross-checked against `internal/api/eventing.proto` and the handlers; request/response samples marked *(live)* were copied from a running broker.
+
+## Authentication & authorization (since v0.1.0 + phase E)
+
+- Before the **first API key exists**, both surfaces are open (dev bootstrap default).
+- Once any non-revoked key exists, every non-public route requires `Authorization: Bearer <key>`.
+  - HTTP: header on every request. CLI: `-api-key` flag or `EVENTING_API_KEY` env var.
+  - gRPC: per-RPC `authorization` metadata (CLI attaches automatically when `-api-key` is set).
+- `/healthz` and `/metrics` are always public.
+- Roles (least → most privilege): `viewer` → `operator` → `admin`.
+  - `viewer`: `GET` topics/groups/apikeys metadata (apikeys list itself is admin).
+  - `operator`: produce/fetch/queue pull+ack/commit-offset/topic create/group ops.
+  - `admin`: everything + key create/revoke.
+- Per-key token-bucket rate limit, default 100 ops/s (`-rate` flag); excess → HTTP `429` / gRPC `RESOURCE_EXHAUSTED`.
+- *(Cluster mode)* Internal-topic writes (`__consumer_offsets` commits, `__queue_attempts`, `__audit`, `__api_keys`) are fenced by the internal lease: only the holder may write. Other nodes fail closed with **HTTP 503 / gRPC `FailedPrecondition`** containing the marker `fenced` plus the holder. Apps must retry (the CLI's `create-apikey`/`revoke-apikey` already retry across seed nodes on 503). Reads are open on every node.
+- Error bodies on refusal: `{"error":"<reason>"}` with HTTP `401` (missing/unknown/revoked key), `403` (insufficient role), `429` (rate limited), `503` (fenced). *(live — see verification logs)*
+
+---
+
+## HTTP admin surface (`:9092`)
+
+### `GET /healthz`
+
+```sh
+curl localhost:9092/healthz
+```
+```json
+{"status":"ok","version":"0.1.0"}
+```
+
+### `GET /metrics`
+
+Prometheus text exposition format (ADR-006). Rate-limited counters, group/queue depth gauges, partition watermarks. Unauthenticated by design (scrape from a private network).
+
+### `POST /topics`
+
+Create a topic. Stream or queue.
+
+```sh
+curl -X POST localhost:9092/topics -d '{"name":"orders","partitions":3,"mode":"stream"}'
+```
+```json
+{"name":"orders","partitions":3,"mode":"stream"}
+```
+HTTP `201 Created`. In cluster mode the response is `202 Accepted` with `{"status":"propagating", ...}` — the topic lands via the quorum and followers converge within a replication tick (~hundreds of ms).
+
+Errors: `400` invalid partitions/mode · `409` topic exists · `500` internal · `401/403` auth.
+
+### `GET /topics`
+
+```sh
+curl localhost:9092/topics
+```
+```json
+{"topics":[{"name":"orders","partitions":3,"mode":"stream"}]}
+```
+
+### `GET /groups`
+
+```sh
+curl -H "Authorization: Bearer $KEY" localhost:9092/groups
+```
+```json
+{
+  "groups": [
+    {
+      "name": "checkout",
+      "generation": 3,
+      "leader": "m-9q3x7",
+      "protocol": "range",
+      "members": [
+        {
+          "id": "m-9q3x7",
+          "topics": ["orders"],
+          "assignment": {"orders": [0, 1]},
+          "lastHeartbeat": 1794579410000
+        }
+      ]
+    }
+  ]
+}
+```
+
+### `GET /groups/{name}/offsets`
+
+```sh
+curl -H "Authorization: Bearer $KEY" localhost:9092/groups/checkout/offsets
+```
+```json
+{
+  "group": "checkout",
+  "offsets": [
+    {"group":"checkout","topic":"orders","partition":0,"offset":42,"generationId":3,"leader":"m-9q3x7"}
+  ]
+}
+```
+
+### `POST /queues/{name}/pull`
+
+Claim up to N messages for `visibility_timeout_ms` (default 30 000, hard cap 500 messages).
+
+```sh
+curl -X POST localhost:9092/queues/jobs/pull \
+  -d '{"max_messages":10,"visibility_timeout_ms":30000}'
+```
+```json
+{
+  "deliveries": [
+    {
+      "deliveryId": "d-3f2a9c…",
+      "queue": "jobs",
+      "partition": 0,
+      "offset": 7,
+      "key": "order",
+      "value": "{\"order\":123}",
+      "attempts": 1,
+      "deadlineMs": 1794579440000
+    }
+  ]
+}
+```
+Errors: `404` queue not found / unknown delivery · `400` not a queue topic · `401/403` auth.
+
+### `POST /queues/{name}/ack`
+
+```sh
+curl -X POST localhost:9092/queues/jobs/ack -d '{"delivery_id":"d-3f2a9c…"}'
+```
+```json
+{"status":"ok"}
+```
+
+### `POST /apikeys` *(admin)*
+
+Plaintext key is returned **exactly once**; it is never stored and cannot be recovered.
+
+```sh
+curl -X POST localhost:9092/apikeys \
+  -H 'Authorization: Bearer $ADMIN_KEY' -H 'Content-Type: application/json' \
+  -d '{"name":"ci-deploy","role":"operator"}'
+```
+*(live)*
+```json
+{"key":"ev-IkwA1m2…","name":"ci-deploy","role":"operator"}
+```
+
+### `GET /apikeys` *(admin)*
+
+*(live)*
+```json
+{
+  "keys": [
+    {"createdAt":1794579409194,"name":"root","revoked":false,"role":"admin"},
+    {"createdAt":1794579409235,"name":"worker","revoked":false,"role":"operator"},
+    {"createdAt":1794579409249,"name":"reader","revoked":false,"role":"viewer"}
+  ]
+}
+```
+
+### `DELETE /apikeys/{name}` *(admin)*
+
+```sh
+curl -X DELETE localhost:9092/apikeys/ci-deploy -H 'Authorization: Bearer $ADMIN_KEY'
+```
+```json
+{"status":"revoked","name":"ci-deploy"}
+```
+
+### `GET /ui/`
+
+Read-only HTML dashboard (topics, groups, generation/leader/members). Renders behind the same auth/401 as the rest of the admin surface; meant for browsers on a trusted network.
+
+---
+
+## gRPC EventingService (`:9093`)
+
+Package `eventing.v1` — full definitions in `internal/api/eventing.proto`. All RPCs are unary; streaming is deliberately not in v1.
+
+### Produce
+
+```proto
+message ProduceRequest  { string topic = 1; bytes key = 2; bytes value = 3; }
+message ProduceResponse { int32 partition = 1; int64 offset = 2; }
+```
+
+Key set → FNV-64a(key) % partitions. Key unset → round-robin. Cluster mode: the CLI routes to the lease holder for the partition (from `GetMetadata`), retrying with a fresh metadata fetch on stale-hint errors.
+
+*(live)*
+```sh
+eventing-cli -api-key "$KEY" produce --topic orders --key k1 --value hello
+# produced to orders partition=1 offset=0
+```
+
+### Fetch
+
+```proto
+message FetchRequest  { string topic = 1; int32 partition = 2; int64 offset = 3; int32 max_records = 4; }
+message FetchResponse { repeated Record records = 1; }
+message Record        { int64 offset = 1; bytes key = 2; bytes value = 3; }
+```
+
+`max_records >= 1` (hard cap 1000). Fetching at offset ≥ high watermark returns zero records (not an error). Offsets below the retention horizon fail with `FailedPrecondition`.
+
+### Consumer groups
+
+`JoinGroup` → `SyncGroup` → (`Heartbeat` loop) → `LeaveGroup`. `protocol`: `range` (default) | `roundrobin`. `session_timeout_ms`: 0 = server default (10s). `CommitOffset` monotonicity enforced unless `allow_reset=true` (invariant 4); non-zero stale `generation_id` is rejected. Offsets are persisted to `__consumer_offsets` and survive restart.
+
+```proto
+message CommitOffsetRequest {
+  string group_id = 1; string topic = 2; int32 partition = 3;
+  int64 offset = 4; int64 generation_id = 5; bool allow_reset = 6;
+}
+message FetchOffsetRequest  { string group_id = 1; string topic = 2; int32 partition = 3; }
+message FetchOffsetResponse { int64 offset = 1; bool found = 2; int64 generation_id = 3; string leader = 4; }
+message FetchGroupOffsetsRequest { string group_id = 1; }
+```
+
+### Queue mode (ack / visibility / DLQ)
+
+`Pull(queue, max_messages, visibility_timeout_ms)` → lease delivery. `Ack(queue, delivery_id)` settles it. Unacked messages are redelivered at lease expiry (at-least-once); after **3 delivery attempts** a message is diverted to `<queue>.dlq` (auto-created stream topic). DLQ recovery is manual: `eventing-cli dlq list|redrive --queue <name>` — redrive re-produces records into the source queue.
+
+```proto
+message QueueDelivery {
+  string delivery_id = 1; string queue = 2; int32 partition = 3; int64 offset = 4;
+  bytes key = 5; bytes value = 6; int32 attempts = 7; int64 deadline_ms = 8;
+}
+```
+
+### GetMetadata
+
+The routing primitive for cluster clients.
+
+```proto
+message GetMetadataRequest  { repeated string topics = 1; } // empty = all topics
+message GetMetadataResponse {
+  repeated BrokerMetadata brokers = 1;  // id, advertised gRPC addr, is_leader (quorum)
+  repeated TopicMetadata topics   = 2;  // name, mode, partitions + per-partition {partition_id, leader, leader_addr}
+}
+```
+
+- Single-node: one broker entry, `id: "single"`, `addr` = the node's `-grpc-addr` (wildcards folded to `localhost`), `leader: ""`/`leader_addr: ""` in `PartitionMetadata`. *(fixed in this pass — previously advertised a hardcoded `localhost:9093`; now reflects `-grpc-addr`.)*
+- Cluster: one entry per `-peers` member with its advertised gRPC address; `PartitionMetadata.leader_addr` is the lease holder's dial address.
+- CLI caches this for 2s; stale entries self-heal via retry-with-refresh.
+
+---
+
+## gRPC status codes (broker surface)
+
+| Code | When |
+|---|---|
+| `OK` | success |
+| `INVALID_ARGUMENT` | `max_records < 1`, invalid topic/mode/protocol, empty key fields |
+| `NOT_FOUND` | topic/queue/group/delivery/member not found |
+| `FAILED_PRECONDITION` | fetch below retention horizon; write on non-lease-holder (cluster); stale generation; queue topic in stream mode and vice versa; fenced internal topic (cluster mode — retry on the holder) |
+| `UNAUTHENTICATED` | missing/unknown/revoked API key |
+| `PERMISSION_DENIED` | valid key, insufficient role |
+| `RESOURCE_EXHAUSTED` | per-key rate limit exceeded |
+| `UNAVAILABLE` | broker down / connection refused (CLI retries with metadata refresh) |
+
+## HTTP status codes (admin surface)
+
+| Code | Meaning |
+|---|---|
+| `200` | OK (GET, pull, ack, revoked) |
+| `201` | Created (topic, apikey) |
+| `202` | Accepted — cluster topic create, propagating via quorum |
+| `400` | Malformed JSON, bad arguments, not-a-queue |
+| `401` | Missing/unknown/revoked key (`{"error":"missing bearer token"}` etc.) |
+| `403` | Insufficient role |
+| `404` | Not found |
+| `405` | Wrong method for path |
+| `409` | Topic already exists |
+| `429` | Rate limited |
+| `500` | Internal error |
+| `503` | Subsystem not configured (e.g. queue manager on a read-only node); internal topic fenced on this node — another node holds the lease; retry there |
+
+---
+
+## Internal services (never call from clients)
+
+- **`ReplicaService`** — `ReplicaFetch`/`ReplicaPut` over raw CRC-framed blocks; the replication agent uses it to pull missing blocks after failover and to push sealed blocks at quorum-commit time. Leader→follower only, lease-fenced.
+- **`QuorumService`** — `QuorumMessage`: Raft RPCs (RequestVote, AppendEntries, VoteResp, …) as JSON-in-bytes. Embedded quorum, no external ZK/etcd.
+
+Both ride the same gRPC listener as `EventingService` and are **not** part of the public API contract; they may change shape without deprecation notice. In deployments that expose the client port, treat this surface as unauthenticated-but-sandboxed — internal clients use mTLS on the mesh (see `-tls-cert`) plus quorum-internal framing.
+
+## `eventing-cli` command ↔ API map
+
+| CLI | Path |
+|---|---|
+| `create-topic` / `create-queue` | `POST /topics` |
+| `list` | `GET /topics` |
+| `produce` | gRPC `Produce` |
+| `fetch` | gRPC `Fetch` |
+| `groups` | `GET /groups` |
+| `dlq list` | gRPC `Fetch` on `<queue>.dlq` |
+| `dlq redrive` | gRPC `Fetch` (dlq) + `Produce` (source queue) |
+| `create-apikey` / `revoke-apikey` / `list-apikeys` | `POST /apikeys` / `DELETE /apikeys/{name}` / `GET /apikeys` |
+
+## Audit trail
+
+`__audit-0` (replicated like any internal topic) holds one record per admin mutation and authz refusal. Frame layout per record (big-endian):
+
+```
+u32 bodyLen | u32 crc32.IEEE(body) | u64 offset | u64 ts_ms | u32 keyLen | u32 valueLen | key | value
+```
+
+Decode with:
+
+```sh
+python3 - <<'EOF'
+import json, struct, zlib, glob
+for path in glob.glob("data/__audit-0/*.log"):
+    with open(path, "rb") as f:
+        data = f.read()
+    pos = 0
+    while pos + 8 <= len(data):
+        bodyLen, = struct.unpack_from(">I", data, pos)
+        off, ts = 8, pos + 4
+        body = data[pos + 4: pos + 4 + bodyLen]
+        if len(body) < bodyLen: break  # torn tail
+        if zlib.crc32(body[4:]) != struct.unpack_from(">I", body, 0)[0]: break
+        off, ts, klen, vlen = struct.unpack_from(">QQII", body, 4)
+        key = body[28:28 + klen]; val = body[28 + klen:28 + klen + vlen]
+        print(json.dumps(json.loads(val)))
+        pos += 4 + bodyLen
+EOF
+```
+
+Payload shape: `{"ts":…,"who":"<key name|anonymous>","action":"topic-created|apikey-created|…","target":"…","result":"…"}`.
+
+Cluster-mode limitation (honest): `__audit` is a single-writer fenced internal topic like the others, so admin mutations executed *on the lease holder* are audited; mutations executed on non-holder nodes that complete without an internal write — notably topic creates (they go through the quorum proposal on any node) and authz refusals — are **not** audited there; the handler logs the refusal to stderr instead. If you need complete refusal forensics, run admin traffic through the holder or scrape all nodes' logs.
+
+Note: the frame prefix is internal and unversioned; treat any decoder copied from this page as an example, not a stable format.

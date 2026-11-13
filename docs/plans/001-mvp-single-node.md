@@ -177,3 +177,9 @@ Non-negotiable rules (repeated from `AGENTS.md`):
 - Start each session: "Read AGENTS.md, ADR-003, and slice N of this plan. Implement ONLY slice N. Tests first. Human review required for storage diffs — stop and list your changes rather than pushing."
 - If the agent proposes deviating from an ADR: it must edit the ADR in the same commit; otherwise reject.
 - After each slice: fresh session for review ("Review this diff against ADR-003 invariants. Don't praise; list violations.").
+
+---
+
+## Documentation gate (v0.1.0 close-out, 2026-11-13)
+
+Any change to flags, routes, or RPCs ships with matching updates to [`docs/install.md`](../install.md), [`docs/configuration.md`](../configuration.md), and [`docs/api.md`](../api.md) in the same commit. ADR-008 records this as part of "done"; stale docs are release-blocking.
