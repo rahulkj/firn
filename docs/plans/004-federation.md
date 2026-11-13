@@ -67,5 +67,5 @@ Non-negotiables: storage review for data-plane diffs; plan changes land here fir
 
 - Operator cutover runbook for passive→active flip (write follow-up doc in slice 6).
 - Metrics polish: `firn_federation_import_{frames,bytes}_total` counters per peer/topic/partition.
-- Push-federation shape (ADR-011 candidate): inbound push is strictly better for private networks without outbound access to peers' internal listeners; requires a new ADR and its own plan.
+- Push-federation shape (ADR-012 candidate): inbound push is strictly better for private networks without outbound access to peers' internal listeners; requires a new ADR and its own plan.
 - Mirror retention operator tooling: `firn federation reseed <peer> --topic <t>` (explicit wipe+reimport; never implicit).

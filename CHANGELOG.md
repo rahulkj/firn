@@ -62,6 +62,7 @@ Manual-run caveats: (1) a clean-VM run was not available to the agent; all check
 
 ## Unreleased
 
+- ADR-011 secure-by-default + Plan 005 added: fresh installs without a key no longer listen (fail-closed; one-time bootstrap token on stderr; `-allow-open-bootstrap`/`-dev` opt-out); mesh transport becomes mTLS-mandatory (closes F-2/F-3); `/metrics` now requires a key by default; per-key CIDR allowlist; global anonymous rate limit; data-dir `0700`/files `0600` enforced; audit always-on, bounded, append-only; HTTP hardening headers; release hardening (SPDX SBOM, cosign-signed tarballs, grype critical gate). Implementation via plan 005; storage-adjacent review gates on slices 2 & 5.
 - ADR-010 federation + plan 004 added (multi-writer content-hash merge; passive one-way DR; client-visible federation cursors via `__federation_cursors` + `FetchResponse.federation_hwm`; API-key-registered peers; pull-only v1; queues federate fully with attempt-state mirroring).
 - **BREAKING**: module path, binaries, proto package, metrics prefix, env vars renamed to Firn (see separate commit); MIT license added; repo published as rahulkj/firn public with MIT.
 
