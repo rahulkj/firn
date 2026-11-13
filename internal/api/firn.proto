@@ -259,10 +259,25 @@ message FederationReportRequest {
   int32 partition = 2;
 }
 
+// LocalRange mirrors the federation echo-filter record: one contiguous
+// interval of the serving cluster's LOCAL offsets [start, end], holding
+// content whose source offset began at source_start. Published so a peer
+// whose own re-origin differs can still translate attempts/acks keys into
+// its local offset space.
+message LocalRangePB {
+  int64 start = 1;
+  int64 end = 2;
+  int64 source_start = 3;
+}
+
 message FederationReportResponse {
   int64 high_watermark = 1; // source's high watermark
   int64 retention_horizon = 2;
   int32 partitions = 3;     // partition count of the topic on the source (registration validation)
+  // The serving cluster's foreign-applied local ranges for (topic, partition).
+  // The peer merges these into its own re-origin map so attempts/acks can be
+  // re-keyed both ways without new frame headers (ADR-010).
+  repeated LocalRangePB foreign_ranges = 4;
 }
 
 // --- ADR-007 phase D: client routing surface ---

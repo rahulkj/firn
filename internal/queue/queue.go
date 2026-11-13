@@ -115,6 +115,15 @@ type Manager struct {
 	queues map[string]*queueState
 }
 
+// Attempts exposes the folded delivery-attempt count for
+// (queue, partition, offset) — including mirrored attempts from federation
+// peers. Test/inspection surface; concurrent-safe.
+func (m *Manager) Attempts(queue string, partition int32, offset int64) uint32 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.attempts.Attempts(queue, partition, offset)
+}
+
 // SetFederationFence binds the passive-federation queue delivery fence.
 // Late-bound by the daemon after peer registration is wired; nil fence
 // means every queue delivers normally (single-node default).

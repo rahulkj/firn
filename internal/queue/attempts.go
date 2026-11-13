@@ -30,6 +30,7 @@ type attemptLog interface {
 type AttemptStore struct {
 	inner               attemptLog
 	dir                 string
+	sharedFl            bool
 	cache               map[string]uint32
 	foldedHWM           int64
 	commitsSinceCompact int
@@ -49,6 +50,7 @@ func NewAttemptStore(dir string, fl *log.FileLog) (*AttemptStore, error) {
 	if dir == "" {
 		s.inner = &log.MemLog{}
 	} else {
+		shared := fl != nil
 		if fl == nil {
 			var err error
 			fl, err = log.Open(filepath.Join(dir, "__queue_attempts-0"))
@@ -58,6 +60,7 @@ func NewAttemptStore(dir string, fl *log.FileLog) (*AttemptStore, error) {
 		}
 		s.inner = fl
 		s.dir = dir
+		s.sharedFl = shared
 	}
 	s.cache = map[string]uint32{}
 	hw := s.inner.HighWatermark()
@@ -148,19 +151,23 @@ func (s *AttemptStore) Compact() error {
 
 // Close compacts (file-backed store) and closes the log.
 func (s *AttemptStore) Close() error {
-	if s.gate != nil && !s.gate.Allowed() {
-		if fl, ok := s.inner.(*log.FileLog); ok {
-			return fl.Close() // skip compaction on replicated logs
-		}
+	fl, ok := s.inner.(*log.FileLog)
+	if !ok {
 		return nil
 	}
-	if fl, ok := s.inner.(*log.FileLog); ok {
-		if err := fl.Compact(); err != nil {
-			return fmt.Errorf("firn/queue: compact attempts store: %w", err)
-		}
-		return fl.Close()
+	if s.sharedFl {
+		// The broker owns the shared __queue_attempts handle; the store
+		// must never close or compact it (replication depends on stable
+		// lifecycles). Nothing to release.
+		return nil
 	}
-	return nil
+	if s.gate != nil && !s.gate.Allowed() {
+		return fl.Close() // own store; do not compact when the log is fenced
+	}
+	if err := fl.Compact(); err != nil {
+		return fmt.Errorf("firn/queue: compact attempts store: %w", err)
+	}
+	return fl.Close()
 }
 
 const compactEveryCommits = 1000

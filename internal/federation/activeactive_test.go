@@ -29,11 +29,12 @@ type cluster struct {
 	reg    *meta.Registry
 	store  *federation.Store
 	lis    *bufconn.Listener
+	dir    string
 }
 
-func newClusterAt(t *testing.T, selfName string, topic string, partitions int, peerName string, peerAddr string, peerTopics []string, broker *broker.Broker, reg *meta.Registry, store *federation.Store, lis *bufconn.Listener) *cluster {
+func newClusterAt(t *testing.T, selfName string, topic string, partitions int, peerName string, peerAddr string, peerTopics []string, broker *broker.Broker, reg *meta.Registry, store *federation.Store, lis *bufconn.Listener, dir string) *cluster {
 	t.Helper()
-	c := &cluster{broker: broker, reg: reg, store: store, lis: lis}
+	c := &cluster{broker: broker, reg: reg, store: store, lis: lis, dir: dir}
 
 	srv := grpc.NewServer()
 	firnpb.RegisterFederationServiceServer(srv, api.NewFederationServer(broker, store))
@@ -62,20 +63,26 @@ func newClusterAt(t *testing.T, selfName string, topic string, partitions int, p
 
 func newPair(t *testing.T, topic string, partitions int) (a, b *cluster, aPuller, bPuller *federation.Puller) {
 	t.Helper()
-	mk := func(name string) (*meta.Registry, *broker.Broker) {
+	return newPairWithMode(t, topic, partitions, "stream")
+}
+
+func newPairWithMode(t *testing.T, topic string, partitions int, mode string) (a, b *cluster, aPuller, bPuller *federation.Puller) {
+	t.Helper()
+	mk := func(name string) (*meta.Registry, *broker.Broker, string) {
 		reg := meta.NewRegistry()
-		if err := reg.Create(topic, partitions); err != nil {
+		if err := reg.CreateWithMode(topic, partitions, mode); err != nil {
 			t.Fatalf("create topic on %s: %v", name, err)
 		}
-		b, err := broker.NewWithDir(reg, t.TempDir(), broker.WithMaxSegmentBytes(1<<20))
+		dir := t.TempDir()
+		b, err := broker.NewWithDir(reg, dir, broker.WithMaxSegmentBytes(1<<20))
 		if err != nil {
 			t.Fatalf("broker %s: %v", name, err)
 		}
 		t.Cleanup(func() { _ = b.Close() })
-		return reg, b
+		return reg, b, dir
 	}
-	aReg, aBr := mk("A")
-	bReg, bBr := mk("B")
+	aReg, aBr, aDir := mk("A")
+	bReg, bBr, bDir := mk("B")
 
 	aStore := federation.OpenInMemory()
 	bStore := federation.OpenInMemory()
@@ -91,8 +98,10 @@ func newPair(t *testing.T, topic string, partitions int) (a, b *cluster, aPuller
 		}
 	}
 
-	a = newClusterAt(t, "alpha", topic, partitions, "beta", "bufnet-b", []string{topic}, aBr, aReg, aStore, aLis)
-	b = newClusterAt(t, "beta", topic, partitions, "alpha", "bufnet-a", []string{topic}, bBr, bReg, bStore, bLis)
+	a = newClusterAt(t, "alpha", topic, partitions, "beta", "bufnet-b", []string{topic}, aBr, aReg, aStore, aLis, aDir)
+	b = newClusterAt(t, "beta", topic, partitions, "alpha", "bufnet-a", []string{topic}, bBr, bReg, bStore, bLis, bDir)
+	_ = aDir
+	_ = bDir
 
 	aPuller = federation.NewPuller(federation.PullerConfig{Broker: aBr, Store: aStore, Interval: time.Millisecond, SelfName: "alpha", Dial: dial(bLis)})
 	bPuller = federation.NewPuller(federation.PullerConfig{Broker: bBr, Store: bStore, Interval: time.Millisecond, SelfName: "beta", Dial: dial(aLis)})
@@ -288,6 +297,13 @@ func TestActiveActivePartitionMismatchRejected(t *testing.T) {
 func mustClusters(t *testing.T, topic string, partitions int) (a, b *cluster) {
 	t.Helper()
 	a, b, _, _ = newPair(t, topic, partitions)
+	return a, b
+}
+
+// mustQueueClusters is mustClusters with a queue-mode topic.
+func mustQueueClusters(t *testing.T, topic string, partitions int) (a, b *cluster) {
+	t.Helper()
+	a, b, _, _ = newPairWithMode(t, topic, partitions, "queue")
 	return a, b
 }
 

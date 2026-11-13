@@ -58,6 +58,10 @@ type Puller struct {
 	started time.Time
 	lagMu   sync.Mutex
 	lag     map[string]time.Time // peer|topic|partition -> last caught-up time
+
+	rrMu      sync.Mutex
+	rr        map[string][]LocalRange // peer|queue|partition -> peer's published foreign ranges
+	rrFetched map[string]time.Time    // peer|queue|partition -> when rr was populated (10s TTL)
 }
 
 func NewPuller(cfg PullerConfig) *Puller {
@@ -76,7 +80,7 @@ func NewPuller(cfg PullerConfig) *Puller {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	return &Puller{cfg: cfg, logger: cfg.Logger, stop: make(chan struct{}), started: time.Now(), lag: map[string]time.Time{}}
+	return &Puller{cfg: cfg, logger: cfg.Logger, stop: make(chan struct{}), started: time.Now(), lag: map[string]time.Time{}, rr: map[string][]LocalRange{}, rrFetched: map[string]time.Time{}}
 }
 
 // Run polls until ctx is cancelled or Stop is called.
@@ -139,20 +143,39 @@ func (p *Puller) pullPeer(ctx context.Context, peer Peer) {
 			}
 			p.pullTopic(ctx, peer, q, sel)
 		}
-		// __queue_attempts mirror: byte-identical, all-or-nothing. Whole-log
-		// import is the only correct shape for the byte-identical path — a
-		// filtered subsequence would fork (frames arrive at non-contiguous
-		// offsets). Attempts carry no payload; importing them for queues out
-		// of scope is harmless and is the documented cost of the mirror.
-		if queueMirrorEnabled(sel) {
+		// __queue_attempts mirror: fires whenever a queue-like topic is in
+		// scope (named in Topics or Queues and registered locally as a
+		// queue-mode topic, or any queue named, or selector unrestricted).
+		// Attempts are tiny; the byte-identical passive mirror moves the
+		// whole log, the active-active path re-keys in scope and drops the
+		// rest deliberately.
+		if p.hasQueueInScope(peer) {
 			p.importQueueAttempts(ctx, peer)
 		}
 	}
 }
 
-func queueMirrorEnabled(sel Selector) bool {
-	// In scope if any queue explicitly named, or nothing is restricted at all.
-	return len(sel.Queues) > 0 || (len(sel.Queues) == 0 && len(sel.Topics) == 0)
+// hasQueueInScope reports whether the peer's selectors may cover a queue.
+// A queue IS a topic (queue-mode), so a queue named as a topic counts; the
+// registry decides mode locally. Defaults to true when unsurered so the
+// attempts mirror only runs when a queue is provably in scope.
+func (p *Puller) hasQueueInScope(peer Peer) bool {
+	for _, sel := range peer.Selectors {
+		if len(sel.Topics) == 0 && len(sel.Queues) == 0 {
+			return true // unrestricted
+		}
+		for _, q := range sel.Queues {
+			if q != "" {
+				return true
+			}
+		}
+		for _, t := range sel.Topics {
+			if tm, err := p.cfg.Broker.TopicMeta(t); err == nil && tm.Mode == "queue" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (p *Puller) localTopics() []string {
@@ -264,7 +287,7 @@ func (p *Puller) pullPartition(ctx context.Context, peer Peer, topic string, par
 		frames = kept
 	}
 
-	var firstLocal, hwm int64 = -1, -1
+	var firstLocal, hwm, sourceStart int64 = -1, -1, -1
 	if len(frames) > 0 {
 		if peer.Mode == ModeActiveActive {
 			firstLocal, hwm, err = p.cfg.Broker.AppendReoriginedFrames(topic, partition, frames)
@@ -273,6 +296,7 @@ func (p *Puller) pullPartition(ctx context.Context, peer Peer, topic string, par
 				p.logger.Error("federation: reorigin apply failed; cursor untouched", "peer", peer.Name, "topic", topic, "partition", partition, "err", err)
 				return
 			}
+			sourceStart = frames[0].Offset // first non-skipped frame
 		} else {
 			// Passive: byte-identical import via the replicated-apply path.
 			preHWM, _ := p.cfg.Broker.PartitionHighWatermark(ctx, topic, partition)
@@ -284,6 +308,7 @@ func (p *Puller) pullPartition(ctx context.Context, peer Peer, topic string, par
 			}
 			hwm = hw
 			firstLocal = preHWM
+			sourceStart = preHWM // offsets are identical in passive mode
 		}
 	}
 	p.observeLag(peer.Name, topic, partition, true)
@@ -303,7 +328,7 @@ func (p *Puller) pullPartition(ctx context.Context, peer Peer, topic string, par
 		ForeignRanges:    cursor.ForeignRanges,
 	}
 	if len(frames) > 0 && firstLocal >= 0 {
-		cursor.ForeignRanges = append(cursor.ForeignRanges, LocalRange{Start: firstLocal, End: hwm - 1})
+		cursor.ForeignRanges = append(cursor.ForeignRanges, LocalRange{Start: firstLocal, End: hwm - 1, SourceStart: sourceStart})
 	}
 	_ = p.cfg.Store.SetCursor(cursor)
 	p.logger.Info("federation: imported", "peer", peer.Name, "topic", topic, "partition", partition, "mode", peer.Mode.String(), "frames", len(frames))
@@ -368,6 +393,12 @@ func (p *Puller) importQueueAttempts(ctx context.Context, peer Peer) {
 		p.logger.Error("federation: attempts CRC failure; cursor untouched", "peer", peer.Name, "err", err)
 		return
 	}
+
+	if peer.Mode == ModeActiveActive {
+		p.importAttemptsRekeyed(ctx, fl, peer, cursor, hasCursor, frames, fr.SourceHwm)
+		return
+	}
+
 	// Redelivery safety + shared skip logic: server filters echoes, we skip
 	// at-or-below the cursor defensively.
 	if hasCursor && cursor.LastSourceOffset >= 0 {
@@ -398,10 +429,88 @@ func (p *Puller) importQueueAttempts(ctx context.Context, peer Peer) {
 		ForeignRanges:    cursor.ForeignRanges,
 	}
 	if hwm > preHWM {
-		cursor.ForeignRanges = append(cursor.ForeignRanges, LocalRange{Start: preHWM, End: hwm - 1})
+		first := preHWM // passive byte-identical: source offsets == local
+		cursor.ForeignRanges = append(cursor.ForeignRanges, LocalRange{Start: preHWM, End: hwm - 1, SourceStart: first})
 	}
 	_ = p.cfg.Store.SetCursor(cursor)
 	p.logger.Info("federation: mirrored attempts", "peer", peer.Name, "frames", len(frames))
+}
+
+// importAttemptsRekeyed mirrors attempts for active-active queue federation:
+// attempt keys carry the source's message offsets, which differ from this
+// cluster's, so each frame is re-keyed into the local offset space via the
+// queue topic's foreign-applied ranges. Frames whose message has not been
+// imported yet are skipped this tick; the cursor stops at the last translated
+// frame, so they are served again next round (at-least-once).
+func (p *Puller) importAttemptsRekeyed(ctx context.Context, fl *log.FileLog, peer Peer, cursor Cursor, hasCursor bool, frames []log.Frame, sourceHWM int64) {
+	held := false
+	rekeyed := make([]log.Frame, 0, len(frames))
+	firstSource := int64(-1)
+	lastSource := int64(-1)
+	for _, f := range frames {
+		q, part, off, ok := parseAttemptKey(f.Key)
+		if !ok {
+			continue // malformed key: nothing to apply, nothing to lose
+		}
+		if !attemptKeyInScope(peer, q) {
+			continue // out of scope: deliberate drop
+		}
+		localRanges := p.cfg.Store.ForeignRanges(peer.Name, q, part)
+		localOff, ok := translateOffset(localRanges, off)
+		if !ok {
+			// Not imported by this node — use the peer's published ranges
+			// for the inverse mapping instead (federation_report).
+			localOff, ok = translateOffsetInverse(p.remoteRanges(ctx, peer, q, part), off)
+		}
+		if !ok {
+			// The message record hasn't imported locally yet — hold the
+			// cursor at the last translated frame so the source re-sends
+			// this one once the record lands.
+			held = true
+			break
+		}
+		rekeyed = append(rekeyed, log.Frame{Ts: f.Ts, Key: encodeAttemptKey(q, part, localOff), Value: f.Value})
+		if firstSource < 0 {
+			firstSource = f.Offset
+		}
+		lastSource = f.Offset
+	}
+
+	if len(rekeyed) == 0 {
+		if !held {
+			// Every frame was out of scope or malformed — account for them.
+			cursor.LastSourceOffset = sourceHWM - 1
+			cursor.LastLocalOffset = fl.HighWatermark() - 1
+			cursor.Mode = ModeActiveActive
+			cursor.Origin = "remote"
+			_ = p.cfg.Store.SetCursor(cursor)
+		}
+		p.observeLag(peer.Name, QueueAttemptsTopic, 0, !held)
+		return
+	}
+
+	firstLocal, hwm := applyRekeyedAttempts(fl, rekeyed)
+	p.observeLag(peer.Name, QueueAttemptsTopic, 0, true)
+
+	advance := lastSource
+	if !held {
+		advance = sourceHWM - 1
+	}
+	cursor = Cursor{
+		Peer:             peer.Name,
+		Topic:            QueueAttemptsTopic,
+		Partition:        0,
+		LastSourceOffset: advance,
+		LastLocalOffset:  hwm - 1,
+		Mode:             ModeActiveActive,
+		Origin:           "remote",
+		ForeignRanges:    cursor.ForeignRanges,
+	}
+	if firstLocal >= 0 {
+		cursor.ForeignRanges = append(cursor.ForeignRanges, LocalRange{Start: firstLocal, End: hwm - 1, SourceStart: firstSource})
+	}
+	_ = p.cfg.Store.SetCursor(cursor)
+	p.logger.Info("federation: mirrored attempts (re-keyed)", "peer", peer.Name, "frames", len(rekeyed), "held", held)
 }
 
 // applyFramesToReplicatedLog is the byte-identical apply path for an
@@ -464,4 +573,44 @@ func (p *Puller) observeLag(peer, topic string, partition int32, caughtUp bool) 
 	lag := time.Since(since).Seconds()
 	p.lagMu.Unlock()
 	p.cfg.LagSeconds(peer, topic, partition, lag)
+}
+
+// remoteRanges returns (cached, TTL 10s) the peer's published foreign ranges
+// for (topic, partition) via FederationReport. Used to re-key attempt keys
+// from the source's offset space into ours when this node never imported
+// the records from that peer (it authored them locally).
+func (p *Puller) remoteRanges(ctx context.Context, peer Peer, topic string, partition int32) []LocalRange {
+	key := fmt.Sprintf("%s|%s|%d", peer.Name, topic, partition)
+	p.rrMu.Lock()
+	if rs, ok := p.rr[key]; ok && time.Since(p.rrFetched[key]) < 10*time.Second {
+		p.rrMu.Unlock()
+		return rs
+	}
+	p.rrMu.Unlock()
+
+	conn, err := p.cfg.Dial(ctx, peer)
+	if err != nil {
+		p.logger.Warn("federation: dial peer failed", "peer", peer.Name, "err", err)
+		return nil
+	}
+	defer func() { _ = conn.Close() }()
+	ctx2, cancel := context.WithTimeout(outgoingBearer(ctx, peer.Key), 30*time.Second)
+	defer cancel()
+	rep, err := firnpb.NewFederationServiceClient(conn).FederationReport(ctx2, &firnpb.FederationReportRequest{
+		Topic:     topic,
+		Partition: partition,
+	})
+	if err != nil {
+		p.logger.Warn("federation: report for ranges failed", "peer", peer.Name, "topic", topic, "partition", partition, "err", err)
+		return nil
+	}
+	out := []LocalRange{}
+	for _, r := range rep.GetForeignRanges() {
+		out = append(out, LocalRange{Start: r.Start, End: r.End, SourceStart: r.SourceStart})
+	}
+	p.rrMu.Lock()
+	p.rr[key] = out
+	p.rrFetched[key] = time.Now()
+	p.rrMu.Unlock()
+	return out
 }

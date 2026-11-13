@@ -379,5 +379,14 @@ func (s *FederationServer) FederationReport(ctx context.Context, req *firnpb.Fed
 		partitions = int32(t.Partitions)
 	}
 	hw, _ := s.b.PartitionHighWatermark(ctx, topic, req.Partition)
-	return &firnpb.FederationReportResponse{HighWatermark: hw, RetentionHorizon: 0, Partitions: partitions}, nil
+	// Publish this node's foreign-applied ranges for the topic — lets the
+	// peer re-key attempts/acks into its own offset space without frame
+	// headers (ADR-010). Ranges are bytes the peer already possesses.
+	fr := []*firnpb.LocalRangePB{}
+	if s.store != nil {
+		for _, r := range s.store.AllForeignRanges(topic, req.Partition) {
+			fr = append(fr, &firnpb.LocalRangePB{Start: r.Start, End: r.End, SourceStart: r.SourceStart})
+		}
+	}
+	return &firnpb.FederationReportResponse{HighWatermark: hw, RetentionHorizon: 0, Partitions: partitions, ForeignRanges: fr}, nil
 }

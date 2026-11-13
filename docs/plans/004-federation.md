@@ -14,7 +14,7 @@ Non-negotiables: storage review for data-plane diffs; plan changes land here fir
 | 2 (**delivered 2026-11-13**) | `passive` one-way mode: source `FederationFetch` over the mesh (mTLS + federation key); sink write fence on produce/pull/ack (gRPC `FailedPrecondition`, HTTP 409); byte-identical import of topics/partitions via the existing replicated-apply path (offsets/timestamps preserved; `cmp`-identical segments verified live); `__queue_attempts` mirror byte-identical; queue message logs ride along with named queues; sink delivery engine stays idle until cutover | **mandatory (storage-adjacent) — sign-off received 2026-11-13** |
 | 3 (**delivered 2026-11-13**) | `FetchResponse.federation_hwm` (advisory, min across passive covering peers; `0` until first import); `firn_federation_cursor_lag_seconds{peer,topic,partition}` gauge (rises while a peer is unreachable; ~0 while caught up); admin UI `/ui/federation` (read-only); `firn-cli fetch --json` reports `federation_hwm` | API + docs review |
 | 4 (**delivered 2026-11-13**) | `active-active` full mode: frame pull + re-origin through `broker.AppendReoriginedFrames` (fresh local offsets, ts/key/value preserved); server-side foreign-range echo filter on `FederationFetch` (+ `requesting_peer`, `-federation-self`); registration validation at pull time via `FederationReport.partitions`; cursor records foreign local ranges with coalescing; `federation_hwm` counts all inbound peers | **mandatory (storage-adjacent) — owner review pending** |
-| 5 | Active-active queues: `__queue_attempts` both-way replication; convergence test (competing consumers in both clusters → exactly one cluster processes); DLQ convergence test | **mandatory** |
+| 5 (**delivered 2026-11-13**) | Active-active queues: `__queue_attempts` both-way replication with re-keyed offsets (foreign-range translation); `FederationReport.foreign_ranges` published by the server; convergence test (competing consumers in both clusters → every job consumed exactly once per cluster); DLQ contents converge on both sides | **mandatory — owner review pending** |
 | 6 | ADR validation pass vs ADR-010; install/config/api additions; AGENTS.md cross-link; release note | docs review |
 
 ## Slice details
@@ -63,9 +63,14 @@ Delivered 2026-11-13. Deltas vs the original spec (this section is authoritative
 
 ### Slice 5 — active-active queues
 
-- `__queue_attempts` becomes the fifth federated-by-default internal topic when a queue is in scope (the in-federation apply path applies the frame re-encode rules equally).
-- Attempts/acks converge naturally: each side delivers independently; attempts mirror both ways; DLQ divert at budget exhaustion is the converged terminal state.
-- Property tests: two-cluster competing-delivery simulation (bounded consumers on both sides) → every message consumed exactly once *per cluster* (or DLQ'd in the starved cluster); attempt counts match within lag; DLQ contents converge.
+Delivered 2026-11-13. Deltas vs the original spec (this section is authoritative):
+
+- Attempts mirror both ways with **re-keying**: attempt keys encode the source cluster's message-log offsets, which are independent per cluster. The mirror translates them into local offset space via each node's foreign-applied local ranges (recorded on import, coalesced). When this node never imported the record (its peer authored it), the source's ranges are consulted instead — `FederationReport` now returns `foreign_ranges` (additive proto field) so the inverse mapping is available for either direction.
+- The `__queue_attempts` mirror fires whenever a queue-like topic is in scope (a topic registered locally as queue-mode, a queue named directly, or an unrestricted selector). Passive peers keep the byte-identical all-or-nothing mirror; active-active peers re-key in scope and drop out-of-scope keys deliberately.
+- Competing consumers on both clusters deliver independently; attempts fold `max`; both clusters divert to their local `<queue>.dlq` independently and converge on identical contents (verified: DLQ key sets equal on both sides).
+- Ownership fix landed with this slice: `internal/groups` and `internal/queue` stores no longer close the broker-owned `__consumer_offsets`/`__queue_attempts` shared handles — they borrowed them and ownership was unclear (an untimely `Close()` poisons in-flight replication of the shared log). Stores only close handles they opened themselves.
+- Verification: integration under `-race` (both-active-active claims on both sides, attempts converge to identical values, DLQ contents identical); live two-cluster run (produce on A, claim on B, attempts mirrored back to A and translated).
+- `__federation_peers` and `__federation_cursors` remain never-federated. Queue message logs in passive mode still ride with named queues (slice 2 semantics, unchanged).
 
 ### Slice 6 — docs, ADR validation, release readiness
 

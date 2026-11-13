@@ -40,8 +40,12 @@ type CommittedOffset struct {
 
 // OffsetStore is the internal log binding for committed group offsets.
 type OffsetStore struct {
-	inner               partitionLog
-	dir                 string
+	inner partitionLog
+	dir   string
+	// sharedFl is true when the store borrows the broker's shared
+	// __consumer_offsets handle; ownership of that handle (and its
+	// lifecycle) belongs to the broker, never to this store.
+	sharedFl            bool
 	cache               map[string]CommittedOffset
 	foldedHWM           int64
 	commitsSinceCompact int
@@ -68,7 +72,7 @@ func NewOffsetStore(dir string, fl *log.FileLog) (*OffsetStore, error) {
 				return nil, fmt.Errorf("firn/groups: open offsets store: %w", err)
 			}
 		}
-		s = &OffsetStore{inner: fl, dir: dir, compactEvery: compactEveryCommits}
+		s = &OffsetStore{inner: fl, dir: dir, compactEvery: compactEveryCommits, sharedFl: fl != nil}
 	}
 	// Load folded state once.
 	s.cache = map[string]CommittedOffset{}
@@ -221,11 +225,18 @@ func fold(inner partitionLog) (map[string]CommittedOffset, error) {
 
 // Close compacts (file-backed store) and closes the log.
 func (s *OffsetStore) Close() error {
-	if fl, ok := s.inner.(*log.FileLog); ok {
-		if err := fl.Compact(); err != nil {
-			return fmt.Errorf("firn/groups: compact offsets store: %w", err)
-		}
-		return fl.Close()
+	fl, ok := s.inner.(*log.FileLog)
+	if !ok {
+		return nil
 	}
-	return nil
+	if s.sharedFl {
+		// The broker owns the shared __consumer_offsets handle; the store
+		// must never close or compact it (replication depends on stable
+		// lifecycles). Nothing to release.
+		return nil
+	}
+	if err := fl.Compact(); err != nil {
+		return fmt.Errorf("firn/groups: compact offsets store: %w", err)
+	}
+	return fl.Close()
 }

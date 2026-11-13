@@ -120,24 +120,38 @@ type Peer struct {
 
 // LocalRange is a contiguous interval of LOCAL offsets [Start, End] that
 // this cluster imported from a peer (the foreign-applied ranges of ADR-010).
-// The serving filter uses one peer's ranges to omit exactly the frames that
-// peer donated to us, closing the A→B→A echo without frame headers.
+// It records the source offset of the first frame in the range, so the
+// translation between the source's and this cluster's offset spaces is
+// recoverable (attempts re-keying, re-origin mapping). The serving filter
+// uses the local bounds to omit exactly the frames the peer donated,
+// closing the A→B→A echo without frame headers.
 type LocalRange struct {
-	Start int64 `json:"start"`
-	End   int64 `json:"end"`
+	Start       int64 `json:"start"`
+	End         int64 `json:"end"`
+	SourceStart int64 `json:"source_start"` // source offset of the first frame in the range
 }
 
-// mergeLocalRanges sorts and coalesces overlapping or adjacent ranges.
+// mergeLocalRanges sorts and coalesces ranges that are adjacent both
+// locally AND in source space (a constant frame-delta). Ranges whose source
+// offsets drift apart stay separate — they encode distinct deltas.
 func mergeLocalRanges(rs []LocalRange) []LocalRange {
 	if len(rs) == 0 {
 		return nil
 	}
 	out := append([]LocalRange(nil), rs...)
-	sort.Slice(out, func(i, j int) bool { return out[i].Start < out[j].Start })
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Start != out[j].Start {
+			return out[i].Start < out[j].Start
+		}
+		return out[i].SourceStart < out[j].SourceStart
+	})
 	merged := []LocalRange{out[0]}
 	for _, r := range out[1:] {
 		last := &merged[len(merged)-1]
-		if r.Start <= last.End+1 {
+		// same delta: local adjacency AND source adjacency
+		sourceDelta := r.Start - last.Start
+		wantSource := last.SourceStart + sourceDelta
+		if r.Start <= last.End+1 && r.SourceStart == wantSource {
 			if r.End > last.End {
 				last.End = r.End
 			}
@@ -148,6 +162,19 @@ func mergeLocalRanges(rs []LocalRange) []LocalRange {
 	return merged
 }
 
+// translateOffset maps a SOURCE offset into this cluster's offset space
+// using the foreign-applied ranges for one (peer, topic, partition).
+// ok=false means the source offset has not been imported locally yet.
+func translateOffset(rs []LocalRange, sourceOffset int64) (int64, bool) {
+	for _, r := range rs {
+		span := r.End - r.Start
+		if sourceOffset >= r.SourceStart && sourceOffset <= r.SourceStart+span {
+			return r.Start + (sourceOffset - r.SourceStart), true
+		}
+	}
+	return 0, false
+}
+
 // RangeContains reports whether offset falls inside any range.
 func RangeContains(rs []LocalRange, offset int64) bool {
 	for _, r := range rs {
@@ -156,6 +183,23 @@ func RangeContains(rs []LocalRange, offset int64) bool {
 		}
 	}
 	return false
+}
+
+// AllForeignRanges returns the merged foreign-applied ranges across EVERY
+// peer for (topic, partition) on this node: the full record of which local
+// offsets came from elsewhere. Published in FederationReport so peers can
+// re-key attempts/acks without headers. Caller-visible, peer-content-only.
+func (s *Store) AllForeignRanges(topic string, partition int32) []LocalRange {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_ = s.loadLocked()
+	var out []LocalRange
+	for _, c := range s.curCache {
+		if c.Topic == topic && c.Partition == partition {
+			out = append(out, c.ForeignRanges...)
+		}
+	}
+	return mergeLocalRanges(out)
 }
 
 // ForeignRanges returns the merged foreign-applied ranges recorded for
