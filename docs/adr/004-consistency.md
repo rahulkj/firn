@@ -1,6 +1,6 @@
 # ADR-004: Consistency & replication stance for v1
 
-Status: accepted · 2026-11-13
+Status: accepted · 2026-11-13 · delivered (v0.1.0)
 
 ## Decision
 

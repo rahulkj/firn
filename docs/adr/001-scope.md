@@ -1,6 +1,6 @@
 # ADR-001: Scope — what eventing is and is not
 
-Status: accepted · 2026-11-13
+Status: accepted · 2026-11-13 · delivered (v0.1.0)
 
 ## Context
 

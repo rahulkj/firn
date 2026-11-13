@@ -1,6 +1,6 @@
 # ADR-007: Scaled-out deployment — the block log, not a Kafka/RabbitMQ clone
 
-Status: accepted · 2026-11-13 · Implementation proceeds via `docs/plans/002-ha.md` (phase A shipped, pending storage review); each slice lands with its own storage review gate.
+Status: accepted · 2026-11-13 · **Delivered — phases A–F + H shipped as v0.2.0 (2026-11-13); storage semantics reviewed and approved by human 2026-11-13.** Phase G (S3 archive tier) and dynamic membership are explicitly deferred with their own plans; each delivered slice landed with its own review gate.
 
 ## Why not "Kafka, but RabbitMQ" or "RabbitMQ, but Kafka"
 
@@ -44,7 +44,7 @@ Three ideas carried from v1 forward unchanged: segmented CRC-framed log, int64 m
 
 ## Lease tails — no partition "leader"
 
-1. Write access to a topic partition's active block is held as a **short write lease** (default 5 s) by the node currently appending it. Lease is granted/refreshed by the metadata quorum, fenced by an **epoch** the quorum increments on every transfer.
+1. Write access to a topic partition's active block is held as a **short write lease** (default 3 s, `-lease-ttl`) by the node currently appending it. Lease is granted/refreshed by the metadata quorum, fenced by an **epoch** the quorum increments on every transfer.
 2. **Epoch fencing everywhere** (same mechanism as a Kafka leader epoch, but for a lease): all data-plane traffic carries `(block_window, epoch)`; a node with a stale epoch cannot seal, append, or acknowledge anything. The split-brain window is bounded by lease TTL + epoch CAS — no fencing keys, no external locks.
 3. **Failover:** lease holder dies → quorum notices (heartbeat timeout) → grants lease to a replica that already holds the largest sealed-block prefix → it unseals the failed tail from its own copy (it may re-append bytes it already has — block content hashing makes re-sealing idempotent). Consumers never see a gap. Expected MTTR: seconds, with **zero topic/partition reassignment and zero data movement**.
 4. **Read routing** rides the same lease epoch: `GetMetadata` returns descriptor-anchored addressing (`topic → [block descriptors]`) plus the current lease holder hint; any broker holding a committed block copy serves it (blocks are symmetric — no read-leader concept at all). Merged with the client-bootstrap list from before.

@@ -1,6 +1,6 @@
 # ADR-003: Storage engine — append-only segment log, and its invariants
 
-Status: accepted · 2026-11-13 · **Read before touching internal/log or offsets**
+Status: accepted · 2026-11-13 · delivered (v0.1.0) · **read before touching internal/log or offsets**
 
 ## Context
 

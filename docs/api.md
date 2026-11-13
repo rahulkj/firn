@@ -289,10 +289,80 @@ message GetMetadataResponse {
 
 ## Internal services (never call from clients)
 
-- **`ReplicaService`** — `ReplicaFetch`/`ReplicaPut` over raw CRC-framed blocks; the replication agent uses it to pull missing blocks after failover and to push sealed blocks at quorum-commit time. Leader→follower only, lease-fenced.
-- **`QuorumService`** — `QuorumMessage`: Raft RPCs (RequestVote, AppendEntries, VoteResp, …) as JSON-in-bytes. Embedded quorum, no external ZK/etcd.
+These two services ride the same gRPC listener as `EventingService`. They exist for node-to-node traffic, are **not** part of the public API contract, and may change shape without deprecation notice. Clients authenticate with the same bearer keys once any exists (they stay public pre-bootstrap); never route application traffic here.
 
-Both ride the same gRPC listener as `EventingService` and are **not** part of the public API contract; they may change shape without deprecation notice. In deployments that expose the client port, treat this surface as unauthenticated-but-sandboxed — internal clients use mTLS on the mesh (see `-tls-cert`) plus quorum-internal framing.
+### ReplicaService
+
+```proto
+message ReplicaFetchRequest  { string topic = 1; int32 partition = 2; int64 first_offset = 3; int64 last_offset = 4; }
+message ReplicaFetchResponse { bytes frames = 1; }
+message ReplicaPutRequest    { string topic = 1; int32 partition = 2; bytes frames = 3; int64 base_offset = 4; }
+message ReplicaPutResponse    { int64 high_watermark = 1; }
+
+service ReplicaService {
+  rpc ReplicaFetch(ReplicaFetchRequest) returns (ReplicaFetchResponse);
+  rpc ReplicaPut(ReplicaPutRequest)     returns (ReplicaPutResponse);
+}
+```
+
+**ReplicaFetch** returns the raw, concatenated bytes of frames in `[first_offset, last_offset]` (inclusive; clamped to the local high watermark). Frame layout, big-endian, CRC32.IEEE over everything after the CRC field:
+
+```
+[len u32][crc u32][offset i64][ts i64][keyLen u32][valueLen u32][key][value]
+  len    = bytes after the len field (crc through value)
+  offset = absolute log offset of the record
+```
+
+**ReplicaPut** applies those frames to this node's log. Out-of-order pushes (a frame whose offset is ahead of the local high watermark) are rejected with `FAILED_PRECONDITION` — never silently skipped. Block identity is content-addressed: `block_id = SHA-256(raw frame bytes)`; descriptor equality across nodes is checkable, and a mismatch is a hard error.
+
+Synthetic example (byte counts abbreviated):
+
+```
+ReplicaFetch(topic="orders", partition=0, first_offset=0, last_offset=127)
+→ ReplicaFetchResponse{ frames: <3432 bytes: 128 frames, offsets 0..127> }
+
+ReplicaPut(topic="orders", partition=0, base_offset=0, frames=<same bytes>)
+→ ReplicaPutResponse{ high_watermark: 128 }
+```
+
+### QuorumService
+
+```proto
+message QuorumMessageRequest  { bytes payload = 1; }  // JSON quorum.Message
+message QuorumMessageResponse {}
+
+service QuorumService { rpc QuorumMessage(QuorumMessageRequest) returns (QuorumMessageResponse); }
+```
+
+The payload is a JSON `quorum.Message` — one Raft RPC per message. `type` values: `0` RequestVote, `1` RequestVoteReply, `2` PreVote, `3` PreVoteReply, `4` AppendEntries, `5` AppendEntriesReply.
+
+Example — PreVote from n1 to n2:
+
+```json
+{"type":2,"from":"n1","term":7,"candidate_id":"n1","last_log_index":18,"last_log_term":7}
+```
+
+Example — AppendEntries carrying a `topic-create` entry:
+
+```json
+{
+  "type": 4,
+  "from": "n2",
+  "term": 7,
+  "leader_id": "n2",
+  "prev_log_index": 18,
+  "prev_log_term": 7,
+  "entries": [
+    {"index": 19, "term": 7, "type": 1, "data": "eyJ0b3BpYyI6Im9yZGVycyIsInBhcnRpdGlvbnMiOjMsIm1vZGUiOiJzdHJlYW0ifQ=="}
+  ],
+  "leader_commit": 19,
+  "success": true
+}
+```
+
+`entries[].type` values: `0` EntryNoop, `1` EntryTopicCreate, `2` EntryBlockCommit, `3` EntryLeaseGrant; `data` is base64 JSON of the materialized entry (e.g. `{"topic":"orders","partitions":3,"mode":"stream"}` for topic-create).
+
+Failure modes operators actually see: a partition leader that loses quorum steps down; followers reject `AppendEntries` with `success:false`; block commits and lease grants only apply once the current-term entry is committed by a majority.
 
 ## `eventing-cli` command ↔ API map
 

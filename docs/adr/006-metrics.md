@@ -1,6 +1,6 @@
 # ADR-006: Metrics — prometheus/client_golang, exposed at /metrics
 
-Status: accepted · 2026-11-13
+Status: accepted · 2026-11-13 · delivered (v0.1.0)
 
 ## Context
 

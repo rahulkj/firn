@@ -1,6 +1,6 @@
 # ADR-009: Storage solutions — validation and roadmap
 
-Status: accepted · 2026-11-13 · **Validation only — no code or dependencies change under this ADR.** Implementation of the gaps lives in follow-up phases with their own review gates.
+Status: accepted · 2026-11-13 · delivered (validation published; follow-ups tracked) · gap fixes (segment-bytes/block-seal-interval flags) shipped 2026-11-13
 
 ## Context
 

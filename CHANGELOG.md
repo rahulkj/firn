@@ -59,3 +59,7 @@ Manual-run caveats: (1) a clean-VM run was not available to the agent; all check
 - **Read path fix (internal stores)**: `OffsetStore`, `AttemptStore`, and the apikeys store now do **HWM-gated read-through** (O(1) fold reuse while high watermark is unchanged; full re-fold only on movement). Cross-node commits/apply are visible without restart — and a failed-over holder no longer serves a stale startup-folded view.
 - **Compaction refused on replicated internal logs**: `FileLog.Compact()` renumbers records, which would silently diverge byte-identical replicas; fenced stores refuse `Compact()` and skip auto-compact. Single-node compaction unchanged. `__consumer_offsets`/`__queue_attempts` growth in cluster mode is now bounded by commit rate, not by compaction — capacity planning note for the release checklist.
 - **`-race` fix in `FileLog`** (see Data race fix) — also required the package contract change.
+
+## Unreleased
+
+- Docs consistency pass (post-v0.2.0): ADR status lines aligned with what actually shipped (001–006 delivered v0.1.0; 007 delivered as v0.2.0; 005 amended; 009 validation + gap-fix shipping); ADR-007 lease default corrected to 3s; `docs/api.md` internal services section now documents `ReplicaService` and `QuorumService` with request/response examples (frame layout, Raft envelope, base64-verified examples) as scoped by ADR-008. Documentation ADR (008) is now fully delivered against its own checklist.
