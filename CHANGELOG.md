@@ -62,6 +62,9 @@ Manual-run caveats: (1) a clean-VM run was not available to the agent; all check
 
 ## Unreleased
 
+- ADR-011 slice 2 delivered: **mesh mTLS**. `ReplicaService`/`QuorumService` served only on a dedicated mesh listener behind mTLS — invisible to the public gRPC port. Cluster CA pre-provisioned once via `firn mesh-ca init` (or `-mesh-ca-bundle`/`-mesh-ca-key`) and copied per node; node certificates issued at first start. Untrusted clients cannot complete the handshake; streaming/replication verified live on 3 nodes (produce on holder, fetch on replicas, kill -9 survives).
+  - **Note**: mixing old/new mesh builds on a live cluster is not supported; rolling upgrade requires a full restart window.
+
 - ADR-011 slice 1 delivered: secure-by-default startup + one-time bootstrap token. Zero-key broker prints a single-use token on stderr; `POST /apikeys` with that token mints exactly one admin key (role coerced to admin), then bearer auth enforces everywhere except `/healthz`. `-dev`/`-allow-open-bootstrap` re-enables open mode for local work. `/metrics` now requires a key by default. Verified live (fresh boot → mint → produce/fetch → restart enforced). See `docs/plans/005-security.md`.
 
 - ADR-011 secure-by-default + Plan 005 added: fresh installs without a key no longer listen (fail-closed; one-time bootstrap token on stderr; `-allow-open-bootstrap`/`-dev` opt-out); mesh transport becomes mTLS-mandatory (closes F-2/F-3); `/metrics` now requires a key by default; per-key CIDR allowlist; global anonymous rate limit; data-dir `0700`/files `0600` enforced; audit always-on, bounded, append-only; HTTP hardening headers; release hardening (SPDX SBOM, cosign-signed tarballs, grype critical gate). Implementation via plan 005; storage-adjacent review gates on slices 2 & 5.

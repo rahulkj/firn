@@ -34,6 +34,9 @@ firnd \
 | `-tls-key` | `""` | PEM path | TLS private key for both listeners. Minimum version TLS 1.2; single cert for both, so give SANs covering both hostnames/IPs. |
 | `-rate` | `100` | float ops/s | Per-key token-bucket rate limit, enforced at the HTTP and gRPC interceptors. Applies once auth is enforced (any key exists); limits are per key, not per IP. |
 | `-admin-ui` | `true` | bool | Serve the read-only admin UI at `/ui/`. Cheap; safe to leave on behind TLS+auth. |
+| `-mesh-addr` | derived | host:port | Mesh (internal) gRPC listener address — defaults to `-grpc-addr` port+10 (crash if colliding). Serves only `ReplicaService`/`QuorumService` behind mesh mTLS. |
+| `-mesh-ca-bundle` | `""` | PEM path | Pre-provisioned mesh cluster CA certificate PEM (paired with `-mesh-ca-key`). REQUIRED for non-dev, non-single-node clusters. |
+| `-mesh-ca-key` | `""` | PEM path | Pre-provisioned mesh cluster CA private key PEM. |
 
 Startup sequence (single node): open registry → open every partition log + internal topics (`__consumer_offsets`, `__queue_attempts`, `__audit`, `__api_keys`) → fold committed offsets → serve. Crash recovery order per log: scan segments, CRC-validate frames, truncate any torn tail (`internal/log/filelog.go`), then mark blocks sealed. Cluster adds: start Raft node → wait to observe a leader (or elect itself) → replay `topics.json` state via apply hook → replication agent starts pushing/pulling blocks + granting leases.
 

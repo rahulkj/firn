@@ -290,7 +290,7 @@ message GetMetadataResponse {
 
 ## Internal services (never call from clients)
 
-These two services ride the same gRPC listener as `FirnService`. They exist for node-to-node traffic, are **not** part of the public API contract, and may change shape without deprecation notice. Clients authenticate with the same bearer keys once any exists (they stay public pre-bootstrap); never route application traffic here.
+`ReplicaService` and `QuorumService` are served **only** on the mesh gRPC listener behind mesh mTLS — they are **not** reachable from the public gRPC listener and are never advertised on the public port. Applications and admin tooling must never call them; they may change shape without deprecation notice. Access control: a caller without a node certificate signed by the cluster CA cannot complete the TLS handshake.
 
 ### ReplicaService
 

@@ -1,11 +1,11 @@
 package quorum
 
-// gRPC transport for the metadata quorum (ADR-007 phase B wiring). Quorum
-// traffic rides the same gRPC listener as the client surface: each node's
-// FirnService listener also registers QuorumService (see firnd);
-// peers dial it directly. Connection setup per message is intentional — at
-// 3–N members and 60ms intervals the overhead is negligible and the failure
-// model is simple.
+// gRPC transport for the metadata quorum (ADR-007 phases B–C wiring).
+// Quorum traffic rides the mesh gRPC listener — a SEPARATE listener from the
+// client-facing FirnService port (see firnd) — behind mTLS with a
+// cluster-wide mesh CA. Peers authenticate with node certificates, not API
+// keys. Connection setup per message is intentional — at N members and 60 ms
+// intervals the overhead is negligible and the failure model is simple.
 
 import (
 	"context"
@@ -13,30 +13,35 @@ import (
 	"fmt"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 
 	"github.com/rahulkj/firn/internal/api/firnpb"
+	"github.com/rahulkj/firn/internal/meshca"
 )
 
-// TransportGRPC delivers quorum messages over gRPC.
+// TransportGRPC delivers quorum messages over gRPC with mesh mTLS.
 type TransportGRPC struct {
 	id    string
 	peers map[string]string
+	mesh  *meshca.Bundle
 }
 
 // NewTransportGRPC creates a gRPC transport with the given peer map
-// (id -> gRPC address). It must include this node.
-func NewTransportGRPC(id string, peers map[string]string) (*TransportGRPC, error) {
+// (id -> mesh gRPC address). It must include this node.
+func NewTransportGRPC(id string, peers map[string]string, mesh *meshca.Bundle) (*TransportGRPC, error) {
 	if id == "" {
 		return nil, fmt.Errorf("firn/quorum: id is required")
+	}
+	if mesh == nil {
+		return nil, fmt.Errorf("firn/quorum: mesh bundle is required (mesh mTLS is mandatory)")
 	}
 	if _, ok := peers[id]; !ok {
 		return nil, fmt.Errorf("firn/quorum: peers must include self (%s)", id)
 	}
-	return &TransportGRPC{id: id, peers: peers}, nil
+	return &TransportGRPC{id: id, peers: peers, mesh: mesh}, nil
 }
 
-// Addr returns this node's advertised address.
+// Addr returns this node's advertised address (mesh listener).
 func (t *TransportGRPC) Addr() string { return t.peers[t.id] }
 
 // Send dials the peer and pushes one message. Short-lived connections keep
@@ -47,7 +52,7 @@ func (t *TransportGRPC) Send(to string, msg Message) error {
 	if !ok {
 		return fmt.Errorf("firn/quorum: unknown peer %q", to)
 	}
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(credentials.NewTLS(t.mesh.ClientTLSConfig(to))))
 	if err != nil {
 		return fmt.Errorf("firn/quorum: dial %s: %w", addr, err)
 	}

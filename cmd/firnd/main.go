@@ -36,12 +36,15 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+
+	"github.com/rahulkj/firn/internal/meshca"
 
 	"github.com/rahulkj/firn/internal/adminui"
 	"github.com/rahulkj/firn/internal/api"
@@ -57,6 +60,23 @@ import (
 	"github.com/rahulkj/firn/internal/ratelimit"
 	"github.com/rahulkj/firn/internal/replication"
 )
+
+// meshPeerAddr maps a peer's client gRPC address to their mesh gRPC address
+// (port+1, same host). The mesh listener defaults to :9094 for the client.
+func meshPeerAddr(addr string) string {
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return addr
+	}
+	port, err := strconv.Atoi(portStr)
+	if err != nil {
+		return addr
+	}
+	return net.JoinHostPort(host, strconv.Itoa(port+10))
+}
+
+// slogEnv is slog.Info with the environment's message format.
+func slogEnv(msg string, args ...any) { slog.Info(msg, args...) }
 
 // hexToken returns a cryptographically random hex string for bootstrap use.
 func hexToken(nbytes int) string {
@@ -140,6 +160,9 @@ func main() {
 	allowOpen := flag.Bool("allow-open-bootstrap", false, "DEVELOPMENT ONLY: serve without any keys (alias for -dev). WARNING: broker is open to anyone who can reach the port.")
 	tokenBucketRate := flag.Float64("rate", 100, "per-key rate limit in operations per second")
 	adminHTML := flag.Bool("admin-ui", true, "serve the read-only admin UI at / on the HTTP listener")
+	meshAddr := flag.String("mesh-addr", "", "mesh (internal) gRPC listen address — defaults to -grpc-addr with the port bumped by 10; serves only QuorumService/ReplicaService behind mTLS")
+	meshCABundle := flag.String("mesh-ca-bundle", "", "pre-provisioned mesh cluster CA certificate PEM (alternative to auto-provision; required for non-loopback clusters)")
+	meshCAKey := flag.String("mesh-ca-key", "", "pre-provisioned mesh cluster CA private key PEM (paired with -mesh-ca-bundle)")
 	flag.Parse()
 
 	clusterMode := *peersFlag != ""
@@ -209,6 +232,68 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Mesh mTLS (ADR-011 slice 2): internal RPCs (ReplicaService and, in
+	// cluster mode, QuorumService) move behind a separate listener that
+	// only accepts peers whose cert chains to the cluster mesh CA. Client
+	// surface never exposes them.
+	if *meshAddr == "" {
+		*meshAddr = meshPeerAddr(*grpcAddr)
+	}
+	meshID := *nodeID
+	if meshID == "" {
+		meshID = "single"
+	}
+	meshDir := filepath.Join(*dataDir, "mesh-ca")
+	if *dataDir == "" {
+		meshDir = filepath.Join(os.TempDir(), "firn-mesh-ca-"+meshID)
+	}
+	allowMeshAuto := !clusterMode // single-node may auto-provision; cluster mode requires a pre-provisioned shared CA
+
+	// Explicit pre-provisioned bundle takes priority; install into meshDir.
+	if *meshCABundle != "" || *meshCAKey != "" {
+		if *meshCABundle == "" || *meshCAKey == "" {
+			slog.Error("mesh: -mesh-ca-bundle and -mesh-ca-key must be provided together")
+			os.Exit(1)
+		}
+		bundleBytes, err := os.ReadFile(*meshCABundle)
+		if err != nil {
+			slog.Error("mesh: read -mesh-ca-bundle", "err", err)
+			os.Exit(1)
+		}
+		keyBytes, err := os.ReadFile(*meshCAKey)
+		if err != nil {
+			slog.Error("mesh: read -mesh-ca-key", "err", err)
+			os.Exit(1)
+		}
+		if err := os.MkdirAll(meshDir, 0o700); err != nil {
+			slog.Error("mesh: mkdir", "err", err)
+			os.Exit(1)
+		}
+		if err := os.Chmod(meshDir, 0o700); err != nil {
+			slog.Error("mesh: chmod", "err", err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(filepath.Join(meshDir, "ca.crt"), bundleBytes, 0o600); err != nil {
+			slog.Error("mesh: write ca.crt", "err", err)
+			os.Exit(1)
+		}
+		if err := os.WriteFile(filepath.Join(meshDir, "ca.key"), keyBytes, 0o600); err != nil {
+			slog.Error("mesh: write ca.key", "err", err)
+			os.Exit(1)
+		}
+		slog.Info("mesh: installed pre-provisioned CA", "dir", meshDir)
+		// Files now exist, so Ensure below just loads them.
+	}
+
+	meshBundle, err := meshca.Ensure(meshDir, meshID, allowMeshAuto)
+	if err != nil {
+		slog.Error("mesh: cannot ensure mesh CA", "err", err)
+		os.Exit(1)
+	}
+	slogEnv("mesh: mTLS enabled", "addr", *meshAddr, "ca_fingerprint", meshBundle.Fingerprint())
+	meshServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(meshBundle.ServerTLSConfig())), grpc.MaxRecvMsgSize(80<<20))
+	firnpb.RegisterReplicaServiceServer(meshServer, api.NewReplicaServer(b))
+
 	// Cluster bootstrap (ADR-007 phases B–D): embedded TCP quorum +
 	// replication agent + write-lease advisor + replica service registration.
 	var ca *api.ClusterAdmin
@@ -240,8 +325,12 @@ func main() {
 		}
 
 		var err error
+		meshPeers := map[string]string{}
+		for id, addr := range peers {
+			meshPeers[id] = meshPeerAddr(addr)
+		}
 		var tr *quorum.TransportGRPC
-		tr, err = quorum.NewTransportGRPC(selfID, peers)
+		tr, err = quorum.NewTransportGRPC(selfID, meshPeers, meshBundle)
 		if err != nil {
 			slog.Error("quorum transport", "err", err)
 			os.Exit(1)
@@ -255,6 +344,7 @@ func main() {
 			slog.Error("quorum node", "id", selfID, "err", err)
 			os.Exit(1)
 		}
+		firnpb.RegisterQuorumServiceServer(meshServer, api.NewQuorumServer(qnode))
 		qnode.Start()
 
 		agentCfg := replication.NewAgent(replication.Config{
@@ -364,10 +454,8 @@ func main() {
 	}
 	grpcSrv := grpc.NewServer(serverOpts...)
 	firnpb.RegisterFirnServiceServer(grpcSrv, api.NewServer(b, qm, met))
-	firnpb.RegisterReplicaServiceServer(grpcSrv, api.NewReplicaServer(b))
-	if clusterMode {
-		firnpb.RegisterQuorumServiceServer(grpcSrv, api.NewQuorumServer(qnode))
-	}
+	// ReplicaService and QuorumService are served ONLY on the mesh listener
+	// behind mTLS (ADR-011). They are not reachable without a mesh peer cert.
 
 	go func() {
 		slog.Info("firnd starting", "version", version, "http", *httpAddr, "grpc", *grpcAddr, "data_dir", *dataDir, "tls", tlsCfg != nil)
@@ -385,6 +473,19 @@ func main() {
 	go func() {
 		if err := grpcSrv.Serve(lis); err != nil {
 			slog.Error("grpc serve", "err", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Mesh listener: internal RPCs only (ADR-011 slice 2).
+	meshLis, err := net.Listen("tcp", *meshAddr)
+	if err != nil {
+		slog.Error("listen mesh", "addr", *meshAddr, "err", err)
+		os.Exit(1)
+	}
+	go func() {
+		if err := meshServer.Serve(meshLis); err != nil {
+			slog.Error("mesh serve", "err", err)
 			os.Exit(1)
 		}
 	}()

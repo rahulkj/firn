@@ -44,6 +44,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/rahulkj/firn/internal/api/firnpb"
+	"github.com/rahulkj/firn/internal/meshca"
 )
 
 var (
@@ -127,6 +128,8 @@ func main() {
 		err = cmdRevokeAPIKey(args[1:])
 	case "list-apikeys":
 		err = cmdListAPIKeys()
+	case "mesh-ca":
+		err = cmdMeshCA(args[1:])
 	case "produce":
 		err = cmdProduce(args[1:])
 	case "fetch":
@@ -309,10 +312,31 @@ func cmdListAPIKeys() error {
 	return tw.Flush()
 }
 
+func cmdMeshCA(args []string) error {
+	// Accept both `firn-cli mesh-ca` and `firn-cli mesh-ca init`.
+	if len(args) > 0 && args[0] == "init" {
+		args = args[1:]
+	}
+	fs := flag.NewFlagSet("mesh-ca", flag.ContinueOnError)
+	outDir := fs.String("out", "mesh-ca", "directory to write ca.crt and ca.key")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(*outDir, 0o700); err != nil {
+		return fmt.Errorf("mesh-ca init: mkdir %s: %w", *outDir, err)
+	}
+	if err := meshca.InitCA(*outDir); err != nil {
+		return err
+	}
+	fmt.Printf("mesh CA written under %s (ca.crt, ca.key)\n", *outDir)
+	fmt.Printf("copy {ca.crt,ca.key} into every node's <data-dir>/mesh-ca/ (mode 0600)\n")
+	return nil
+}
+
 func usage() {
 	fmt.Fprint(os.Stderr, `usage: firn-cli [--addr gRPC] [--http-addr HTTP] [--api-key KEY] [--ca-cert PEM] [--json] <command> [flags]
 
-commands: create-topic create-queue list produce fetch groups dlq create-apikey revoke-apikey list-apikeys
+commands: create-topic create-queue list produce fetch groups dlq create-apikey revoke-apikey list-apikeys mesh-ca
 see -h on any command for its flags (e.g. firn-cli produce -h)
 `)
 }

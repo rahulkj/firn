@@ -109,7 +109,11 @@ Key details (all verified live):
 ## Three-node cluster (experimental, ADR-007)
 
 ```sh
-# terminal 1
+# 0. provision the mesh CA once for all three nodes
+firn-cli mesh-ca init -out mesh-ca
+for d in n1 n2 n3; do mkdir -p data-$d/mesh-ca && cp mesh-ca/ca.* data-$d/mesh-ca/ && chmod 0600 data-$d/mesh-ca/ca.*; done
+
+# 1. terminal 1
 go run ./cmd/firnd -node-id n1 \
   -peers n1=127.0.0.1:9311,n2=127.0.0.1:9312,n3=127.0.0.1:9313 \
   -http-addr 127.0.0.1:9211 -grpc-addr 127.0.0.1:9311 -data-dir ./data-n1
