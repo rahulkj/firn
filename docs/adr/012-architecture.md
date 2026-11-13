@@ -131,8 +131,8 @@ Grouped by plane. Every path is relative to the repository root. `ADR-NNN` links
 |---|---|---|---|
 | Control plane | `internal/federation` (peers/cursors), `__federation_peers`, `__federation_cursors` | Peer registration (out-of-band, per-cluster), cursor tracking per `(peer, topic, partition)`, foreign-applied local range recording (echo filter source). | Internal topics are replicated **within** each cluster; **never** federated themselves. Cursor log compacts by upsert. (ADR-010) |
 | Passive puller | `internal/federation/puller.go` | One-way import: fetch `[cursor, sourceHwm)` from peer, byte-identical apply preserving offsets. | `__queue_attempts` mirrors byte-identically; queue records ride with named queues. Sink fenced until cutover. (ADR-010, plan 004) |
-| Active-active puller | `internal/federation/puller.go` | Two-way: re-origin import (`broker.AppendReoriginedFrames`), ts/key/value preserved; records local ranges per import. | Echo prevention is serving-side filtering on `FederationFetch` (foreign ranges); `-federation-self` names the caller's cluster to the peer. (ADR-010, plan 004) |
-| FederationService | `internal/api/federation.go` | `FederationFetch` (CRC-checked frame windows), `FederationReport` (HWM + partition count). Mesh-only. | `__queue_attempts` is the one internal topic served. All others refused. (ADR-010) |
+| Active-active puller | `internal/federation/puller.go` | Two-way: re-origin import (`broker.AppendReoriginedFrames`), ts/key/value preserved; records local ranges per import. Attempts mirror both ways with re-keyed offsets (source message offsets translated via foreign ranges; peer publishes its own via `FederationReport`). | Echo prevention is serving-side filtering on `FederationFetch` (foreign ranges); `-federation-self` names the caller's cluster to the peer. (ADR-010, plan 004) |
+| FederationService | `internal/api/federation.go` | `FederationFetch` (CRC-checked frame windows, serving-side echo filter), `FederationReport` (HWM + partition count + `foreign_ranges` for inverse attempts re-keying). Mesh-only. | `__queue_attempts` is the one internal topic served. All others refused. Reports publish this node's foreign-applied ranges — no secrets (peer-content bytes only). (ADR-010) |
 
 ### Ops & support
 
@@ -225,7 +225,7 @@ sequenceDiagram
     participant SRC as Firnd (source) mesh listener
     APP->>SINK: POST /federation/peers {direction:"in", mode:"passive", topics:[...]}
     Note over SINK: sink is fenced — produce/pull/ack → 409/FailedPrecondition
-    SINK->>SRC: FederationFetch(topic, partition, first=cursor+1)<br/>(mTLS + federation key)
+    SINK->>SRC: FederationFetch(topic, partition, first=cursor+1) — mTLS + federation key
     SRC-->>SINK: raw CRC-checked frames [first, HWM)
     SINK->>SINK: ParseFrames → AppendReplicatedFrames (byte-identical)
     SINK->>SINK: upsert __federation_cursors cursor
@@ -350,7 +350,7 @@ flowchart LR
 
 | Property | Behavior |
 |---|---|
-| Registration | Out-of-band both ways: each cluster mints a federation-scoped key for the other; peers registered with addr + optional `ca_crt_pem` + `-federation-self` on the sink side for the symmetric filter. |
+| Registration | Out-of-band: the sink mints nothing for the source to call — only the sink authenticates outbound. Peer registered with addr + optional `ca_crt_pem` (shared CA is the default topology; `-federation-self` only when both directions ever run). |
 | Write path | Source only. Sink is fenced: produce → `FailedPrecondition` (gRPC) / `409` (HTTP); queue pull/ack → `409`. |
 | Consistency | Byte-identical blocks; offsets preserved; HWM order identical to source. Lag = `firn_federation_cursor_lag_seconds`. |
 | Cutover | Operator removes peer registration on the sink (or flips its mode) and starts producing locally; DLQ/attempts state has already converged via the byte-identical mirror. |
@@ -398,6 +398,24 @@ Defaults (all overridable):
 | HTTP admin | `-http-addr` | `:9092` | `/healthz` (public), `/metrics`, `/ui/`, admin API | Bearer once any key exists |
 | Client gRPC | `-grpc-addr` | `:9093` | `FirnService` (all client RPCs) | Bearer + role |
 | Mesh gRPC | `-mesh-addr` | `grpc-addr` + 10 ports | `ReplicaService`, `QuorumService`, `FederationService` | mTLS (mesh CA) + bearer (federation only for FederationService) |
+
+## Operator documentation map
+
+Where to find the operator-facing companions to each plane:
+
+| Topic | Document | What it covers |
+|---|---|---|
+| Getting started / install | `docs/install.md` | Secure-by-default boot, single node, 3-node HA cluster, **two-cluster federation quickstart** |
+| Configuration reference | `docs/configuration.md` | Every flag with defaults; security model (fail-closed, bootstrap modes); internal-topic paths |
+| API reference | `docs/api.md` | All endpoints, authn/authz rules, error codes, federation surface, `firn-cli` ↔ API map |
+| Federation cutover | `docs/federation-cutover.md` | Operator procedure: passive sink → writable (active-active flip or standalone decommission) |
+| Distribution / release | `docs/distribution.md` | Multi-arch tarballs, SBOM (syft), grype `fail-on-critical`, cosign sign-blob (manual) |
+| Metrics | `docs/adr/006-metrics.md` | Prometheus metric definitions incl. `firn_federation_cursor_lag_seconds` |
+| Migration | `docs/migration-v0.3-to-v0.4.md` | v0.3 → v0.4 breaking changes & upgrade ordering |
+| HA design | `docs/adr/007-scaled-deployment.md` | Quorum, leases, block replication, client routing |
+| Federation design | `docs/adr/010-federation.md` | Registration, passives/actives, echo filter, failure modes |
+| Security model | `docs/adr/011-secure-mode.md` | Fail-closed boot, bootstrap token, mesh mTLS, key roles |
+| This file's plan sketch | `docs/plans/004-federation.md` | Federation delivery history slice by slice |
 
 ## Non-goals for this ADR
 
