@@ -2,12 +2,12 @@
 
 Two binaries, every flag, the defaults that ship, and what they do. Values below were taken from the source at this commit — if a flag here disagrees with `-h` output, the source wins and the doc is a bug; file it.
 
-## `eventingd` — broker daemon
+## `slipwayd` — broker daemon
 
 Defaults (in-memory except `./data`):
 
 ```sh
-eventingd \
+slipwayd \
   -http-addr :9092 \
   -grpc-addr :9093 \
   -data-dir ./data \
@@ -19,7 +19,7 @@ eventingd \
 | Flag | Default | Type | Effect |
 |---|---|---|---|
 | `-http-addr` | `:9092` | host:port | HTTP admin/health listener (`/healthz`, `/metrics`, admin API, `/ui/`). Auth enforced on the admin mux once any key exists. |
-| `-grpc-addr` | `:9093` | host:port | gRPC listener: `EventingService` + (cluster) `ReplicaService`/`QuorumService`. This is the port clients dial. |
+| `-grpc-addr` | `:9093` | host:port | gRPC listener: `SlipwayService` + (cluster) `ReplicaService`/`QuorumService`. This is the port clients dial. |
 | `-data-dir` | `./data` | path or `""` | Partition logs + internal topics + `topics.json` + (cluster) quorum state. `""` selects in-memory `MemLog` — dev/tests only; **restart loses everything**, no durability. |
 | `-retention-ttl` | `0` (disabled) | duration | Delete **whole segments** whose newest record is older than this. Active (newest) segment is never deleted. `0` disables. |
 | `-retention-max-bytes` | `0` (disabled) | bytes | Max on-disk bytes per partition log; oldest whole segments deleted first. Active segment never deleted. |
@@ -45,21 +45,21 @@ Cluster rules for internal topics: each internal topic (`__consumer_offsets`, `_
 
 Once **any non-revoked API key exists** (see `POST /apikeys` in [api.md](api.md)), the broker requires `Authorization: Bearer <key>` on everything except `/healthz` and `/metrics`. Before the first key exists, the broker is open — that is deliberate, so a dev can bootstrap from nothing; it also means the very first key creation must be protected by network isolation.
 
-## `eventing-cli` — operational CLI
+## `slipway-cli` — operational CLI
 
 Defaults `localhost:9093` / `localhost:9092`, overridable per flag or env.
 
 | Flag | Env var | Default | Effect |
 |---|---|---|---|
-| `-addr` | `EVENTING_ADDR` | `localhost:9093` | Seed gRPC address. In cluster mode the CLI still asks this seed for metadata first, then routes to the lease holder for the partition (2s metadata cache, refresh-on-retry). |
-| `-http-addr` | `EVENTING_HTTP_ADDR` | `localhost:9092` | Seed HTTP admin address for topic creation, API keys, groups. |
-| `-peers` | `EVENTING_PEERS` | `""` | Cluster mode: comma-separated node gRPC addresses (`host:port,host:port,…`). CLI picks seeds round-robin when metadata is unavailable. |
-| `-http-peers` | `EVENTING_HTTP_PEERS` | derived | Cluster mode: comma-separated HTTP admin addresses. Defaults to `-peers` with each port decremented by 1. |
+| `-addr` | `SLIPWAY_ADDR` | `localhost:9093` | Seed gRPC address. In cluster mode the CLI still asks this seed for metadata first, then routes to the lease holder for the partition (2s metadata cache, refresh-on-retry). |
+| `-http-addr` | `SLIPWAY_HTTP_ADDR` | `localhost:9092` | Seed HTTP admin address for topic creation, API keys, groups. |
+| `-peers` | `SLIPWAY_PEERS` | `""` | Cluster mode: comma-separated node gRPC addresses (`host:port,host:port,…`). CLI picks seeds round-robin when metadata is unavailable. |
+| `-http-peers` | `SLIPWAY_HTTP_PEERS` | derived | Cluster mode: comma-separated HTTP admin addresses. Defaults to `-peers` with each port decremented by 1. |
 | `-json` | — | `false` | Machine-readable output for list/produce/groups/dlq/apikeys commands. |
-| `-api-key` | `EVENTING_API_KEY` | `""` | Bearer key. Required whenever the broker enforces auth. |
-| `-ca-cert` | `EVENTING_CA_CERT` | `""` | PEM CA bundle. When set: gRPC dials with TLS (CA pool) and the HTTP admin client switches to HTTPS. Self-signed server certs are fine if the SAN covers dial host/IP. |
+| `-api-key` | `SLIPWAY_API_KEY` | `""` | Bearer key. Required whenever the broker enforces auth. |
+| `-ca-cert` | `SLIPWAY_CA_CERT` | `""` | PEM CA bundle. When set: gRPC dials with TLS (CA pool) and the HTTP admin client switches to HTTPS. Self-signed server certs are fine if the SAN covers dial host/IP. |
 
-Command surface (see `eventing-cli -h`):
+Command surface (see `slipway-cli -h`):
 
 ```
 create-topic --name N [--partitions 2] [--mode stream|queue]
@@ -90,4 +90,4 @@ Not versioned. Any layout change (frame header, `topics.json` schema) is a break
 
 ## Logging
 
-JSON via `log/slog` on stderr (`eventingd`); the CLI prints human tables by default and JSON with `-json`. Log level is not a flag — it follows `slog.SetDefault` (`info` default, debug via code); wire your own if you embed `cmd/eventingd` as a library.
+JSON via `log/slog` on stderr (`slipwayd`); the CLI prints human tables by default and JSON with `-json`. Log level is not a flag — it follows `slog.SetDefault` (`info` default, debug via code); wire your own if you embed `cmd/slipwayd` as a library.

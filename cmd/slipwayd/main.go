@@ -1,4 +1,4 @@
-// eventingd is the broker daemon for the eventing project.
+// slipwayd is the broker daemon for the slipway project.
 //
 // Slice 6 (docs/plans/001-mvp-single-node.md): MVP hardening, on top of
 // the durable file log, persisted topics, consumer groups, and queue mode.
@@ -10,7 +10,7 @@
 // Surfaces:
 //
 //	HTTP  :9092  /healthz, /topics, /groups, /metrics (admin) — override with -http-addr
-//	gRPC  :9093  EventingService                              — override with -grpc-addr
+//	gRPC  :9093  SlipwayService                              — override with -grpc-addr
 //
 // Logging is JSON via log/slog on stderr.
 package main
@@ -35,19 +35,19 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/rahulkj/eventing/internal/adminui"
-	"github.com/rahulkj/eventing/internal/api"
-	"github.com/rahulkj/eventing/internal/api/eventingpb"
-	"github.com/rahulkj/eventing/internal/apikeys"
-	"github.com/rahulkj/eventing/internal/audit"
-	"github.com/rahulkj/eventing/internal/broker"
-	"github.com/rahulkj/eventing/internal/groups"
-	"github.com/rahulkj/eventing/internal/meta"
-	"github.com/rahulkj/eventing/internal/metrics"
-	"github.com/rahulkj/eventing/internal/queue"
-	"github.com/rahulkj/eventing/internal/quorum"
-	"github.com/rahulkj/eventing/internal/ratelimit"
-	"github.com/rahulkj/eventing/internal/replication"
+	"github.com/rahulkj/slipway/internal/adminui"
+	"github.com/rahulkj/slipway/internal/api"
+	"github.com/rahulkj/slipway/internal/api/slipwaypb"
+	"github.com/rahulkj/slipway/internal/apikeys"
+	"github.com/rahulkj/slipway/internal/audit"
+	"github.com/rahulkj/slipway/internal/broker"
+	"github.com/rahulkj/slipway/internal/groups"
+	"github.com/rahulkj/slipway/internal/meta"
+	"github.com/rahulkj/slipway/internal/metrics"
+	"github.com/rahulkj/slipway/internal/queue"
+	"github.com/rahulkj/slipway/internal/quorum"
+	"github.com/rahulkj/slipway/internal/ratelimit"
+	"github.com/rahulkj/slipway/internal/replication"
 )
 
 // advertisedAddr makes a listener address usable for client dialing:
@@ -100,7 +100,7 @@ func parsePeers(s string) (map[string]string, error) {
 	return out, nil
 }
 
-const version = "0.2.0"
+const version = "0.3.0"
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))
@@ -322,14 +322,14 @@ func main() {
 		serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
 	}
 	grpcSrv := grpc.NewServer(serverOpts...)
-	eventingpb.RegisterEventingServiceServer(grpcSrv, api.NewServer(b, qm, met))
-	eventingpb.RegisterReplicaServiceServer(grpcSrv, api.NewReplicaServer(b))
+	slipwaypb.RegisterSlipwayServiceServer(grpcSrv, api.NewServer(b, qm, met))
+	slipwaypb.RegisterReplicaServiceServer(grpcSrv, api.NewReplicaServer(b))
 	if clusterMode {
-		eventingpb.RegisterQuorumServiceServer(grpcSrv, api.NewQuorumServer(qnode))
+		slipwaypb.RegisterQuorumServiceServer(grpcSrv, api.NewQuorumServer(qnode))
 	}
 
 	go func() {
-		slog.Info("eventingd starting", "version", version, "http", *httpAddr, "grpc", *grpcAddr, "data_dir", *dataDir, "tls", tlsCfg != nil)
+		slog.Info("slipwayd starting", "version", version, "http", *httpAddr, "grpc", *grpcAddr, "data_dir", *dataDir, "tls", tlsCfg != nil)
 		var listenErr error
 		if tlsCfg != nil {
 			listenErr = httpSrv.ListenAndServeTLS(*tlsCert, *tlsKey) // config has certs too
@@ -395,5 +395,5 @@ func main() {
 	if err := b.Close(); err != nil {
 		slog.Error("close broker", "err", err)
 	}
-	slog.Info("eventingd stopped")
+	slog.Info("slipwayd stopped")
 }

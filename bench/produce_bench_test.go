@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rahulkj/eventing/internal/broker"
-	"github.com/rahulkj/eventing/internal/meta"
+	"github.com/rahulkj/slipway/internal/broker"
+	"github.com/rahulkj/slipway/internal/meta"
 )
 
 func benchBroker(b *testing.B, dir string) *broker.Broker {

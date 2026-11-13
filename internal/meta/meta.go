@@ -18,19 +18,19 @@ import (
 
 var (
 	// ErrTopicExists is returned when creating a topic that already exists.
-	ErrTopicExists = errors.New("eventing/meta: topic already exists")
+	ErrTopicExists = errors.New("slipway/meta: topic already exists")
 	// ErrTopicNotFound is returned when a topic does not exist.
-	ErrTopicNotFound = errors.New("eventing/meta: topic not found")
+	ErrTopicNotFound = errors.New("slipway/meta: topic not found")
 	// ErrInvalidPartitions is returned for partition counts < 1.
-	ErrInvalidPartitions = errors.New("eventing/meta: partitions must be >= 1")
+	ErrInvalidPartitions = errors.New("slipway/meta: partitions must be >= 1")
 	// ErrInvalidTopicMode is returned for unknown topic modes.
-	ErrInvalidTopicMode = errors.New("eventing/meta: mode must be stream or queue")
+	ErrInvalidTopicMode = errors.New("slipway/meta: mode must be stream or queue")
 )
 
 const (
-	// ModeStream is the default: Kafka-style fetch-by-offset topics.
+	// ModeStream is the default: streaming topics (fetch by offset, replay).
 	ModeStream = "stream"
-	// ModeQueue is the RabbitMQ-style work queue: Pull/Ack with visibility.
+	// ModeQueue is the work-queue mode: Pull/Ack with visibility timeout and DLQ.
 	ModeQueue = "queue"
 )
 
@@ -63,29 +63,29 @@ func OpenRegistry(path string) (*Registry, error) {
 		return r, nil // created on first Create
 	}
 	if err != nil {
-		return nil, fmt.Errorf("eventing/meta: read %s: %w", path, err)
+		return nil, fmt.Errorf("slipway/meta: read %s: %w", path, err)
 	}
 	var stored struct {
 		Topics []Topic `json:"topics"`
 	}
 	if err := json.Unmarshal(data, &stored); err != nil {
-		return nil, fmt.Errorf("eventing/meta: parse %s: %w", path, err)
+		return nil, fmt.Errorf("slipway/meta: parse %s: %w", path, err)
 	}
 	for _, t := range stored.Topics {
 		if t.Name == "" {
-			return nil, fmt.Errorf("eventing/meta: %s: topic with empty name", path)
+			return nil, fmt.Errorf("slipway/meta: %s: topic with empty name", path)
 		}
 		if t.Partitions < 1 {
-			return nil, fmt.Errorf("eventing/meta: %s: topic %q has %d partitions", path, t.Name, t.Partitions)
+			return nil, fmt.Errorf("slipway/meta: %s: topic %q has %d partitions", path, t.Name, t.Partitions)
 		}
 		if t.Mode == "" {
 			t.Mode = ModeStream // back-compat with pre-mode files
 		}
 		if t.Mode != ModeStream && t.Mode != ModeQueue {
-			return nil, fmt.Errorf("eventing/meta: %s: topic %q has invalid mode %q", path, t.Name, t.Mode)
+			return nil, fmt.Errorf("slipway/meta: %s: topic %q has invalid mode %q", path, t.Name, t.Mode)
 		}
 		if _, dup := r.topics[t.Name]; dup {
-			return nil, fmt.Errorf("eventing/meta: %s: duplicate topic %q", path, t.Name)
+			return nil, fmt.Errorf("slipway/meta: %s: duplicate topic %q", path, t.Name)
 		}
 		r.topics[t.Name] = t
 	}
@@ -123,7 +123,7 @@ func (r *Registry) CreateWithMode(name string, partitions int, mode string) erro
 	next[name] = Topic{Name: name, Partitions: partitions, Mode: mode}
 	if r.path != "" {
 		if err := persistTopics(r.path, next); err != nil {
-			return fmt.Errorf("eventing/meta: persist %s: %w", r.path, err)
+			return fmt.Errorf("slipway/meta: persist %s: %w", r.path, err)
 		}
 	}
 	r.topics = next

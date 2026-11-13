@@ -1,11 +1,11 @@
-// eventing-cli is the operator/admin tool for the eventing broker.
+// slipway-cli is the operator/admin tool for the slipway broker.
 //
 // Admin (create/list topics, groups) goes over HTTP per ADR-002; data-plane
 // operations (produce/fetch/dlq) go over gRPC.
 //
 // Usage:
 //
-//	eventing-cli [--addr localhost:9093] [--http-addr localhost:9092] [--json] <command> [flags]
+//	slipway-cli [--addr localhost:9093] [--http-addr localhost:9092] [--json] <command> [flags]
 //
 // Commands:
 //
@@ -43,17 +43,17 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 
-	"github.com/rahulkj/eventing/internal/api/eventingpb"
+	"github.com/rahulkj/slipway/internal/api/slipwaypb"
 )
 
 var (
-	addr      = flag.String("addr", envOr("EVENTING_ADDR", "localhost:9093"), "gRPC address of a node (or EVENTING_ADDR)")
-	httpAddr  = flag.String("http-addr", envOr("EVENTING_HTTP_ADDR", "localhost:9092"), "HTTP admin address (or EVENTING_HTTP_ADDR)")
-	peers     = flag.String("peers", envOr("EVENTING_PEERS", ""), "cluster mode: comma-separated node gRPC addresses (route decisions come from the freshest metadata)")
-	httpPeers = flag.String("http-peers", envOr("EVENTING_HTTP_PEERS", ""), "cluster mode: comma-separated node HTTP admin addresses (default: -peers with each port decremented by 1)")
+	addr      = flag.String("addr", envOr("SLIPWAY_ADDR", "localhost:9093"), "gRPC address of a node (or SLIPWAY_ADDR)")
+	httpAddr  = flag.String("http-addr", envOr("SLIPWAY_HTTP_ADDR", "localhost:9092"), "HTTP admin address (or SLIPWAY_HTTP_ADDR)")
+	peers     = flag.String("peers", envOr("SLIPWAY_PEERS", ""), "cluster mode: comma-separated node gRPC addresses (route decisions come from the freshest metadata)")
+	httpPeers = flag.String("http-peers", envOr("SLIPWAY_HTTP_PEERS", ""), "cluster mode: comma-separated node HTTP admin addresses (default: -peers with each port decremented by 1)")
 	jsonOut   = flag.Bool("json", false, "machine-readable JSON output")
-	apiKey    = flag.String("api-key", envOr("EVENTING_API_KEY", ""), "API key for bearer auth (or EVENTING_API_KEY)")
-	caCert    = flag.String("ca-cert", envOr("EVENTING_CA_CERT", ""), "CA certificate for TLS (or EVENTING_CA_CERT); if empty, plaintext insecure dialing is used")
+	apiKey    = flag.String("api-key", envOr("SLIPWAY_API_KEY", ""), "API key for bearer auth (or SLIPWAY_API_KEY)")
+	caCert    = flag.String("ca-cert", envOr("SLIPWAY_CA_CERT", ""), "CA certificate for TLS (or SLIPWAY_CA_CERT); if empty, plaintext insecure dialing is used")
 )
 
 var (
@@ -70,7 +70,7 @@ func envOr(k, def string) string {
 
 // initCluster parses -peers/-http-peers and derives the HTTP list from the
 // gRPC list if not provided (each port decremented by 1, matching the
-// default eventingd layout).
+// default slipwayd layout).
 func initCluster() {
 	if *peers == "" {
 		return
@@ -140,7 +140,7 @@ func main() {
 		os.Exit(2)
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "eventing-cli: %v\n", err)
+		fmt.Fprintf(os.Stderr, "slipway-cli: %v\n", err)
 		os.Exit(1)
 	}
 }
@@ -310,10 +310,10 @@ func cmdListAPIKeys() error {
 }
 
 func usage() {
-	fmt.Fprint(os.Stderr, `usage: eventing-cli [--addr gRPC] [--http-addr HTTP] [--api-key KEY] [--ca-cert PEM] [--json] <command> [flags]
+	fmt.Fprint(os.Stderr, `usage: slipway-cli [--addr gRPC] [--http-addr HTTP] [--api-key KEY] [--ca-cert PEM] [--json] <command> [flags]
 
 commands: create-topic create-queue list produce fetch groups dlq create-apikey revoke-apikey list-apikeys
-see -h on any command for its flags (e.g. eventing-cli produce -h)
+see -h on any command for its flags (e.g. slipway-cli produce -h)
 `)
 }
 
@@ -342,7 +342,7 @@ func tlsConfigForCA() (*tls.Config, error) {
 	return &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS12}, nil
 }
 
-func grpcClientTo(peer string) (eventingpb.EventingServiceClient, *grpc.ClientConn, error) {
+func grpcClientTo(peer string) (slipwaypb.SlipwayServiceClient, *grpc.ClientConn, error) {
 	creds := insecure.NewCredentials()
 	if *caCert != "" {
 		cfg, err := tlsConfigForCA()
@@ -359,7 +359,7 @@ func grpcClientTo(peer string) (eventingpb.EventingServiceClient, *grpc.ClientCo
 	if err != nil {
 		return nil, nil, err
 	}
-	return eventingpb.NewEventingServiceClient(conn), conn, nil
+	return slipwaypb.NewSlipwayServiceClient(conn), conn, nil
 }
 
 type bearerCreds struct{ token string }
@@ -379,14 +379,14 @@ func clusterSeedAddrs() []string {
 
 type metaCache struct {
 	mu   sync.Mutex
-	resp *eventingpb.GetMetadataResponse
+	resp *slipwaypb.GetMetadataResponse
 	hold time.Time
 }
 
 var cache metaCache
 
 // metadata fetches (cached, 2s TTL) the routing view from any responsive node.
-func metadata(ctx context.Context, force bool) (*eventingpb.GetMetadataResponse, error) {
+func metadata(ctx context.Context, force bool) (*slipwaypb.GetMetadataResponse, error) {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	if !force && cache.resp != nil && time.Now().Before(cache.hold) {
@@ -400,7 +400,7 @@ func metadata(ctx context.Context, force bool) (*eventingpb.GetMetadataResponse,
 			continue
 		}
 		mdCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-		md, err := client.GetMetadata(mdCtx, &eventingpb.GetMetadataRequest{})
+		md, err := client.GetMetadata(mdCtx, &slipwaypb.GetMetadataRequest{})
 		cancel()
 		_ = conn.Close()
 		if err != nil {
@@ -497,7 +497,7 @@ func isRetryable(err error) bool {
 // callWithRouting routes a gRPC call to the lease holder for (topic,
 // partition), retrying with metadata refresh on retryable errors. When
 // partition < 0 (keyless produce), it tries seed nodes in order.
-func callWithRouting(ctx context.Context, topic string, partition int32, call func(eventingpb.EventingServiceClient) error) error {
+func callWithRouting(ctx context.Context, topic string, partition int32, call func(slipwaypb.SlipwayServiceClient) error) error {
 	var lastErr error
 	attempt := 0
 	for attempt <= len(clusterSeedAddrs()) {
@@ -660,9 +660,9 @@ func cmdProduce(args []string) error {
 			}
 		}
 	}
-	var resp *eventingpb.ProduceResponse
-	err := callWithRouting(ctx, *topic, partition, func(client eventingpb.EventingServiceClient) error {
-		r, err := client.Produce(ctx, &eventingpb.ProduceRequest{Topic: *topic, Key: keyBytes, Value: []byte(v)})
+	var resp *slipwaypb.ProduceResponse
+	err := callWithRouting(ctx, *topic, partition, func(client slipwaypb.SlipwayServiceClient) error {
+		r, err := client.Produce(ctx, &slipwaypb.ProduceRequest{Topic: *topic, Key: keyBytes, Value: []byte(v)})
 		resp = r
 		return err
 	})
@@ -690,9 +690,9 @@ func cmdFetch(args []string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	var resp *eventingpb.FetchResponse
-	err := callWithRouting(ctx, *topic, int32(*partition), func(client eventingpb.EventingServiceClient) error {
-		r, err := client.Fetch(ctx, &eventingpb.FetchRequest{Topic: *topic, Partition: int32(*partition), Offset: *offset, MaxRecords: int32(*max)})
+	var resp *slipwaypb.FetchResponse
+	err := callWithRouting(ctx, *topic, int32(*partition), func(client slipwaypb.SlipwayServiceClient) error {
+		r, err := client.Fetch(ctx, &slipwaypb.FetchRequest{Topic: *topic, Partition: int32(*partition), Offset: *offset, MaxRecords: int32(*max)})
 		resp = r
 		return err
 	})
@@ -750,13 +750,13 @@ func cmdGroups() error {
 	return tw.Flush()
 }
 
-func dlqFetchAll(ctx context.Context, dlq string) ([]*eventingpb.Record, error) {
-	var out []*eventingpb.Record
+func dlqFetchAll(ctx context.Context, dlq string) ([]*slipwaypb.Record, error) {
+	var out []*slipwaypb.Record
 	off := int64(0)
 	for {
-		var resp *eventingpb.FetchResponse
-		err := callWithRouting(ctx, dlq, 0, func(client eventingpb.EventingServiceClient) error {
-			r, err := client.Fetch(ctx, &eventingpb.FetchRequest{Topic: dlq, Partition: 0, Offset: off, MaxRecords: 256})
+		var resp *slipwaypb.FetchResponse
+		err := callWithRouting(ctx, dlq, 0, func(client slipwaypb.SlipwayServiceClient) error {
+			r, err := client.Fetch(ctx, &slipwaypb.FetchRequest{Topic: dlq, Partition: 0, Offset: off, MaxRecords: 256})
 			resp = r
 			return err
 		})
@@ -826,8 +826,8 @@ func cmdDLQ(args []string) error {
 		}
 		for _, r := range recs {
 			rec := r
-			err := callWithRouting(ctx, queue, -1, func(client eventingpb.EventingServiceClient) error {
-				_, err := client.Produce(ctx, &eventingpb.ProduceRequest{Topic: queue, Key: rec.Key, Value: rec.Value})
+			err := callWithRouting(ctx, queue, -1, func(client slipwaypb.SlipwayServiceClient) error {
+				_, err := client.Produce(ctx, &slipwaypb.ProduceRequest{Topic: queue, Key: rec.Key, Value: rec.Value})
 				return err
 			})
 			if err != nil {

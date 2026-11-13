@@ -20,7 +20,7 @@ import (
 // ErrFenced is returned (wrapped) when a write to an internal topic is
 // rejected because this node does not hold its lease. Callers treat it as
 // retryable after re-resolving the holder.
-var ErrFenced = errors.New("eventing/fence: internal topic fenced on this node")
+var ErrFenced = errors.New("slipway/fence: internal topic fenced on this node")
 
 // Gate reports whether a write to the given internal topic (partition 0)
 // is allowed on this node. A nil Gate allows everything.

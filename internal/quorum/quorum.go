@@ -1,4 +1,4 @@
-// Package quorum implements eventing's embedded metadata quorum: a minimal,
+// Package quorum implements slipway's embedded metadata quorum: a minimal,
 // correct Raft over a small metadata log. It exists because ADR-007 needs a
 // tiny, embeddable consensus for cluster metadata (topics, block
 // descriptors, leases, API keys) without an external dependency.
@@ -56,7 +56,7 @@ type Entry struct {
 
 // ApplyHook, if set, is called synchronously on the node after a metadata
 // entry is applied (both for local proposals and entries replicated from
-// the leader). Used by eventingd to fan topic-create into local registries.
+// the leader). Used by slipwayd to fan topic-create into local registries.
 type ApplyHook func(Entry)
 
 // Role is the Raft role.
@@ -159,7 +159,7 @@ type NodeOptions struct {
 	// HeartbeatInterval is the leader's AppendEntries cadence.
 	HeartbeatInterval time.Duration
 	// ApplyHook, if set, is called synchronously for each entry applied
-	// during recovery replay and at runtime. Used by eventingd to fan
+	// during recovery replay and at runtime. Used by slipwayd to fan
 	// replicated topic-create entries into local registries.
 	ApplyHook ApplyHook
 }
@@ -225,10 +225,10 @@ type Node struct {
 // NewNode creates (or reopens) a node rooted at dir.
 func NewNode(id string, peers []string, dir string, tr Transport, opts *NodeOptions) (*Node, error) {
 	if id == "" || len(peers) < 1 {
-		return nil, errors.New("eventing/quorum: id and at least one peer are required")
+		return nil, errors.New("slipway/quorum: id and at least one peer are required")
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("eventing/quorum: mkdir %s: %w", dir, err)
+		return nil, fmt.Errorf("slipway/quorum: mkdir %s: %w", dir, err)
 	}
 	baseOpts := opts.withDefaults()
 	n := &Node{

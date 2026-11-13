@@ -27,27 +27,27 @@ func ParseFrames(raw []byte) ([]Frame, error) {
 	pos := 0
 	for pos < len(raw) {
 		if len(raw)-pos < 8 { // len prefix + crc
-			return nil, errors.New("eventing/log: truncated frame header")
+			return nil, errors.New("slipway/log: truncated frame header")
 		}
 		bodyLen := binary.BigEndian.Uint32(raw[pos : pos+4])
 		if bodyLen < 28 || bodyLen > 1<<28 {
-			return nil, fmt.Errorf("eventing/log: implausible frame body length %d", bodyLen)
+			return nil, fmt.Errorf("slipway/log: implausible frame body length %d", bodyLen)
 		}
 		end := pos + 4 + int(bodyLen)
 		if end > len(raw) {
-			return nil, errors.New("eventing/log: truncated frame body")
+			return nil, errors.New("slipway/log: truncated frame body")
 		}
 		buf := raw[pos+4 : end]
 		body := buf[4:]
 		if crc32.ChecksumIEEE(body) != binary.BigEndian.Uint32(buf[0:4]) {
-			return nil, fmt.Errorf("eventing/log: crc mismatch at byte %d", pos)
+			return nil, fmt.Errorf("slipway/log: crc mismatch at byte %d", pos)
 		}
 		offset := int64(binary.BigEndian.Uint64(body[0:8]))
 		ts := int64(binary.BigEndian.Uint64(body[8:16]))
 		keyLen := int(binary.BigEndian.Uint32(body[16:20]))
 		valueLen := int(binary.BigEndian.Uint32(body[20:24]))
 		if len(body) != 24+keyLen+valueLen {
-			return nil, fmt.Errorf("eventing/log: frame at byte %d has inconsistent lengths", pos)
+			return nil, fmt.Errorf("slipway/log: frame at byte %d has inconsistent lengths", pos)
 		}
 		out = append(out, Frame{
 			Offset: offset,

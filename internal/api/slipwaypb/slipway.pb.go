@@ -2,13 +2,13 @@
 // versions:
 // 	protoc-gen-go v1.36.12
 // 	protoc        (unknown)
-// source: eventing.proto
+// source: slipway.proto
 
-// EventingService is the v1 hot path (docs/adr/002-api.md): clean API,
-// not a Kafka wire protocol. HTTP/JSON is used only for admin (create
-// list topics, health), not for produce/fetch.
+// SlipwayService is the v1 hot path (docs/adr/002-api.md): clean API, not a
+// wire protocol compatible with any other broker. HTTP/JSON is used only
+// for admin (create list topics, health), not for produce/fetch.
 
-package eventingpb
+package slipwaypb
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -38,7 +38,7 @@ type ProduceRequest struct {
 
 func (x *ProduceRequest) Reset() {
 	*x = ProduceRequest{}
-	mi := &file_eventing_proto_msgTypes[0]
+	mi := &file_slipway_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -50,7 +50,7 @@ func (x *ProduceRequest) String() string {
 func (*ProduceRequest) ProtoMessage() {}
 
 func (x *ProduceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[0]
+	mi := &file_slipway_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -63,7 +63,7 @@ func (x *ProduceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProduceRequest.ProtoReflect.Descriptor instead.
 func (*ProduceRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{0}
+	return file_slipway_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *ProduceRequest) GetTopic() string {
@@ -97,7 +97,7 @@ type ProduceResponse struct {
 
 func (x *ProduceResponse) Reset() {
 	*x = ProduceResponse{}
-	mi := &file_eventing_proto_msgTypes[1]
+	mi := &file_slipway_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -109,7 +109,7 @@ func (x *ProduceResponse) String() string {
 func (*ProduceResponse) ProtoMessage() {}
 
 func (x *ProduceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[1]
+	mi := &file_slipway_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -122,7 +122,7 @@ func (x *ProduceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ProduceResponse.ProtoReflect.Descriptor instead.
 func (*ProduceResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{1}
+	return file_slipway_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *ProduceResponse) GetPartition() int32 {
@@ -152,7 +152,7 @@ type FetchRequest struct {
 
 func (x *FetchRequest) Reset() {
 	*x = FetchRequest{}
-	mi := &file_eventing_proto_msgTypes[2]
+	mi := &file_slipway_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -164,7 +164,7 @@ func (x *FetchRequest) String() string {
 func (*FetchRequest) ProtoMessage() {}
 
 func (x *FetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[2]
+	mi := &file_slipway_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -177,7 +177,7 @@ func (x *FetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchRequest.ProtoReflect.Descriptor instead.
 func (*FetchRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{2}
+	return file_slipway_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *FetchRequest) GetTopic() string {
@@ -217,7 +217,7 @@ type FetchResponse struct {
 
 func (x *FetchResponse) Reset() {
 	*x = FetchResponse{}
-	mi := &file_eventing_proto_msgTypes[3]
+	mi := &file_slipway_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -229,7 +229,7 @@ func (x *FetchResponse) String() string {
 func (*FetchResponse) ProtoMessage() {}
 
 func (x *FetchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[3]
+	mi := &file_slipway_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -242,7 +242,7 @@ func (x *FetchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchResponse.ProtoReflect.Descriptor instead.
 func (*FetchResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{3}
+	return file_slipway_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *FetchResponse) GetRecords() []*Record {
@@ -263,7 +263,7 @@ type Record struct {
 
 func (x *Record) Reset() {
 	*x = Record{}
-	mi := &file_eventing_proto_msgTypes[4]
+	mi := &file_slipway_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -275,7 +275,7 @@ func (x *Record) String() string {
 func (*Record) ProtoMessage() {}
 
 func (x *Record) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[4]
+	mi := &file_slipway_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -288,7 +288,7 @@ func (x *Record) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Record.ProtoReflect.Descriptor instead.
 func (*Record) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{4}
+	return file_slipway_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *Record) GetOffset() int64 {
@@ -322,7 +322,7 @@ type TopicAssignment struct {
 
 func (x *TopicAssignment) Reset() {
 	*x = TopicAssignment{}
-	mi := &file_eventing_proto_msgTypes[5]
+	mi := &file_slipway_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -334,7 +334,7 @@ func (x *TopicAssignment) String() string {
 func (*TopicAssignment) ProtoMessage() {}
 
 func (x *TopicAssignment) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[5]
+	mi := &file_slipway_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -347,7 +347,7 @@ func (x *TopicAssignment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TopicAssignment.ProtoReflect.Descriptor instead.
 func (*TopicAssignment) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{5}
+	return file_slipway_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *TopicAssignment) GetTopic() string {
@@ -377,7 +377,7 @@ type JoinGroupRequest struct {
 
 func (x *JoinGroupRequest) Reset() {
 	*x = JoinGroupRequest{}
-	mi := &file_eventing_proto_msgTypes[6]
+	mi := &file_slipway_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -389,7 +389,7 @@ func (x *JoinGroupRequest) String() string {
 func (*JoinGroupRequest) ProtoMessage() {}
 
 func (x *JoinGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[6]
+	mi := &file_slipway_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -402,7 +402,7 @@ func (x *JoinGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JoinGroupRequest.ProtoReflect.Descriptor instead.
 func (*JoinGroupRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{6}
+	return file_slipway_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *JoinGroupRequest) GetGroupId() string {
@@ -454,7 +454,7 @@ type JoinGroupResponse struct {
 
 func (x *JoinGroupResponse) Reset() {
 	*x = JoinGroupResponse{}
-	mi := &file_eventing_proto_msgTypes[7]
+	mi := &file_slipway_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -466,7 +466,7 @@ func (x *JoinGroupResponse) String() string {
 func (*JoinGroupResponse) ProtoMessage() {}
 
 func (x *JoinGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[7]
+	mi := &file_slipway_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -479,7 +479,7 @@ func (x *JoinGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JoinGroupResponse.ProtoReflect.Descriptor instead.
 func (*JoinGroupResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{7}
+	return file_slipway_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *JoinGroupResponse) GetMemberId() string {
@@ -535,7 +535,7 @@ type SyncGroupRequest struct {
 
 func (x *SyncGroupRequest) Reset() {
 	*x = SyncGroupRequest{}
-	mi := &file_eventing_proto_msgTypes[8]
+	mi := &file_slipway_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -547,7 +547,7 @@ func (x *SyncGroupRequest) String() string {
 func (*SyncGroupRequest) ProtoMessage() {}
 
 func (x *SyncGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[8]
+	mi := &file_slipway_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -560,7 +560,7 @@ func (x *SyncGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncGroupRequest.ProtoReflect.Descriptor instead.
 func (*SyncGroupRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{8}
+	return file_slipway_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *SyncGroupRequest) GetGroupId() string {
@@ -594,7 +594,7 @@ type SyncGroupResponse struct {
 
 func (x *SyncGroupResponse) Reset() {
 	*x = SyncGroupResponse{}
-	mi := &file_eventing_proto_msgTypes[9]
+	mi := &file_slipway_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -606,7 +606,7 @@ func (x *SyncGroupResponse) String() string {
 func (*SyncGroupResponse) ProtoMessage() {}
 
 func (x *SyncGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[9]
+	mi := &file_slipway_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -619,7 +619,7 @@ func (x *SyncGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncGroupResponse.ProtoReflect.Descriptor instead.
 func (*SyncGroupResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{9}
+	return file_slipway_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *SyncGroupResponse) GetAssignment() []*TopicAssignment {
@@ -647,7 +647,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_eventing_proto_msgTypes[10]
+	mi := &file_slipway_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -659,7 +659,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[10]
+	mi := &file_slipway_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -672,7 +672,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{10}
+	return file_slipway_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *HeartbeatRequest) GetGroupId() string {
@@ -706,7 +706,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_eventing_proto_msgTypes[11]
+	mi := &file_slipway_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -718,7 +718,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[11]
+	mi := &file_slipway_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -731,7 +731,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{11}
+	return file_slipway_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *HeartbeatResponse) GetGenerationId() int64 {
@@ -758,7 +758,7 @@ type LeaveGroupRequest struct {
 
 func (x *LeaveGroupRequest) Reset() {
 	*x = LeaveGroupRequest{}
-	mi := &file_eventing_proto_msgTypes[12]
+	mi := &file_slipway_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -770,7 +770,7 @@ func (x *LeaveGroupRequest) String() string {
 func (*LeaveGroupRequest) ProtoMessage() {}
 
 func (x *LeaveGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[12]
+	mi := &file_slipway_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -783,7 +783,7 @@ func (x *LeaveGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeaveGroupRequest.ProtoReflect.Descriptor instead.
 func (*LeaveGroupRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{12}
+	return file_slipway_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *LeaveGroupRequest) GetGroupId() string {
@@ -808,7 +808,7 @@ type LeaveGroupResponse struct {
 
 func (x *LeaveGroupResponse) Reset() {
 	*x = LeaveGroupResponse{}
-	mi := &file_eventing_proto_msgTypes[13]
+	mi := &file_slipway_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -820,7 +820,7 @@ func (x *LeaveGroupResponse) String() string {
 func (*LeaveGroupResponse) ProtoMessage() {}
 
 func (x *LeaveGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[13]
+	mi := &file_slipway_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -833,7 +833,7 @@ func (x *LeaveGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeaveGroupResponse.ProtoReflect.Descriptor instead.
 func (*LeaveGroupResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{13}
+	return file_slipway_proto_rawDescGZIP(), []int{13}
 }
 
 type CommitOffsetRequest struct {
@@ -850,7 +850,7 @@ type CommitOffsetRequest struct {
 
 func (x *CommitOffsetRequest) Reset() {
 	*x = CommitOffsetRequest{}
-	mi := &file_eventing_proto_msgTypes[14]
+	mi := &file_slipway_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -862,7 +862,7 @@ func (x *CommitOffsetRequest) String() string {
 func (*CommitOffsetRequest) ProtoMessage() {}
 
 func (x *CommitOffsetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[14]
+	mi := &file_slipway_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -875,7 +875,7 @@ func (x *CommitOffsetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitOffsetRequest.ProtoReflect.Descriptor instead.
 func (*CommitOffsetRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{14}
+	return file_slipway_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *CommitOffsetRequest) GetGroupId() string {
@@ -928,7 +928,7 @@ type CommitOffsetResponse struct {
 
 func (x *CommitOffsetResponse) Reset() {
 	*x = CommitOffsetResponse{}
-	mi := &file_eventing_proto_msgTypes[15]
+	mi := &file_slipway_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -940,7 +940,7 @@ func (x *CommitOffsetResponse) String() string {
 func (*CommitOffsetResponse) ProtoMessage() {}
 
 func (x *CommitOffsetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[15]
+	mi := &file_slipway_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -953,7 +953,7 @@ func (x *CommitOffsetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitOffsetResponse.ProtoReflect.Descriptor instead.
 func (*CommitOffsetResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{15}
+	return file_slipway_proto_rawDescGZIP(), []int{15}
 }
 
 type FetchOffsetRequest struct {
@@ -967,7 +967,7 @@ type FetchOffsetRequest struct {
 
 func (x *FetchOffsetRequest) Reset() {
 	*x = FetchOffsetRequest{}
-	mi := &file_eventing_proto_msgTypes[16]
+	mi := &file_slipway_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -979,7 +979,7 @@ func (x *FetchOffsetRequest) String() string {
 func (*FetchOffsetRequest) ProtoMessage() {}
 
 func (x *FetchOffsetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[16]
+	mi := &file_slipway_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -992,7 +992,7 @@ func (x *FetchOffsetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchOffsetRequest.ProtoReflect.Descriptor instead.
 func (*FetchOffsetRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{16}
+	return file_slipway_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *FetchOffsetRequest) GetGroupId() string {
@@ -1028,7 +1028,7 @@ type FetchOffsetResponse struct {
 
 func (x *FetchOffsetResponse) Reset() {
 	*x = FetchOffsetResponse{}
-	mi := &file_eventing_proto_msgTypes[17]
+	mi := &file_slipway_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1040,7 +1040,7 @@ func (x *FetchOffsetResponse) String() string {
 func (*FetchOffsetResponse) ProtoMessage() {}
 
 func (x *FetchOffsetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[17]
+	mi := &file_slipway_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1053,7 +1053,7 @@ func (x *FetchOffsetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchOffsetResponse.ProtoReflect.Descriptor instead.
 func (*FetchOffsetResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{17}
+	return file_slipway_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *FetchOffsetResponse) GetOffset() int64 {
@@ -1097,7 +1097,7 @@ type OffsetEntry struct {
 
 func (x *OffsetEntry) Reset() {
 	*x = OffsetEntry{}
-	mi := &file_eventing_proto_msgTypes[18]
+	mi := &file_slipway_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1109,7 +1109,7 @@ func (x *OffsetEntry) String() string {
 func (*OffsetEntry) ProtoMessage() {}
 
 func (x *OffsetEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[18]
+	mi := &file_slipway_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1122,7 +1122,7 @@ func (x *OffsetEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OffsetEntry.ProtoReflect.Descriptor instead.
 func (*OffsetEntry) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{18}
+	return file_slipway_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *OffsetEntry) GetTopic() string {
@@ -1169,7 +1169,7 @@ type FetchGroupOffsetsRequest struct {
 
 func (x *FetchGroupOffsetsRequest) Reset() {
 	*x = FetchGroupOffsetsRequest{}
-	mi := &file_eventing_proto_msgTypes[19]
+	mi := &file_slipway_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1181,7 +1181,7 @@ func (x *FetchGroupOffsetsRequest) String() string {
 func (*FetchGroupOffsetsRequest) ProtoMessage() {}
 
 func (x *FetchGroupOffsetsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[19]
+	mi := &file_slipway_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1194,7 +1194,7 @@ func (x *FetchGroupOffsetsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchGroupOffsetsRequest.ProtoReflect.Descriptor instead.
 func (*FetchGroupOffsetsRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{19}
+	return file_slipway_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *FetchGroupOffsetsRequest) GetGroupId() string {
@@ -1213,7 +1213,7 @@ type FetchGroupOffsetsResponse struct {
 
 func (x *FetchGroupOffsetsResponse) Reset() {
 	*x = FetchGroupOffsetsResponse{}
-	mi := &file_eventing_proto_msgTypes[20]
+	mi := &file_slipway_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1225,7 +1225,7 @@ func (x *FetchGroupOffsetsResponse) String() string {
 func (*FetchGroupOffsetsResponse) ProtoMessage() {}
 
 func (x *FetchGroupOffsetsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[20]
+	mi := &file_slipway_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1238,7 +1238,7 @@ func (x *FetchGroupOffsetsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchGroupOffsetsResponse.ProtoReflect.Descriptor instead.
 func (*FetchGroupOffsetsResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{20}
+	return file_slipway_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *FetchGroupOffsetsResponse) GetOffsets() []*OffsetEntry {
@@ -1264,7 +1264,7 @@ type QueueDelivery struct {
 
 func (x *QueueDelivery) Reset() {
 	*x = QueueDelivery{}
-	mi := &file_eventing_proto_msgTypes[21]
+	mi := &file_slipway_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1276,7 +1276,7 @@ func (x *QueueDelivery) String() string {
 func (*QueueDelivery) ProtoMessage() {}
 
 func (x *QueueDelivery) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[21]
+	mi := &file_slipway_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1289,7 +1289,7 @@ func (x *QueueDelivery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueueDelivery.ProtoReflect.Descriptor instead.
 func (*QueueDelivery) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{21}
+	return file_slipway_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *QueueDelivery) GetDeliveryId() string {
@@ -1359,7 +1359,7 @@ type PullRequest struct {
 
 func (x *PullRequest) Reset() {
 	*x = PullRequest{}
-	mi := &file_eventing_proto_msgTypes[22]
+	mi := &file_slipway_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1371,7 +1371,7 @@ func (x *PullRequest) String() string {
 func (*PullRequest) ProtoMessage() {}
 
 func (x *PullRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[22]
+	mi := &file_slipway_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1384,7 +1384,7 @@ func (x *PullRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullRequest.ProtoReflect.Descriptor instead.
 func (*PullRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{22}
+	return file_slipway_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *PullRequest) GetQueue() string {
@@ -1417,7 +1417,7 @@ type PullResponse struct {
 
 func (x *PullResponse) Reset() {
 	*x = PullResponse{}
-	mi := &file_eventing_proto_msgTypes[23]
+	mi := &file_slipway_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1429,7 +1429,7 @@ func (x *PullResponse) String() string {
 func (*PullResponse) ProtoMessage() {}
 
 func (x *PullResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[23]
+	mi := &file_slipway_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1442,7 +1442,7 @@ func (x *PullResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullResponse.ProtoReflect.Descriptor instead.
 func (*PullResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{23}
+	return file_slipway_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *PullResponse) GetDeliveries() []*QueueDelivery {
@@ -1462,7 +1462,7 @@ type AckRequest struct {
 
 func (x *AckRequest) Reset() {
 	*x = AckRequest{}
-	mi := &file_eventing_proto_msgTypes[24]
+	mi := &file_slipway_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1474,7 +1474,7 @@ func (x *AckRequest) String() string {
 func (*AckRequest) ProtoMessage() {}
 
 func (x *AckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[24]
+	mi := &file_slipway_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1487,7 +1487,7 @@ func (x *AckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckRequest.ProtoReflect.Descriptor instead.
 func (*AckRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{24}
+	return file_slipway_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *AckRequest) GetQueue() string {
@@ -1512,7 +1512,7 @@ type AckResponse struct {
 
 func (x *AckResponse) Reset() {
 	*x = AckResponse{}
-	mi := &file_eventing_proto_msgTypes[25]
+	mi := &file_slipway_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1524,7 +1524,7 @@ func (x *AckResponse) String() string {
 func (*AckResponse) ProtoMessage() {}
 
 func (x *AckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[25]
+	mi := &file_slipway_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1537,7 +1537,7 @@ func (x *AckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckResponse.ProtoReflect.Descriptor instead.
 func (*AckResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{25}
+	return file_slipway_proto_rawDescGZIP(), []int{25}
 }
 
 type QuorumMessageRequest struct {
@@ -1549,7 +1549,7 @@ type QuorumMessageRequest struct {
 
 func (x *QuorumMessageRequest) Reset() {
 	*x = QuorumMessageRequest{}
-	mi := &file_eventing_proto_msgTypes[26]
+	mi := &file_slipway_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1561,7 +1561,7 @@ func (x *QuorumMessageRequest) String() string {
 func (*QuorumMessageRequest) ProtoMessage() {}
 
 func (x *QuorumMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[26]
+	mi := &file_slipway_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1574,7 +1574,7 @@ func (x *QuorumMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuorumMessageRequest.ProtoReflect.Descriptor instead.
 func (*QuorumMessageRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{26}
+	return file_slipway_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *QuorumMessageRequest) GetPayload() []byte {
@@ -1592,7 +1592,7 @@ type QuorumMessageResponse struct {
 
 func (x *QuorumMessageResponse) Reset() {
 	*x = QuorumMessageResponse{}
-	mi := &file_eventing_proto_msgTypes[27]
+	mi := &file_slipway_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1604,7 +1604,7 @@ func (x *QuorumMessageResponse) String() string {
 func (*QuorumMessageResponse) ProtoMessage() {}
 
 func (x *QuorumMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[27]
+	mi := &file_slipway_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1617,7 +1617,7 @@ func (x *QuorumMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuorumMessageResponse.ProtoReflect.Descriptor instead.
 func (*QuorumMessageResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{27}
+	return file_slipway_proto_rawDescGZIP(), []int{27}
 }
 
 type ReplicaFetchRequest struct {
@@ -1632,7 +1632,7 @@ type ReplicaFetchRequest struct {
 
 func (x *ReplicaFetchRequest) Reset() {
 	*x = ReplicaFetchRequest{}
-	mi := &file_eventing_proto_msgTypes[28]
+	mi := &file_slipway_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1644,7 +1644,7 @@ func (x *ReplicaFetchRequest) String() string {
 func (*ReplicaFetchRequest) ProtoMessage() {}
 
 func (x *ReplicaFetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[28]
+	mi := &file_slipway_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1657,7 +1657,7 @@ func (x *ReplicaFetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaFetchRequest.ProtoReflect.Descriptor instead.
 func (*ReplicaFetchRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{28}
+	return file_slipway_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *ReplicaFetchRequest) GetTopic() string {
@@ -1697,7 +1697,7 @@ type ReplicaFetchResponse struct {
 
 func (x *ReplicaFetchResponse) Reset() {
 	*x = ReplicaFetchResponse{}
-	mi := &file_eventing_proto_msgTypes[29]
+	mi := &file_slipway_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1709,7 +1709,7 @@ func (x *ReplicaFetchResponse) String() string {
 func (*ReplicaFetchResponse) ProtoMessage() {}
 
 func (x *ReplicaFetchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[29]
+	mi := &file_slipway_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1722,7 +1722,7 @@ func (x *ReplicaFetchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaFetchResponse.ProtoReflect.Descriptor instead.
 func (*ReplicaFetchResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{29}
+	return file_slipway_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *ReplicaFetchResponse) GetFrames() []byte {
@@ -1744,7 +1744,7 @@ type ReplicaPutRequest struct {
 
 func (x *ReplicaPutRequest) Reset() {
 	*x = ReplicaPutRequest{}
-	mi := &file_eventing_proto_msgTypes[30]
+	mi := &file_slipway_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1756,7 +1756,7 @@ func (x *ReplicaPutRequest) String() string {
 func (*ReplicaPutRequest) ProtoMessage() {}
 
 func (x *ReplicaPutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[30]
+	mi := &file_slipway_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1769,7 +1769,7 @@ func (x *ReplicaPutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaPutRequest.ProtoReflect.Descriptor instead.
 func (*ReplicaPutRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{30}
+	return file_slipway_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *ReplicaPutRequest) GetTopic() string {
@@ -1809,7 +1809,7 @@ type ReplicaPutResponse struct {
 
 func (x *ReplicaPutResponse) Reset() {
 	*x = ReplicaPutResponse{}
-	mi := &file_eventing_proto_msgTypes[31]
+	mi := &file_slipway_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1821,7 +1821,7 @@ func (x *ReplicaPutResponse) String() string {
 func (*ReplicaPutResponse) ProtoMessage() {}
 
 func (x *ReplicaPutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[31]
+	mi := &file_slipway_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1834,7 +1834,7 @@ func (x *ReplicaPutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaPutResponse.ProtoReflect.Descriptor instead.
 func (*ReplicaPutResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{31}
+	return file_slipway_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *ReplicaPutResponse) GetHighWatermark() int64 {
@@ -1855,7 +1855,7 @@ type PartitionMetadata struct {
 
 func (x *PartitionMetadata) Reset() {
 	*x = PartitionMetadata{}
-	mi := &file_eventing_proto_msgTypes[32]
+	mi := &file_slipway_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1867,7 +1867,7 @@ func (x *PartitionMetadata) String() string {
 func (*PartitionMetadata) ProtoMessage() {}
 
 func (x *PartitionMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[32]
+	mi := &file_slipway_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1880,7 +1880,7 @@ func (x *PartitionMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartitionMetadata.ProtoReflect.Descriptor instead.
 func (*PartitionMetadata) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{32}
+	return file_slipway_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *PartitionMetadata) GetPartitionId() int32 {
@@ -1916,7 +1916,7 @@ type TopicMetadata struct {
 
 func (x *TopicMetadata) Reset() {
 	*x = TopicMetadata{}
-	mi := &file_eventing_proto_msgTypes[33]
+	mi := &file_slipway_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1928,7 +1928,7 @@ func (x *TopicMetadata) String() string {
 func (*TopicMetadata) ProtoMessage() {}
 
 func (x *TopicMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[33]
+	mi := &file_slipway_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1941,7 +1941,7 @@ func (x *TopicMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TopicMetadata.ProtoReflect.Descriptor instead.
 func (*TopicMetadata) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{33}
+	return file_slipway_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *TopicMetadata) GetName() string {
@@ -1983,7 +1983,7 @@ type BrokerMetadata struct {
 
 func (x *BrokerMetadata) Reset() {
 	*x = BrokerMetadata{}
-	mi := &file_eventing_proto_msgTypes[34]
+	mi := &file_slipway_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1995,7 +1995,7 @@ func (x *BrokerMetadata) String() string {
 func (*BrokerMetadata) ProtoMessage() {}
 
 func (x *BrokerMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[34]
+	mi := &file_slipway_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2008,7 +2008,7 @@ func (x *BrokerMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrokerMetadata.ProtoReflect.Descriptor instead.
 func (*BrokerMetadata) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{34}
+	return file_slipway_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *BrokerMetadata) GetId() string {
@@ -2041,7 +2041,7 @@ type GetMetadataRequest struct {
 
 func (x *GetMetadataRequest) Reset() {
 	*x = GetMetadataRequest{}
-	mi := &file_eventing_proto_msgTypes[35]
+	mi := &file_slipway_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2053,7 +2053,7 @@ func (x *GetMetadataRequest) String() string {
 func (*GetMetadataRequest) ProtoMessage() {}
 
 func (x *GetMetadataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[35]
+	mi := &file_slipway_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2066,7 +2066,7 @@ func (x *GetMetadataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMetadataRequest.ProtoReflect.Descriptor instead.
 func (*GetMetadataRequest) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{35}
+	return file_slipway_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *GetMetadataRequest) GetTopics() []string {
@@ -2086,7 +2086,7 @@ type GetMetadataResponse struct {
 
 func (x *GetMetadataResponse) Reset() {
 	*x = GetMetadataResponse{}
-	mi := &file_eventing_proto_msgTypes[36]
+	mi := &file_slipway_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2098,7 +2098,7 @@ func (x *GetMetadataResponse) String() string {
 func (*GetMetadataResponse) ProtoMessage() {}
 
 func (x *GetMetadataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_eventing_proto_msgTypes[36]
+	mi := &file_slipway_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2111,7 +2111,7 @@ func (x *GetMetadataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMetadataResponse.ProtoReflect.Descriptor instead.
 func (*GetMetadataResponse) Descriptor() ([]byte, []int) {
-	return file_eventing_proto_rawDescGZIP(), []int{36}
+	return file_slipway_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *GetMetadataResponse) GetBrokers() []*BrokerMetadata {
@@ -2128,11 +2128,12 @@ func (x *GetMetadataResponse) GetTopics() []*TopicMetadata {
 	return nil
 }
 
-var File_eventing_proto protoreflect.FileDescriptor
+var File_slipway_proto protoreflect.FileDescriptor
 
-const file_eventing_proto_rawDesc = "" +
+const file_slipway_proto_rawDesc = "" +
 	"\n" +
-	"\x0eeventing.proto\x12\veventing.v1\"N\n" +
+	"\rslipway.proto\x12\n" +
+	"slipway.v1\"N\n" +
 	"\x0eProduceRequest\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\fR\x03key\x12\x14\n" +
@@ -2145,9 +2146,9 @@ const file_eventing_proto_rawDesc = "" +
 	"\tpartition\x18\x02 \x01(\x05R\tpartition\x12\x16\n" +
 	"\x06offset\x18\x03 \x01(\x03R\x06offset\x12\x1f\n" +
 	"\vmax_records\x18\x04 \x01(\x05R\n" +
-	"maxRecords\">\n" +
-	"\rFetchResponse\x12-\n" +
-	"\arecords\x18\x01 \x03(\v2\x13.eventing.v1.RecordR\arecords\"H\n" +
+	"maxRecords\"=\n" +
+	"\rFetchResponse\x12,\n" +
+	"\arecords\x18\x01 \x03(\v2\x12.slipway.v1.RecordR\arecords\"H\n" +
 	"\x06Record\x12\x16\n" +
 	"\x06offset\x18\x01 \x01(\x03R\x06offset\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\fR\x03key\x12\x14\n" +
@@ -2162,23 +2163,23 @@ const file_eventing_proto_rawDesc = "" +
 	"\tmember_id\x18\x02 \x01(\tR\bmemberId\x12\x16\n" +
 	"\x06topics\x18\x03 \x03(\tR\x06topics\x12\x1a\n" +
 	"\bprotocol\x18\x04 \x01(\tR\bprotocol\x12,\n" +
-	"\x12session_timeout_ms\x18\x05 \x01(\x03R\x10sessionTimeoutMs\"\xe1\x01\n" +
+	"\x12session_timeout_ms\x18\x05 \x01(\x03R\x10sessionTimeoutMs\"\xe0\x01\n" +
 	"\x11JoinGroupResponse\x12\x1b\n" +
 	"\tmember_id\x18\x01 \x01(\tR\bmemberId\x12#\n" +
 	"\rgeneration_id\x18\x02 \x01(\x03R\fgenerationId\x12\x16\n" +
-	"\x06leader\x18\x03 \x01(\bR\x06leader\x12<\n" +
+	"\x06leader\x18\x03 \x01(\bR\x06leader\x12;\n" +
 	"\n" +
-	"assignment\x18\x04 \x03(\v2\x1c.eventing.v1.TopicAssignmentR\n" +
+	"assignment\x18\x04 \x03(\v2\x1b.slipway.v1.TopicAssignmentR\n" +
 	"assignment\x12\x18\n" +
 	"\amembers\x18\x05 \x03(\tR\amembers\x12\x1a\n" +
 	"\bprotocol\x18\x06 \x01(\tR\bprotocol\"o\n" +
 	"\x10SyncGroupRequest\x12\x19\n" +
 	"\bgroup_id\x18\x01 \x01(\tR\agroupId\x12\x1b\n" +
 	"\tmember_id\x18\x02 \x01(\tR\bmemberId\x12#\n" +
-	"\rgeneration_id\x18\x03 \x01(\x03R\fgenerationId\"v\n" +
-	"\x11SyncGroupResponse\x12<\n" +
+	"\rgeneration_id\x18\x03 \x01(\x03R\fgenerationId\"u\n" +
+	"\x11SyncGroupResponse\x12;\n" +
 	"\n" +
-	"assignment\x18\x01 \x03(\v2\x1c.eventing.v1.TopicAssignmentR\n" +
+	"assignment\x18\x01 \x03(\v2\x1b.slipway.v1.TopicAssignmentR\n" +
 	"assignment\x12#\n" +
 	"\rgeneration_id\x18\x02 \x01(\x03R\fgenerationId\"o\n" +
 	"\x10HeartbeatRequest\x12\x19\n" +
@@ -2217,9 +2218,9 @@ const file_eventing_proto_rawDesc = "" +
 	"\rgeneration_id\x18\x04 \x01(\x03R\fgenerationId\x12\x16\n" +
 	"\x06leader\x18\x05 \x01(\tR\x06leader\"5\n" +
 	"\x18FetchGroupOffsetsRequest\x12\x19\n" +
-	"\bgroup_id\x18\x01 \x01(\tR\agroupId\"O\n" +
-	"\x19FetchGroupOffsetsResponse\x122\n" +
-	"\aoffsets\x18\x01 \x03(\v2\x18.eventing.v1.OffsetEntryR\aoffsets\"\xe1\x01\n" +
+	"\bgroup_id\x18\x01 \x01(\tR\agroupId\"N\n" +
+	"\x19FetchGroupOffsetsResponse\x121\n" +
+	"\aoffsets\x18\x01 \x03(\v2\x17.slipway.v1.OffsetEntryR\aoffsets\"\xe1\x01\n" +
 	"\rQueueDelivery\x12\x1f\n" +
 	"\vdelivery_id\x18\x01 \x01(\tR\n" +
 	"deliveryId\x12\x14\n" +
@@ -2234,10 +2235,10 @@ const file_eventing_proto_rawDesc = "" +
 	"\vPullRequest\x12\x14\n" +
 	"\x05queue\x18\x01 \x01(\tR\x05queue\x12!\n" +
 	"\fmax_messages\x18\x02 \x01(\x05R\vmaxMessages\x122\n" +
-	"\x15visibility_timeout_ms\x18\x03 \x01(\x03R\x13visibilityTimeoutMs\"J\n" +
-	"\fPullResponse\x12:\n" +
+	"\x15visibility_timeout_ms\x18\x03 \x01(\x03R\x13visibilityTimeoutMs\"I\n" +
+	"\fPullResponse\x129\n" +
 	"\n" +
-	"deliveries\x18\x01 \x03(\v2\x1a.eventing.v1.QueueDeliveryR\n" +
+	"deliveries\x18\x01 \x03(\v2\x19.slipway.v1.QueueDeliveryR\n" +
 	"deliveries\"C\n" +
 	"\n" +
 	"AckRequest\x12\x14\n" +
@@ -2268,135 +2269,135 @@ const file_eventing_proto_rawDesc = "" +
 	"\fpartition_id\x18\x01 \x01(\x05R\vpartitionId\x12\x16\n" +
 	"\x06leader\x18\x02 \x01(\tR\x06leader\x12\x1f\n" +
 	"\vleader_addr\x18\x03 \x01(\tR\n" +
-	"leaderAddr\"\xa0\x01\n" +
+	"leaderAddr\"\x9f\x01\n" +
 	"\rTopicMetadata\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1e\n" +
 	"\n" +
 	"partitions\x18\x02 \x01(\x05R\n" +
 	"partitions\x12\x12\n" +
-	"\x04mode\x18\x03 \x01(\tR\x04mode\x12G\n" +
-	"\x0fpartitions_meta\x18\x04 \x03(\v2\x1e.eventing.v1.PartitionMetadataR\x0epartitionsMeta\"Q\n" +
+	"\x04mode\x18\x03 \x01(\tR\x04mode\x12F\n" +
+	"\x0fpartitions_meta\x18\x04 \x03(\v2\x1d.slipway.v1.PartitionMetadataR\x0epartitionsMeta\"Q\n" +
 	"\x0eBrokerMetadata\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
 	"\x04addr\x18\x02 \x01(\tR\x04addr\x12\x1b\n" +
 	"\tis_leader\x18\x03 \x01(\bR\bisLeader\",\n" +
 	"\x12GetMetadataRequest\x12\x16\n" +
-	"\x06topics\x18\x01 \x03(\tR\x06topics\"\x80\x01\n" +
-	"\x13GetMetadataResponse\x125\n" +
-	"\abrokers\x18\x01 \x03(\v2\x1b.eventing.v1.BrokerMetadataR\abrokers\x122\n" +
-	"\x06topics\x18\x02 \x03(\v2\x1a.eventing.v1.TopicMetadataR\x06topics2\x9e\a\n" +
-	"\x0fEventingService\x12D\n" +
-	"\aProduce\x12\x1b.eventing.v1.ProduceRequest\x1a\x1c.eventing.v1.ProduceResponse\x12>\n" +
-	"\x05Fetch\x12\x19.eventing.v1.FetchRequest\x1a\x1a.eventing.v1.FetchResponse\x12J\n" +
-	"\tJoinGroup\x12\x1d.eventing.v1.JoinGroupRequest\x1a\x1e.eventing.v1.JoinGroupResponse\x12J\n" +
-	"\tSyncGroup\x12\x1d.eventing.v1.SyncGroupRequest\x1a\x1e.eventing.v1.SyncGroupResponse\x12J\n" +
-	"\tHeartbeat\x12\x1d.eventing.v1.HeartbeatRequest\x1a\x1e.eventing.v1.HeartbeatResponse\x12M\n" +
+	"\x06topics\x18\x01 \x03(\tR\x06topics\"~\n" +
+	"\x13GetMetadataResponse\x124\n" +
+	"\abrokers\x18\x01 \x03(\v2\x1a.slipway.v1.BrokerMetadataR\abrokers\x121\n" +
+	"\x06topics\x18\x02 \x03(\v2\x19.slipway.v1.TopicMetadataR\x06topics2\x85\a\n" +
+	"\x0eSlipwayService\x12B\n" +
+	"\aProduce\x12\x1a.slipway.v1.ProduceRequest\x1a\x1b.slipway.v1.ProduceResponse\x12<\n" +
+	"\x05Fetch\x12\x18.slipway.v1.FetchRequest\x1a\x19.slipway.v1.FetchResponse\x12H\n" +
+	"\tJoinGroup\x12\x1c.slipway.v1.JoinGroupRequest\x1a\x1d.slipway.v1.JoinGroupResponse\x12H\n" +
+	"\tSyncGroup\x12\x1c.slipway.v1.SyncGroupRequest\x1a\x1d.slipway.v1.SyncGroupResponse\x12H\n" +
+	"\tHeartbeat\x12\x1c.slipway.v1.HeartbeatRequest\x1a\x1d.slipway.v1.HeartbeatResponse\x12K\n" +
 	"\n" +
-	"LeaveGroup\x12\x1e.eventing.v1.LeaveGroupRequest\x1a\x1f.eventing.v1.LeaveGroupResponse\x12S\n" +
-	"\fCommitOffset\x12 .eventing.v1.CommitOffsetRequest\x1a!.eventing.v1.CommitOffsetResponse\x12P\n" +
-	"\vFetchOffset\x12\x1f.eventing.v1.FetchOffsetRequest\x1a .eventing.v1.FetchOffsetResponse\x12b\n" +
-	"\x11FetchGroupOffsets\x12%.eventing.v1.FetchGroupOffsetsRequest\x1a&.eventing.v1.FetchGroupOffsetsResponse\x12;\n" +
-	"\x04Pull\x12\x18.eventing.v1.PullRequest\x1a\x19.eventing.v1.PullResponse\x128\n" +
-	"\x03Ack\x12\x17.eventing.v1.AckRequest\x1a\x18.eventing.v1.AckResponse\x12P\n" +
-	"\vGetMetadata\x12\x1f.eventing.v1.GetMetadataRequest\x1a .eventing.v1.GetMetadataResponse2g\n" +
-	"\rQuorumService\x12V\n" +
-	"\rQuorumMessage\x12!.eventing.v1.QuorumMessageRequest\x1a\".eventing.v1.QuorumMessageResponse2\xb4\x01\n" +
-	"\x0eReplicaService\x12S\n" +
-	"\fReplicaFetch\x12 .eventing.v1.ReplicaFetchRequest\x1a!.eventing.v1.ReplicaFetchResponse\x12M\n" +
+	"LeaveGroup\x12\x1d.slipway.v1.LeaveGroupRequest\x1a\x1e.slipway.v1.LeaveGroupResponse\x12Q\n" +
+	"\fCommitOffset\x12\x1f.slipway.v1.CommitOffsetRequest\x1a .slipway.v1.CommitOffsetResponse\x12N\n" +
+	"\vFetchOffset\x12\x1e.slipway.v1.FetchOffsetRequest\x1a\x1f.slipway.v1.FetchOffsetResponse\x12`\n" +
+	"\x11FetchGroupOffsets\x12$.slipway.v1.FetchGroupOffsetsRequest\x1a%.slipway.v1.FetchGroupOffsetsResponse\x129\n" +
+	"\x04Pull\x12\x17.slipway.v1.PullRequest\x1a\x18.slipway.v1.PullResponse\x126\n" +
+	"\x03Ack\x12\x16.slipway.v1.AckRequest\x1a\x17.slipway.v1.AckResponse\x12N\n" +
+	"\vGetMetadata\x12\x1e.slipway.v1.GetMetadataRequest\x1a\x1f.slipway.v1.GetMetadataResponse2e\n" +
+	"\rQuorumService\x12T\n" +
+	"\rQuorumMessage\x12 .slipway.v1.QuorumMessageRequest\x1a!.slipway.v1.QuorumMessageResponse2\xb0\x01\n" +
+	"\x0eReplicaService\x12Q\n" +
+	"\fReplicaFetch\x12\x1f.slipway.v1.ReplicaFetchRequest\x1a .slipway.v1.ReplicaFetchResponse\x12K\n" +
 	"\n" +
-	"ReplicaPut\x12\x1e.eventing.v1.ReplicaPutRequest\x1a\x1f.eventing.v1.ReplicaPutResponseB5Z3github.com/rahulkj/eventing/internal/api/eventingpbb\x06proto3"
+	"ReplicaPut\x12\x1d.slipway.v1.ReplicaPutRequest\x1a\x1e.slipway.v1.ReplicaPutResponseB3Z1github.com/rahulkj/slipway/internal/api/slipwaypbb\x06proto3"
 
 var (
-	file_eventing_proto_rawDescOnce sync.Once
-	file_eventing_proto_rawDescData []byte
+	file_slipway_proto_rawDescOnce sync.Once
+	file_slipway_proto_rawDescData []byte
 )
 
-func file_eventing_proto_rawDescGZIP() []byte {
-	file_eventing_proto_rawDescOnce.Do(func() {
-		file_eventing_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_eventing_proto_rawDesc), len(file_eventing_proto_rawDesc)))
+func file_slipway_proto_rawDescGZIP() []byte {
+	file_slipway_proto_rawDescOnce.Do(func() {
+		file_slipway_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_slipway_proto_rawDesc), len(file_slipway_proto_rawDesc)))
 	})
-	return file_eventing_proto_rawDescData
+	return file_slipway_proto_rawDescData
 }
 
-var file_eventing_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
-var file_eventing_proto_goTypes = []any{
-	(*ProduceRequest)(nil),            // 0: eventing.v1.ProduceRequest
-	(*ProduceResponse)(nil),           // 1: eventing.v1.ProduceResponse
-	(*FetchRequest)(nil),              // 2: eventing.v1.FetchRequest
-	(*FetchResponse)(nil),             // 3: eventing.v1.FetchResponse
-	(*Record)(nil),                    // 4: eventing.v1.Record
-	(*TopicAssignment)(nil),           // 5: eventing.v1.TopicAssignment
-	(*JoinGroupRequest)(nil),          // 6: eventing.v1.JoinGroupRequest
-	(*JoinGroupResponse)(nil),         // 7: eventing.v1.JoinGroupResponse
-	(*SyncGroupRequest)(nil),          // 8: eventing.v1.SyncGroupRequest
-	(*SyncGroupResponse)(nil),         // 9: eventing.v1.SyncGroupResponse
-	(*HeartbeatRequest)(nil),          // 10: eventing.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),         // 11: eventing.v1.HeartbeatResponse
-	(*LeaveGroupRequest)(nil),         // 12: eventing.v1.LeaveGroupRequest
-	(*LeaveGroupResponse)(nil),        // 13: eventing.v1.LeaveGroupResponse
-	(*CommitOffsetRequest)(nil),       // 14: eventing.v1.CommitOffsetRequest
-	(*CommitOffsetResponse)(nil),      // 15: eventing.v1.CommitOffsetResponse
-	(*FetchOffsetRequest)(nil),        // 16: eventing.v1.FetchOffsetRequest
-	(*FetchOffsetResponse)(nil),       // 17: eventing.v1.FetchOffsetResponse
-	(*OffsetEntry)(nil),               // 18: eventing.v1.OffsetEntry
-	(*FetchGroupOffsetsRequest)(nil),  // 19: eventing.v1.FetchGroupOffsetsRequest
-	(*FetchGroupOffsetsResponse)(nil), // 20: eventing.v1.FetchGroupOffsetsResponse
-	(*QueueDelivery)(nil),             // 21: eventing.v1.QueueDelivery
-	(*PullRequest)(nil),               // 22: eventing.v1.PullRequest
-	(*PullResponse)(nil),              // 23: eventing.v1.PullResponse
-	(*AckRequest)(nil),                // 24: eventing.v1.AckRequest
-	(*AckResponse)(nil),               // 25: eventing.v1.AckResponse
-	(*QuorumMessageRequest)(nil),      // 26: eventing.v1.QuorumMessageRequest
-	(*QuorumMessageResponse)(nil),     // 27: eventing.v1.QuorumMessageResponse
-	(*ReplicaFetchRequest)(nil),       // 28: eventing.v1.ReplicaFetchRequest
-	(*ReplicaFetchResponse)(nil),      // 29: eventing.v1.ReplicaFetchResponse
-	(*ReplicaPutRequest)(nil),         // 30: eventing.v1.ReplicaPutRequest
-	(*ReplicaPutResponse)(nil),        // 31: eventing.v1.ReplicaPutResponse
-	(*PartitionMetadata)(nil),         // 32: eventing.v1.PartitionMetadata
-	(*TopicMetadata)(nil),             // 33: eventing.v1.TopicMetadata
-	(*BrokerMetadata)(nil),            // 34: eventing.v1.BrokerMetadata
-	(*GetMetadataRequest)(nil),        // 35: eventing.v1.GetMetadataRequest
-	(*GetMetadataResponse)(nil),       // 36: eventing.v1.GetMetadataResponse
+var file_slipway_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
+var file_slipway_proto_goTypes = []any{
+	(*ProduceRequest)(nil),            // 0: slipway.v1.ProduceRequest
+	(*ProduceResponse)(nil),           // 1: slipway.v1.ProduceResponse
+	(*FetchRequest)(nil),              // 2: slipway.v1.FetchRequest
+	(*FetchResponse)(nil),             // 3: slipway.v1.FetchResponse
+	(*Record)(nil),                    // 4: slipway.v1.Record
+	(*TopicAssignment)(nil),           // 5: slipway.v1.TopicAssignment
+	(*JoinGroupRequest)(nil),          // 6: slipway.v1.JoinGroupRequest
+	(*JoinGroupResponse)(nil),         // 7: slipway.v1.JoinGroupResponse
+	(*SyncGroupRequest)(nil),          // 8: slipway.v1.SyncGroupRequest
+	(*SyncGroupResponse)(nil),         // 9: slipway.v1.SyncGroupResponse
+	(*HeartbeatRequest)(nil),          // 10: slipway.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),         // 11: slipway.v1.HeartbeatResponse
+	(*LeaveGroupRequest)(nil),         // 12: slipway.v1.LeaveGroupRequest
+	(*LeaveGroupResponse)(nil),        // 13: slipway.v1.LeaveGroupResponse
+	(*CommitOffsetRequest)(nil),       // 14: slipway.v1.CommitOffsetRequest
+	(*CommitOffsetResponse)(nil),      // 15: slipway.v1.CommitOffsetResponse
+	(*FetchOffsetRequest)(nil),        // 16: slipway.v1.FetchOffsetRequest
+	(*FetchOffsetResponse)(nil),       // 17: slipway.v1.FetchOffsetResponse
+	(*OffsetEntry)(nil),               // 18: slipway.v1.OffsetEntry
+	(*FetchGroupOffsetsRequest)(nil),  // 19: slipway.v1.FetchGroupOffsetsRequest
+	(*FetchGroupOffsetsResponse)(nil), // 20: slipway.v1.FetchGroupOffsetsResponse
+	(*QueueDelivery)(nil),             // 21: slipway.v1.QueueDelivery
+	(*PullRequest)(nil),               // 22: slipway.v1.PullRequest
+	(*PullResponse)(nil),              // 23: slipway.v1.PullResponse
+	(*AckRequest)(nil),                // 24: slipway.v1.AckRequest
+	(*AckResponse)(nil),               // 25: slipway.v1.AckResponse
+	(*QuorumMessageRequest)(nil),      // 26: slipway.v1.QuorumMessageRequest
+	(*QuorumMessageResponse)(nil),     // 27: slipway.v1.QuorumMessageResponse
+	(*ReplicaFetchRequest)(nil),       // 28: slipway.v1.ReplicaFetchRequest
+	(*ReplicaFetchResponse)(nil),      // 29: slipway.v1.ReplicaFetchResponse
+	(*ReplicaPutRequest)(nil),         // 30: slipway.v1.ReplicaPutRequest
+	(*ReplicaPutResponse)(nil),        // 31: slipway.v1.ReplicaPutResponse
+	(*PartitionMetadata)(nil),         // 32: slipway.v1.PartitionMetadata
+	(*TopicMetadata)(nil),             // 33: slipway.v1.TopicMetadata
+	(*BrokerMetadata)(nil),            // 34: slipway.v1.BrokerMetadata
+	(*GetMetadataRequest)(nil),        // 35: slipway.v1.GetMetadataRequest
+	(*GetMetadataResponse)(nil),       // 36: slipway.v1.GetMetadataResponse
 }
-var file_eventing_proto_depIdxs = []int32{
-	4,  // 0: eventing.v1.FetchResponse.records:type_name -> eventing.v1.Record
-	5,  // 1: eventing.v1.JoinGroupResponse.assignment:type_name -> eventing.v1.TopicAssignment
-	5,  // 2: eventing.v1.SyncGroupResponse.assignment:type_name -> eventing.v1.TopicAssignment
-	18, // 3: eventing.v1.FetchGroupOffsetsResponse.offsets:type_name -> eventing.v1.OffsetEntry
-	21, // 4: eventing.v1.PullResponse.deliveries:type_name -> eventing.v1.QueueDelivery
-	32, // 5: eventing.v1.TopicMetadata.partitions_meta:type_name -> eventing.v1.PartitionMetadata
-	34, // 6: eventing.v1.GetMetadataResponse.brokers:type_name -> eventing.v1.BrokerMetadata
-	33, // 7: eventing.v1.GetMetadataResponse.topics:type_name -> eventing.v1.TopicMetadata
-	0,  // 8: eventing.v1.EventingService.Produce:input_type -> eventing.v1.ProduceRequest
-	2,  // 9: eventing.v1.EventingService.Fetch:input_type -> eventing.v1.FetchRequest
-	6,  // 10: eventing.v1.EventingService.JoinGroup:input_type -> eventing.v1.JoinGroupRequest
-	8,  // 11: eventing.v1.EventingService.SyncGroup:input_type -> eventing.v1.SyncGroupRequest
-	10, // 12: eventing.v1.EventingService.Heartbeat:input_type -> eventing.v1.HeartbeatRequest
-	12, // 13: eventing.v1.EventingService.LeaveGroup:input_type -> eventing.v1.LeaveGroupRequest
-	14, // 14: eventing.v1.EventingService.CommitOffset:input_type -> eventing.v1.CommitOffsetRequest
-	16, // 15: eventing.v1.EventingService.FetchOffset:input_type -> eventing.v1.FetchOffsetRequest
-	19, // 16: eventing.v1.EventingService.FetchGroupOffsets:input_type -> eventing.v1.FetchGroupOffsetsRequest
-	22, // 17: eventing.v1.EventingService.Pull:input_type -> eventing.v1.PullRequest
-	24, // 18: eventing.v1.EventingService.Ack:input_type -> eventing.v1.AckRequest
-	35, // 19: eventing.v1.EventingService.GetMetadata:input_type -> eventing.v1.GetMetadataRequest
-	26, // 20: eventing.v1.QuorumService.QuorumMessage:input_type -> eventing.v1.QuorumMessageRequest
-	28, // 21: eventing.v1.ReplicaService.ReplicaFetch:input_type -> eventing.v1.ReplicaFetchRequest
-	30, // 22: eventing.v1.ReplicaService.ReplicaPut:input_type -> eventing.v1.ReplicaPutRequest
-	1,  // 23: eventing.v1.EventingService.Produce:output_type -> eventing.v1.ProduceResponse
-	3,  // 24: eventing.v1.EventingService.Fetch:output_type -> eventing.v1.FetchResponse
-	7,  // 25: eventing.v1.EventingService.JoinGroup:output_type -> eventing.v1.JoinGroupResponse
-	9,  // 26: eventing.v1.EventingService.SyncGroup:output_type -> eventing.v1.SyncGroupResponse
-	11, // 27: eventing.v1.EventingService.Heartbeat:output_type -> eventing.v1.HeartbeatResponse
-	13, // 28: eventing.v1.EventingService.LeaveGroup:output_type -> eventing.v1.LeaveGroupResponse
-	15, // 29: eventing.v1.EventingService.CommitOffset:output_type -> eventing.v1.CommitOffsetResponse
-	17, // 30: eventing.v1.EventingService.FetchOffset:output_type -> eventing.v1.FetchOffsetResponse
-	20, // 31: eventing.v1.EventingService.FetchGroupOffsets:output_type -> eventing.v1.FetchGroupOffsetsResponse
-	23, // 32: eventing.v1.EventingService.Pull:output_type -> eventing.v1.PullResponse
-	25, // 33: eventing.v1.EventingService.Ack:output_type -> eventing.v1.AckResponse
-	36, // 34: eventing.v1.EventingService.GetMetadata:output_type -> eventing.v1.GetMetadataResponse
-	27, // 35: eventing.v1.QuorumService.QuorumMessage:output_type -> eventing.v1.QuorumMessageResponse
-	29, // 36: eventing.v1.ReplicaService.ReplicaFetch:output_type -> eventing.v1.ReplicaFetchResponse
-	31, // 37: eventing.v1.ReplicaService.ReplicaPut:output_type -> eventing.v1.ReplicaPutResponse
+var file_slipway_proto_depIdxs = []int32{
+	4,  // 0: slipway.v1.FetchResponse.records:type_name -> slipway.v1.Record
+	5,  // 1: slipway.v1.JoinGroupResponse.assignment:type_name -> slipway.v1.TopicAssignment
+	5,  // 2: slipway.v1.SyncGroupResponse.assignment:type_name -> slipway.v1.TopicAssignment
+	18, // 3: slipway.v1.FetchGroupOffsetsResponse.offsets:type_name -> slipway.v1.OffsetEntry
+	21, // 4: slipway.v1.PullResponse.deliveries:type_name -> slipway.v1.QueueDelivery
+	32, // 5: slipway.v1.TopicMetadata.partitions_meta:type_name -> slipway.v1.PartitionMetadata
+	34, // 6: slipway.v1.GetMetadataResponse.brokers:type_name -> slipway.v1.BrokerMetadata
+	33, // 7: slipway.v1.GetMetadataResponse.topics:type_name -> slipway.v1.TopicMetadata
+	0,  // 8: slipway.v1.SlipwayService.Produce:input_type -> slipway.v1.ProduceRequest
+	2,  // 9: slipway.v1.SlipwayService.Fetch:input_type -> slipway.v1.FetchRequest
+	6,  // 10: slipway.v1.SlipwayService.JoinGroup:input_type -> slipway.v1.JoinGroupRequest
+	8,  // 11: slipway.v1.SlipwayService.SyncGroup:input_type -> slipway.v1.SyncGroupRequest
+	10, // 12: slipway.v1.SlipwayService.Heartbeat:input_type -> slipway.v1.HeartbeatRequest
+	12, // 13: slipway.v1.SlipwayService.LeaveGroup:input_type -> slipway.v1.LeaveGroupRequest
+	14, // 14: slipway.v1.SlipwayService.CommitOffset:input_type -> slipway.v1.CommitOffsetRequest
+	16, // 15: slipway.v1.SlipwayService.FetchOffset:input_type -> slipway.v1.FetchOffsetRequest
+	19, // 16: slipway.v1.SlipwayService.FetchGroupOffsets:input_type -> slipway.v1.FetchGroupOffsetsRequest
+	22, // 17: slipway.v1.SlipwayService.Pull:input_type -> slipway.v1.PullRequest
+	24, // 18: slipway.v1.SlipwayService.Ack:input_type -> slipway.v1.AckRequest
+	35, // 19: slipway.v1.SlipwayService.GetMetadata:input_type -> slipway.v1.GetMetadataRequest
+	26, // 20: slipway.v1.QuorumService.QuorumMessage:input_type -> slipway.v1.QuorumMessageRequest
+	28, // 21: slipway.v1.ReplicaService.ReplicaFetch:input_type -> slipway.v1.ReplicaFetchRequest
+	30, // 22: slipway.v1.ReplicaService.ReplicaPut:input_type -> slipway.v1.ReplicaPutRequest
+	1,  // 23: slipway.v1.SlipwayService.Produce:output_type -> slipway.v1.ProduceResponse
+	3,  // 24: slipway.v1.SlipwayService.Fetch:output_type -> slipway.v1.FetchResponse
+	7,  // 25: slipway.v1.SlipwayService.JoinGroup:output_type -> slipway.v1.JoinGroupResponse
+	9,  // 26: slipway.v1.SlipwayService.SyncGroup:output_type -> slipway.v1.SyncGroupResponse
+	11, // 27: slipway.v1.SlipwayService.Heartbeat:output_type -> slipway.v1.HeartbeatResponse
+	13, // 28: slipway.v1.SlipwayService.LeaveGroup:output_type -> slipway.v1.LeaveGroupResponse
+	15, // 29: slipway.v1.SlipwayService.CommitOffset:output_type -> slipway.v1.CommitOffsetResponse
+	17, // 30: slipway.v1.SlipwayService.FetchOffset:output_type -> slipway.v1.FetchOffsetResponse
+	20, // 31: slipway.v1.SlipwayService.FetchGroupOffsets:output_type -> slipway.v1.FetchGroupOffsetsResponse
+	23, // 32: slipway.v1.SlipwayService.Pull:output_type -> slipway.v1.PullResponse
+	25, // 33: slipway.v1.SlipwayService.Ack:output_type -> slipway.v1.AckResponse
+	36, // 34: slipway.v1.SlipwayService.GetMetadata:output_type -> slipway.v1.GetMetadataResponse
+	27, // 35: slipway.v1.QuorumService.QuorumMessage:output_type -> slipway.v1.QuorumMessageResponse
+	29, // 36: slipway.v1.ReplicaService.ReplicaFetch:output_type -> slipway.v1.ReplicaFetchResponse
+	31, // 37: slipway.v1.ReplicaService.ReplicaPut:output_type -> slipway.v1.ReplicaPutResponse
 	23, // [23:38] is the sub-list for method output_type
 	8,  // [8:23] is the sub-list for method input_type
 	8,  // [8:8] is the sub-list for extension type_name
@@ -2404,26 +2405,26 @@ var file_eventing_proto_depIdxs = []int32{
 	0,  // [0:8] is the sub-list for field type_name
 }
 
-func init() { file_eventing_proto_init() }
-func file_eventing_proto_init() {
-	if File_eventing_proto != nil {
+func init() { file_slipway_proto_init() }
+func file_slipway_proto_init() {
+	if File_slipway_proto != nil {
 		return
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_eventing_proto_rawDesc), len(file_eventing_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_slipway_proto_rawDesc), len(file_slipway_proto_rawDesc)),
 			NumEnums:      0,
 			NumMessages:   37,
 			NumExtensions: 0,
 			NumServices:   3,
 		},
-		GoTypes:           file_eventing_proto_goTypes,
-		DependencyIndexes: file_eventing_proto_depIdxs,
-		MessageInfos:      file_eventing_proto_msgTypes,
+		GoTypes:           file_slipway_proto_goTypes,
+		DependencyIndexes: file_slipway_proto_depIdxs,
+		MessageInfos:      file_slipway_proto_msgTypes,
 	}.Build()
-	File_eventing_proto = out.File
-	file_eventing_proto_goTypes = nil
-	file_eventing_proto_depIdxs = nil
+	File_slipway_proto = out.File
+	file_slipway_proto_goTypes = nil
+	file_slipway_proto_depIdxs = nil
 }

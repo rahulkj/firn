@@ -33,7 +33,7 @@ func UnregisterLocalNode(n *Node) {
 func (t *LocalTransport) Send(to string, msg Message) error {
 	v, ok := registry.Load(to)
 	if !ok {
-		return fmt.Errorf("eventing/quorum: unknown peer %q", to)
+		return fmt.Errorf("slipway/quorum: unknown peer %q", to)
 	}
 	n := v.(*Node)
 	select {

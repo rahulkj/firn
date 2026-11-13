@@ -9,6 +9,7 @@ package quorum
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"time"
 )
 
@@ -273,6 +274,13 @@ func (n *Node) startElectionLocked() {
 	n.inPreVote = true
 	n.preVotes = 1               // self — the candidate implicitly agrees with itself
 	n.lastHeartbeat = time.Now() // backoff between elections
+	// Re-randomize the timeout: consecutive failed elections must de-phase
+	// candidates. Without this, equally-timed peers re-collide every
+	// round (both pre-vote, both advance to candidacy, votes split) and
+	// no leader is elected — a liveness livelock that outlasts any
+	// reasonable wait.
+	base := n.opts.ElectionTimeout
+	n.electionTimeout = base + time.Duration(rand.Int63n(int64(base/2)))
 	// Ask peers without disturbing their terms.
 	n.broadcastVoteRequest(true)
 }
@@ -332,7 +340,7 @@ func (n *Node) appendEntryLocked(e Entry) Entry {
 		// Persisting failed; treat like a transport failure. Production would
 		// panic-adjacent; here we log and continue — the node cannot serve
 		// entries it cannot persist.
-		fmt.Printf("eventing/quorum: persist entry %d: %v\n", e.Index, err)
+		fmt.Printf("slipway/quorum: persist entry %d: %v\n", e.Index, err)
 	}
 	return e
 }
@@ -415,7 +423,7 @@ func (n *Node) send(to string, msg Message) {
 // --- Propose & errors --------------------------------------------------------
 
 // ErrNotLeader is returned when a follower is asked to propose.
-var ErrNotLeader = errors.New("eventing/quorum: not leader")
+var ErrNotLeader = errors.New("slipway/quorum: not leader")
 
 // ProposeNamed proposes one entry of the given type with the given payload.
 // Returns ErrNotLeader if this node isn't the leader, else the index/term.

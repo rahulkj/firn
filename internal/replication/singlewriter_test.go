@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rahulkj/eventing/internal/fence"
-	"github.com/rahulkj/eventing/internal/meta"
+	"github.com/rahulkj/slipway/internal/fence"
+	"github.com/rahulkj/slipway/internal/meta"
 )
 
 // TestInternalTopicSingleWriter is the Phase F completion gate: with the

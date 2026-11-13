@@ -27,7 +27,7 @@ Legend: ✅ implemented & verified · 🟡 implemented but partial/unsafe at sca
 | Topic metadata on disk (`topics.json`, atomic rename, fsync) | ✅ | `internal/meta/meta.go`; `meta_persist_test.go`; verified across kill -9 restart |
 | `__consumer_offsets` + `__queue_attempts` internal topics on disk | ✅ | The same `FileLog` via `internal/groups/offset_store.go` and `internal/queue/attempts.go`; broker-owned shared handles since phase F; replicated block-byte-identical across cluster nodes; commit/fetch/DLQ round-trip verified live |
 | `__api_keys` + `__audit` internal topics | ✅ (phase E) | Same broker-owned shared FileLog model; SHA-256-hashed keys, plaintext shown once; every admin mutation + authz refusal audited; replicated since phase F |
-| Retention: delete whole segments by TTL/bytes | ✅ (2026-11-13) | `FileLog.RetainOlderThan`/`RetainOverBytes` + `broker.Retain` + daemon sweeper (`-retention-ttl`/`-retention-max-bytes`/`-retention-interval`). Unit-tested (`retention_test.go`) **and verified live**: `eventingd -segment-bytes 2000 -retention-max-bytes 1200 -retention-interval 500ms`, produced records, sweeper deleted a whole 2 KB segment (`deleted_segments=1`), `fetch --offset 0` returned `FailedPrecondition: offset below retention horizon`. `-segment-bytes` and `-block-seal-interval` are now daemon flags. |
+| Retention: delete whole segments by TTL/bytes | ✅ (2026-11-13) | `FileLog.RetainOlderThan`/`RetainOverBytes` + `broker.Retain` + daemon sweeper (`-retention-ttl`/`-retention-max-bytes`/`-retention-interval`). Unit-tested (`retention_test.go`) **and verified live**: `slipwayd -segment-bytes 2000 -retention-max-bytes 1200 -retention-interval 500ms`, produced records, sweeper deleted a whole 2 KB segment (`deleted_segments=1`), `fetch --offset 0` returned `FailedPrecondition: offset below retention horizon`. `-segment-bytes` and `-block-seal-interval` are now daemon flags. |
 | Compaction of internal topics (`__consumer_offsets`, `__queue_attempts`) | ✅ | `FileLog.Compact()` folds last-value-per-key; runs every 1000 commits and on clean shutdown; `compact_test.go`; verified live (`dlq list`/`redrive` sequence) |
 | Cluster replication of sealed blocks (ADR-007) | ✅ (phases A–C) | Byte-identical replicas, kill -9 → lease failover → pull catch-up verified live; quorum (in-house Raft) persists `hardstate.json` + `log.bin` under `metadata/` |
 | Cluster replication of internal topics | ✅ (phase F, 2026-11-13) | `TestInternalTopicReplicates`: block committed on node A visible on B and C; committed offsets read-through visible everywhere; all four internal topics ride the same block push/pull path as user topics |
@@ -55,11 +55,11 @@ Legend: ✅ implemented & verified · 🟡 implemented but partial/unsafe at sca
 
 | Follow-up | Where | Blocking |
 |---|---|---|
-| Expose `-segment-bytes` and `-block-seal-interval` on `eventingd` | **done 2026-11-13** (broker flags plumbed; verified live: segment roll, sweep deletion, horizon error) | — |
+| Expose `-segment-bytes` and `-block-seal-interval` on `slipwayd` | **done 2026-11-13** (broker flags plumbed; verified live: segment roll, sweep deletion, horizon error) | — |
 | Storage format version byte in `topics.json` + segment index | new slice in plan 002 after D | any backup/restore tooling |
 | S3 archive tier (Phase G) | plan 002-ha; needs object-store ADR | nothing else |
 | Encryption at rest/wire | new ADR (security) | any production deployment |
-| External sync CLI (`eventing archive export/import`) | new plan | object store |
+| External sync CLI (`slipway archive export/import`) | new plan | object store |
 
 ## Consequences
 

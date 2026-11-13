@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rahulkj/eventing/internal/broker"
-	"github.com/rahulkj/eventing/internal/meta"
+	"github.com/rahulkj/slipway/internal/broker"
+	"github.com/rahulkj/slipway/internal/meta"
 )
 
 func newTestQueue(t *testing.T, dir string) (*Manager, *meta.Registry) {

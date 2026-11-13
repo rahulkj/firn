@@ -1,6 +1,6 @@
-# AGENTS.md — eventing
+# AGENTS.md — slipway
 
-Eventing is a from-scratch eventing broker in Go providing **streaming** (Kafka-like topics/partitions, replay, consumer groups) and **queue** (RabbitMQ-like ack/redelivery) semantics over a shared append-only log. See `docs/adr/` for the decisions that matter.
+Slipway is a from-scratch event broker in Go providing **streaming** (topics/partitions, replay, consumer groups) and **queue** (ack/redelivery) semantics over a shared append-only log. See `docs/adr/` for the decisions that matter.
 
 ## Commands
 
@@ -13,12 +13,12 @@ Eventing is a from-scratch eventing broker in Go providing **streaming** (Kafka-
 
 ## Layout
 
-- `cmd/eventingd` — broker daemon (serves `/healthz` for now)
+- `cmd/slipwayd` — broker daemon (serves `/healthz` for now)
 - `internal/log` — append-only log (storage invariants live here; sacred)
 - `internal/meta` — topic/partition metadata registry
 - `internal/broker` — produce/fetch orchestration, partition assignment
 - `internal/queue` — ack/redelivery/DLQ on the same log
-- `internal/api` — gRPC/HTTP surface (clean API, **not** Kafka wire protocol)
+- `internal/api` — gRPC/HTTP surface (clean API, **not** wire-compatible with any other broker)
 - `docs/adr` — architecture decision records (read 003 before touching storage)
 - `docs/plans` — implementation plans; work proceeds slice by slice
 
@@ -44,4 +44,4 @@ Eventing is a from-scratch eventing broker in Go providing **streaming** (Kafka-
 - Write the property/acceptance test **first** for any change to produce/fetch/ack/redeliver semantics.
 - Do not add dependencies without an ADR and human approval.
 - Keep PRs/diffs to one slice from `docs/plans/`; if a slice needs to change the plan, change the plan file first.
-- Non-goals (v1): replication, exactly-once, Kafka wire protocol, auth/multi-tenancy. Do not build these even if they seem "easy to add".
+- Non-goals (v1): replication beyond a single cluster, exactly-once, wire compatibility with other brokers, auth/multi-tenancy hardening. Do not build these even if they seem "easy to add".

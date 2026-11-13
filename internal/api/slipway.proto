@@ -1,13 +1,13 @@
 syntax = "proto3";
 
-// EventingService is the v1 hot path (docs/adr/002-api.md): clean API,
-// not a Kafka wire protocol. HTTP/JSON is used only for admin (create
-// list topics, health), not for produce/fetch.
-package eventing.v1;
+// SlipwayService is the v1 hot path (docs/adr/002-api.md): clean API, not a
+// wire protocol compatible with any other broker. HTTP/JSON is used only
+// for admin (create list topics, health), not for produce/fetch.
+package slipway.v1;
 
-option go_package = "github.com/rahulkj/eventing/internal/api/eventingpb";
+option go_package = "github.com/rahulkj/slipway/internal/api/slipwaypb";
 
-service EventingService {
+service SlipwayService {
   rpc Produce(ProduceRequest) returns (ProduceResponse);
   rpc Fetch(FetchRequest) returns (FetchResponse);
 

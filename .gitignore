@@ -1,6 +1,6 @@
 # Binaries
-/eventingd
-/eventing-cli
+/slipwayd
+/slipway-cli
 *.exe
 *.test
 *.out

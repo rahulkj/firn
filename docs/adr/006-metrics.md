@@ -10,7 +10,7 @@ Slice 6 (docs/plans/001-mvp-single-node.md) requires operability metrics — pro
 
 - Add `github.com/prometheus/client_golang` (with `client_golang/prometheus/promhttp`) as a dependency.
 - Metrics are exposed on the existing HTTP admin listener at `/metrics` (promhttp handler) — no separate port.
-- Metric set for v0.1.0: `eventing_produce_total{topic}` (counter), `eventing_fetch_total{topic}` (counter), `eventing_fsync_seconds` (histogram), `eventing_group_rebalances_total` (counter), `eventing_queue_depth` (gauge: pending + re-queued messages across queues).
+- Metric set for v0.1.0: `slipway_produce_total{topic}` (counter), `slipway_fetch_total{topic}` (counter), `slipway_fsync_seconds` (histogram), `slipway_group_rebalances_total` (counter), `slipway_queue_depth` (gauge: pending + re-queued messages across queues).
 - `internal/log` gains a package-level `FsyncObserver func(time.Duration)` hook instead of importing prometheus — the storage package stays dependency-free; the metrics package registers the observer at process start. Same rationale for the groups coordinator: a plain `Rebalances()` accessor, not a prometheus import.
 
 ## Consequences

@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rahulkj/eventing/internal/broker"
-	"github.com/rahulkj/eventing/internal/meta"
+	"github.com/rahulkj/slipway/internal/broker"
+	"github.com/rahulkj/slipway/internal/meta"
 )
 
 func produce600(t *testing.T, b *broker.Broker) {
@@ -28,7 +28,7 @@ func TestConsumerGroupEndToEnd(t *testing.T) {
 	dir := t.TempDir()
 	ctx := context.Background()
 
-	// First "process": topic registry persisted in the data dir (as eventingd does).
+	// First "process": topic registry persisted in the data dir (as slipwayd does).
 	reg1, err := meta.OpenRegistry(dir + "/topics.json")
 	if err != nil {
 		t.Fatalf("open registry: %v", err)

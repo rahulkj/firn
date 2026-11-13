@@ -13,17 +13,17 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/rahulkj/eventing/internal/meta"
+	"github.com/rahulkj/slipway/internal/meta"
 )
 
 // Errors surfaced to the API layer.
 var (
-	ErrInvalidRequest   = errors.New("eventing/groups: invalid request")
-	ErrMemberNotFound   = errors.New("eventing/groups: member not found")
-	ErrGroupNotFound    = errors.New("eventing/groups: group not found")
-	ErrStaleGeneration  = errors.New("eventing/groups: stale generation (rebalance)")
-	ErrOffsetRegression = errors.New("eventing/groups: committed offset regression")
-	ErrOffsetNotFound   = errors.New("eventing/groups: offset not committed")
+	ErrInvalidRequest   = errors.New("slipway/groups: invalid request")
+	ErrMemberNotFound   = errors.New("slipway/groups: member not found")
+	ErrGroupNotFound    = errors.New("slipway/groups: group not found")
+	ErrStaleGeneration  = errors.New("slipway/groups: stale generation (rebalance)")
+	ErrOffsetRegression = errors.New("slipway/groups: committed offset regression")
+	ErrOffsetNotFound   = errors.New("slipway/groups: offset not committed")
 )
 
 // DefaultSessionTimeout is the member lease when none is requested.
@@ -114,7 +114,7 @@ type Coordinator struct {
 // NewCoordinator wires the registry to the offsets store.
 func NewCoordinator(reg *meta.Registry, store *OffsetStore, opts ...Option) (*Coordinator, error) {
 	if reg == nil || store == nil {
-		return nil, fmt.Errorf("eventing/groups: registry and store are required")
+		return nil, fmt.Errorf("slipway/groups: registry and store are required")
 	}
 	c := &Coordinator{reg: reg, store: store, sessionTimeout: DefaultSessionTimeout, now: time.Now, groups: map[string]*groupState{}}
 	for _, o := range opts {
@@ -346,7 +346,7 @@ func (c *Coordinator) FetchGroupOffsets(group string) ([]CommittedOffsetEntry, e
 		}
 		var p int32
 		if _, err := fmt.Sscanf(parts[2], "%d", &p); err != nil {
-			return nil, fmt.Errorf("eventing/groups: corrupt offsets store key %q", k)
+			return nil, fmt.Errorf("slipway/groups: corrupt offsets store key %q", k)
 		}
 		out = append(out, CommittedOffsetEntry{Group: group, Topic: parts[1], Partition: p, Offset: v.Offset, Generation: v.Generation, Leader: v.Leader})
 	}
@@ -512,4 +512,4 @@ func containsString(xs []string, s string) bool {
 }
 
 // ErrUnknownTopic is wrapped by NotFound-mapped errors at the API layer.
-var ErrUnknownTopic = errors.New("eventing/groups: topic not found")
+var ErrUnknownTopic = errors.New("slipway/groups: topic not found")

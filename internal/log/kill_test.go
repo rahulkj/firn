@@ -16,8 +16,8 @@ import (
 	"time"
 )
 
-const killChildEnv = "EVENTING_LOG_KILL_CHILD"
-const killDirEnv = "EVENTING_LOG_KILL_DIR"
+const killChildEnv = "SLIPWAY_LOG_KILL_CHILD"
+const killDirEnv = "SLIPWAY_LOG_KILL_DIR"
 
 // TestFileLogSurvivesKill9 is the parent side. It starts a child process
 // that appends records (fsync'd) and prints each acknowledged offset to

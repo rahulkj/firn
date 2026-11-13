@@ -35,11 +35,11 @@ Non-negotiable rules (repeated from `AGENTS.md`):
   func (b *Broker) TopicPartitionCount(topic string) (int, error)
   ```
   `New()` must lazily create partition logs on first produce (and on fetch-unknown-topic return `meta.ErrTopicNotFound`).
-- `internal/api/eventing.proto` — `service Eventing { rpc Produce(ProduceRequest) returns (ProduceResponse); rpc Fetch(FetchRequest) returns (FetchResponse); }` with messages `ProduceRequest{string topic; int32 partition; bytes key; bytes value}` (`partition = -1` → auto), `ProduceResponse{int32 partition; int64 offset}`, `FetchRequest{string topic; int32 partition; int64 offset; int32 max_records}`, `FetchResponse{repeated FetchRecord records}`, `FetchRecord{int64 offset; bytes key; bytes value}`.
+- `internal/api/slipway.proto` — `service Slipway { rpc Produce(ProduceRequest) returns (ProduceResponse); rpc Fetch(FetchRequest) returns (FetchResponse); }` with messages `ProduceRequest{string topic; int32 partition; bytes key; bytes value}` (`partition = -1` → auto), `ProduceResponse{int32 partition; int64 offset}`, `FetchRequest{string topic; int32 partition; int64 offset; int32 max_records}`, `FetchResponse{repeated FetchRecord records}`, `FetchRecord{int64 offset; bytes key; bytes value}`.
 - Codegen: use `buf` (`buf.gen.yaml` with `go_out`) or `protoc --go_out --go-grpc_out` — pick one, document in `AGENTS.md` update. Generated code in `internal/api/pb/`. If protoc tooling is unavailable in the environment, **stop and ask** rather than hand-writing protobuf stubs.
-- `internal/api/grpc.go` — gRPC server implementing `pb.EventingServer` against `*broker.Broker`; `RegisterEventingServer(grpcServer, srv)`.
+- `internal/api/grpc.go` — gRPC server implementing `pb.SlipwayServer` against `*broker.Broker`; `RegisterSlipwayServer(grpcServer, srv)`.
 - `internal/api/http.go` — admin mux: `POST /topics` `{name, partitions}` (201 / 409 on duplicate / 400 on invalid), `GET /topics` (list), served alongside `/healthz`.
-- `cmd/eventingd/main.go` — wire: `broker.New()` → gRPC listener on `-grpc :9093` + HTTP admin/health on `-addr :9092`; graceful shutdown on SIGINT/SIGTERM (existing pattern).
+- `cmd/slipwayd/main.go` — wire: `broker.New()` → gRPC listener on `-grpc :9093` + HTTP admin/health on `-addr :9092`; graceful shutdown on SIGINT/SIGTERM (existing pattern).
 - Tests:
   - `internal/broker/broker_test.go` — key stickiness (same key → same partition), round-robin for empty key, unknown-topic error, fetch bounds, offset sequence per partition.
   - `internal/api/grpc_test.go` — bufconn (`google.golang.org/grpc/test/bufconn`) end-to-end: produce 1000 msgs → fetch → byte-identical; fetch from unknown topic → `NotFound` status.
@@ -100,7 +100,7 @@ Non-negotiable rules (repeated from `AGENTS.md`):
 
 ## Slice 4 — consumer groups (`__consumer_offsets`)
 
-**Goal:** Kafka-style group semantics without an external coordinator: offsets live in an internal compacted topic; two client-side flows — commit and join/claim.
+**Goal:** consumer group semantics without an external coordinator: offsets live in an internal compacted topic; two client-side flows — commit and join/claim.
 
 **Design (simplified, documented as such):**
 
@@ -111,7 +111,7 @@ Non-negotiable rules (repeated from `AGENTS.md`):
   - `Heartbeat(group, memberID, generation) → error` — `RebalanceInProgress` if generation stale.
   - Assignment: `range` (default) and `roundrobin`; compute from sorted members × sorted partitions.
   - `CommitOffset / FetchOffset(group, topic, partition)`.
-- gRPC: extend `EventingService` with `JoinGroup`, `Heartbeat`, `LeaveGroup`, `CommitOffset`, `FetchOffset`. HTTP: `GET /groups` (list w/ state), `GET /groups/{g}/offsets`.
+- gRPC: extend `SlipwayService` with `JoinGroup`, `Heartbeat`, `LeaveGroup`, `CommitOffset`, `FetchOffset`. HTTP: `GET /groups` (list w/ state), `GET /groups/{g}/offsets`.
 - Consumer expiry: membership lease = 10s; reaper goroutine expires silent members every 1s → triggers rebalance.
 
 **Tests FIRST:** two members → range assignment splits 3 partitions 2/1; member crash → after expiry, survivor owns all 3; offset commit/fetch roundtrip across "restart" (close+reopen); generation mismatch on stale heartbeat; compaction preserves last-per-key only.
@@ -126,7 +126,7 @@ Non-negotiable rules (repeated from `AGENTS.md`):
 
 ## Slice 5 — queue mode (ack / visibility / DLQ)
 
-**Goal:** RabbitMQ-style work-queue semantics on the same topics: competing consumers, at-least-once, dead-letter after N failed deliveries.
+**Goal:** work-queue semantics on the same topics: competing consumers, at-least-once, dead-letter after N failed deliveries.
 
 **Design:**
 
@@ -150,14 +150,14 @@ Non-negotiable rules (repeated from `AGENTS.md`):
 
 **Steps:**
 
-1. Metrics: `prometheus/client_golang` — `eventing_produce_total{topic}`, `eventing_fetch_total`, `eventing_fsync_seconds` histogram, `eventing_group_rebalances_total`, queue depth gauge. Expose `/metrics` (promhttp).
-2. `cmd/eventing-cli`: subcommands `create-topic|create-queue`, `list`, `produce`, `fetch`, `groups`, `dlq list|redrive` — gRPC client with `--addr` flag; output table + `--json`.
+1. Metrics: `prometheus/client_golang` — `slipway_produce_total{topic}`, `slipway_fetch_total`, `slipway_fsync_seconds` histogram, `slipway_group_rebalances_total`, queue depth gauge. Expose `/metrics` (promhttp).
+2. `cmd/slipway-cli`: subcommands `create-topic|create-queue`, `list`, `produce`, `fetch`, `groups`, `dlq list|redrive` — gRPC client with `--addr` flag; output table + `--json`.
 3. Benchmarks (`bench/produce_bench.go`, `fetch_bench.go`): record baseline in `bench/baseline.md`; `make bench` target.
 4. Logging: `log/slog` with JSON output; request-scoped logging middleware.
 5. CI: add `golangci-lint` job (pinned version), keep vet+test+build.
 6. Release checklist: run every ADR-005 acceptance item manually on a clean VM/container; write `CHANGELOG.md`; `git tag v0.1.0`; GitHub release with binaries via goreleaser or raw `go build` matrix.
 
-**Suggested commits:** `feat(obs): metrics + structured logging` · `feat(cli): eventing-cli admin tool` · `chore(release): v0.1.0`
+**Suggested commits:** `feat(obs): metrics + structured logging` · `feat(cli): slipway-cli admin tool` · `chore(release): v0.1.0`
 
 ---
 

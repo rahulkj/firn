@@ -1,18 +1,18 @@
-# ADR-007: Scaled-out deployment — the block log, not a Kafka/RabbitMQ clone
+# ADR-007: Scaled-out deployment — the block log
 
 Status: accepted · 2026-11-13 · **Delivered — phases A–F + H shipped as v0.2.0 (2026-11-13); storage semantics reviewed and approved by human 2026-11-13.** Phase G (S3 archive tier) and dynamic membership are explicitly deferred with their own plans; each delivered slice landed with its own review gate.
 
-## Why not "Kafka, but RabbitMQ" or "RabbitMQ, but Kafka"
+## Why not a narrow broker with the other semantics bolted on
 
-Both incumbents hardwire one geometry and inherit its failure model:
+The incumbent families hardwire one geometry and inherit its failure model:
 
-| Pain | Kafka | RabbitMQ |
+| Pain | Streaming brokers | Queue brokers |
 |---|---|---|
-| Consensus placement | per partition: ISR across brokers + controller quorum | per queue: one Raft group per queue — cost scales with queue count |
-| Durability unit | record batch; HWM/LEO dance per partition | message ack vector |
+| Consensus placement | per partition: in-sync replicas across brokers + controller quorum | per queue: one Raft group per queue — cost scales with queue count |
+| Durability unit | record batch; HWM dance per partition | message ack vector |
 | Membership | partition reassignment on every broker change — hours of catch-up movement | mirrored quorum replication per queue |
 | Client | fat SDK; routing embedded in client | thin; broker pushes |
-| Semantics | streaming only (queue glued on with groups) | queueing only (streaming bolted on later) |
+| Semantics | streaming only (queues glued on later) | queueing only (streaming bolted on later) |
 | Retention/compaction | segment deletion + log compaction rewrites | destructive per-message ack |
 
 Cloning either means inheriting both sets of scars. The goal instead: **performance and fault isolation are products of geometry, not of tuning** — pick a geometry that is cheap to run, cheap to fail over, cheap to extend.
@@ -45,7 +45,7 @@ Three ideas carried from v1 forward unchanged: segmented CRC-framed log, int64 m
 ## Lease tails — no partition "leader"
 
 1. Write access to a topic partition's active block is held as a **short write lease** (default 3 s, `-lease-ttl`) by the node currently appending it. Lease is granted/refreshed by the metadata quorum, fenced by an **epoch** the quorum increments on every transfer.
-2. **Epoch fencing everywhere** (same mechanism as a Kafka leader epoch, but for a lease): all data-plane traffic carries `(block_window, epoch)`; a node with a stale epoch cannot seal, append, or acknowledge anything. The split-brain window is bounded by lease TTL + epoch CAS — no fencing keys, no external locks.
+2. **Epoch fencing everywhere** (a leader epoch, generalized to every lease): all data-plane traffic carries `(block_window, epoch)`; a node with a stale epoch cannot seal, append, or acknowledge anything. The split-brain window is bounded by lease TTL + epoch CAS — no fencing keys, no external locks.
 3. **Failover:** lease holder dies → quorum notices (heartbeat timeout) → grants lease to a replica that already holds the largest sealed-block prefix → it unseals the failed tail from its own copy (it may re-append bytes it already has — block content hashing makes re-sealing idempotent). Consumers never see a gap. Expected MTTR: seconds, with **zero topic/partition reassignment and zero data movement**.
 4. **Read routing** rides the same lease epoch: `GetMetadata` returns descriptor-anchored addressing (`topic → [block descriptors]`) plus the current lease holder hint; any broker holding a committed block copy serves it (blocks are symmetric — no read-leader concept at all). Merged with the client-bootstrap list from before.
 5. Why a lease and not full Raft-per-topic or Bookie-style ensemble: a lease gives one writer at a time (preserves offset monotonicity and idempotent seals) at 1/100th the consensus cost of per-block Raft.
@@ -103,7 +103,7 @@ No record ever waits on consensus. No consensus path reads records. Queue mode r
 Unchanged in shape, simplified by symmetry:
 
 - Every broker enforces **mTLS** internally and **TLS** for clients; API-key authN (opaque keys, hashed in the metadata log, revocable within the refresh interval) enforced per request at the broker edge — there is no leader to add to auth checks, which makes authorization uniform and cacheable.
-- Roles → permission set; permissions resource-scoped (`topic:read`, `topic:write`, `queue:ack`, `dlq:manage`, `group:reset`, `admin:cluster`); group/topic tools in `eventing-cli` and the UI carry the same permissions.
+- Roles → permission set; permissions resource-scoped (`topic:read`, `topic:write`, `queue:ack`, `dlq:manage`, `group:reset`, `admin:cluster`); group/topic tools in `slipway-cli` and the UI carry the same permissions.
 - **Admin UI** ships in the broker binary; server-rendered HTML (stdlib `html/template`) hitting the same JSON admin API the CLI uses. Roles: `viewer`, `operator`, `admin`. Capabilities: cluster/blocks overview (HWM, seal rate, lease state), topic browser, consumer groups (lag, offsets), queue/DLQ inspector + redrive, key lifecycle, audit log. No new dependencies.
 - Audit: append-only internal `__audit` block-logged topic, replicated, ≥ 90-day retention default.
 - Rate limiting per API key at the edge; circuit breaker to protect data plane.

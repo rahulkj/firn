@@ -1,4 +1,4 @@
-module github.com/rahulkj/eventing
+module github.com/rahulkj/slipway
 
 go 1.27
 

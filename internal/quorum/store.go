@@ -63,7 +63,7 @@ func writeHardState(dir string, hs hardState) error {
 	syncErr := d.Sync()
 	closeErr := d.Close()
 	if syncErr != nil {
-		return fmt.Errorf("eventing/quorum: fsync dir %s: %w", dir, syncErr)
+		return fmt.Errorf("slipway/quorum: fsync dir %s: %w", dir, syncErr)
 	}
 	return closeErr
 }
@@ -76,10 +76,10 @@ func readHardState(dir string) (hardState, error) {
 		return hardState{}, nil
 	}
 	if err != nil {
-		return hs, fmt.Errorf("eventing/quorum: read hard state: %w", err)
+		return hs, fmt.Errorf("slipway/quorum: read hard state: %w", err)
 	}
 	if err := json.Unmarshal(data, &hs); err != nil {
-		return hs, fmt.Errorf("eventing/quorum: parse hard state: %w", err)
+		return hs, fmt.Errorf("slipway/quorum: parse hard state: %w", err)
 	}
 	return hs, nil
 }
@@ -97,16 +97,16 @@ func appendLogEntry(dir string, e Entry) error {
 
 	f, err := os.OpenFile(logPath(dir), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
 	if err != nil {
-		return fmt.Errorf("eventing/quorum: open log: %w", err)
+		return fmt.Errorf("slipway/quorum: open log: %w", err)
 	}
 	n, err := f.Write(frame)
 	if err != nil || n != len(frame) {
 		_ = f.Close()
-		return fmt.Errorf("eventing/quorum: append log: %w (%d/%d bytes)", err, n, len(frame))
+		return fmt.Errorf("slipway/quorum: append log: %w (%d/%d bytes)", err, n, len(frame))
 	}
 	if err := f.Sync(); err != nil {
 		_ = f.Close()
-		return fmt.Errorf("eventing/quorum: sync log: %w", err)
+		return fmt.Errorf("slipway/quorum: sync log: %w", err)
 	}
 	return f.Close()
 }
@@ -117,7 +117,7 @@ func recoverLog(dir string) ([]Entry, int64, error) {
 	path := logPath(dir)
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
 	if err != nil {
-		return nil, 0, fmt.Errorf("eventing/quorum: open log: %w", err)
+		return nil, 0, fmt.Errorf("slipway/quorum: open log: %w", err)
 	}
 	defer func() { _ = f.Close() }()
 
@@ -157,10 +157,10 @@ func recoverLog(dir string) ([]Entry, int64, error) {
 	}
 	if st.Size() > pos {
 		if err := f.Truncate(pos); err != nil {
-			return nil, 0, fmt.Errorf("eventing/quorum: truncate torn tail %s: %w", path, err)
+			return nil, 0, fmt.Errorf("slipway/quorum: truncate torn tail %s: %w", path, err)
 		}
 		if err := f.Sync(); err != nil {
-			return nil, 0, fmt.Errorf("eventing/quorum: sync %s after truncation: %w", path, err)
+			return nil, 0, fmt.Errorf("slipway/quorum: sync %s after truncation: %w", path, err)
 		}
 	}
 	return entries, pos, nil
@@ -173,7 +173,7 @@ func rewriteLog(dir string, entries []Entry) error {
 	tmp := path + ".tmp"
 	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
 	if err != nil {
-		return fmt.Errorf("eventing/quorum: rewrite log: %w", err)
+		return fmt.Errorf("slipway/quorum: rewrite log: %w", err)
 	}
 	for _, e := range entries {
 		payload, err := json.Marshal(e)
@@ -189,19 +189,19 @@ func rewriteLog(dir string, entries []Entry) error {
 		if _, err := f.Write(frame); err != nil {
 			_ = f.Close()
 			_ = os.Remove(tmp)
-			return fmt.Errorf("eventing/quorum: rewrite log: %w", err)
+			return fmt.Errorf("slipway/quorum: rewrite log: %w", err)
 		}
 	}
 	if err := f.Sync(); err != nil {
 		_ = f.Close()
 		_ = os.Remove(tmp)
-		return fmt.Errorf("eventing/quorum: sync rewritten log: %w", err)
+		return fmt.Errorf("slipway/quorum: sync rewritten log: %w", err)
 	}
 	if err := f.Close(); err != nil {
-		return fmt.Errorf("eventing/quorum: close rewritten log: %w", err)
+		return fmt.Errorf("slipway/quorum: close rewritten log: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		return fmt.Errorf("eventing/quorum: rename rewritten log: %w", err)
+		return fmt.Errorf("slipway/quorum: rename rewritten log: %w", err)
 	}
 	return nil
 }

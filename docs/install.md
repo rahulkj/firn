@@ -1,6 +1,6 @@
-# Installing and running eventing
+# Installing and running slipway
 
-Eventing is a from-scratch eventing broker: streaming (Kafka-like) and queue (RabbitMQ-like) semantics over a shared append-only log. This page takes you from a clean checkout to a running broker with traffic flowing.
+Slipway is a from-scratch event broker: **streaming** (topics, partitions, consumer groups, replay) and **queue** (ack, redelivery, DLQ) semantics over a shared append-only log. This page takes you from a clean checkout to a running broker with traffic flowing.
 
 ## Prerequisites
 
@@ -10,8 +10,8 @@ Eventing is a from-scratch eventing broker: streaming (Kafka-like) and queue (Ra
 ## Build
 
 ```sh
-git clone <repo-url> eventing
-cd eventing
+git clone <repo-url> slipway
+cd slipway
 make build        # or: go build ./...
 make verify       # go vet ./... && go test ./...
 ```
@@ -20,13 +20,13 @@ Two binaries result:
 
 | Binary | Purpose |
 |---|---|
-| `cmd/eventingd` | The broker daemon (HTTP admin + gRPC broker) |
-| `cmd/eventing-cli` | `eventing-cli` — operational CLI (topics, produce/fetch, groups, DLQ, API keys) |
+| `cmd/slipwayd` | The broker daemon (HTTP admin + gRPC broker) |
+| `cmd/slipway-cli` | `slipway-cli` — operational CLI (topics, produce/fetch, groups, DLQ, API keys) |
 
 Install into `$GOBIN` (or `$GOPATH/bin`):
 
 ```sh
-go install ./cmd/eventingd ./cmd/eventing-cli
+go install ./cmd/slipwayd ./cmd/slipway-cli
 ```
 
 ## Single-node quickstart (five minutes)
@@ -34,7 +34,7 @@ go install ./cmd/eventingd ./cmd/eventing-cli
 Run the broker:
 
 ```sh
-go run ./cmd/eventingd
+go run ./cmd/slipwayd
 # HTTP admin/health on :9092, gRPC on :9093; data in ./data ("" = in-memory)
 ```
 
@@ -45,10 +45,10 @@ In another terminal — no auth yet, so plain `curl` works (auth switches on onc
 curl -X POST localhost:9092/topics -d '{"name":"orders","partitions":3}'
 
 # Produce (FNV(key) partitions the record) via the CLI
-eventing-cli produce --topic orders --key user-42 --value '{"order":123}'
+slipway-cli produce --topic orders --key user-42 --value '{"order":123}'
 
 # Fetch from a partition
-eventing-cli fetch --topic orders --partition 0
+slipway-cli fetch --topic orders --partition 0
 ```
 
 Or drive everything over the HTTP admin API:
@@ -72,14 +72,14 @@ openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem \
   -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" -days 365
 
 # 2. run with TLS
-go run ./cmd/eventingd -tls-cert cert.pem -tls-key key.pem
+go run ./cmd/slipwayd -tls-cert cert.pem -tls-key key.pem
 
 # 3. create the first (admin) key — plaintext is shown exactly once
 curl --cacert cert.pem -X POST https://localhost:9092/apikeys \
   -H 'Content-Type: application/json' -d '{"name":"root","role":"admin"}'
 
 # 4. use it
-eventing-cli -ca-cert cert.pem -api-key 'ev-…' \
+slipway-cli -ca-cert cert.pem -api-key 'ev-…' \
   produce --topic orders --key k --value v
 ```
 
@@ -87,19 +87,19 @@ Key details (all verified live):
 
 - **Open by default until the first key exists.** Before you create one, every admin endpoint answers normally (this is the dev default). The moment one non-revoked key exists, all non-public routes (`/healthz` and `/metrics` stay public) require `Authorization: Bearer <key>`. There is no "off" switch other than revoking all keys.
 - **Roles:** `viewer` (GET topics/groups) < `operator` (produce, queue pull/ack, topic create) < `admin` (API key management + everything operator can do).
-- **CLI env vars:** `EVENTING_ADDR`, `EVENTING_HTTP_ADDR`, `EVENTING_PEERS`, `EVENTING_HTTP_PEERS`, `EVENTING_API_KEY`, `EVENTING_CA_CERT` — so `eventing-cli` works in scripts without repeating flags.
+- **CLI env vars:** `SLIPWAY_ADDR`, `SLIPWAY_HTTP_ADDR`, `SLIPWAY_PEERS`, `SLIPWAY_HTTP_PEERS`, `SLIPWAY_API_KEY`, `SLIPWAY_CA_CERT` — so `slipway-cli` works in scripts without repeating flags.
 - Audit records for every admin mutation and refused request go to the replicated `__audit` topic. See [`docs/configuration.md`](configuration.md) and the `__audit` segment format in [`docs/api.md`](api.md).
 
 ## Three-node cluster (experimental, ADR-007)
 
 ```sh
 # terminal 1
-go run ./cmd/eventingd -node-id n1 \
+go run ./cmd/slipwayd -node-id n1 \
   -peers n1=127.0.0.1:9311,n2=127.0.0.1:9312,n3=127.0.0.1:9313 \
   -http-addr 127.0.0.1:9211 -grpc-addr 127.0.0.1:9311 -data-dir ./data-n1
 
 # terminal 2
-go run ./cmd/eventingd -node-id n2 \
+go run ./cmd/slipwayd -node-id n2 \
   -peers n1=127.0.0.1:9311,n2=127.0.0.1:9312,n3=127.0.0.1:9313 \
   -http-addr 127.0.0.1:9212 -grpc-addr 127.0.0.1:9312 -data-dir ./data-n2
 
@@ -108,10 +108,10 @@ go run ./cmd/eventingd -node-id n2 \
 
 ```sh
 # client side: the CLI finds the leader/lease holder itself from metadata
-eventing-cli -peers 127.0.0.1:9311,127.0.0.1:9312,127.0.0.1:9313 \
+slipway-cli -peers 127.0.0.1:9311,127.0.0.1:9312,127.0.0.1:9313 \
   -http-peers 127.0.0.1:9211,127.0.0.1:9212,127.0.0.1:9213 \
   create-topic --name orders --partitions 3
-eventing-cli -peers 127.0.0.1:9311,127.0.0.1:9312,127.0.0.1:9313 \
+slipway-cli -peers 127.0.0.1:9311,127.0.0.1:9312,127.0.0.1:9313 \
   produce --topic orders --key k --value hello
 ```
 

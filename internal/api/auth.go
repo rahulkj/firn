@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/rahulkj/eventing/internal/apikeys"
-	"github.com/rahulkj/eventing/internal/audit"
-	"github.com/rahulkj/eventing/internal/ratelimit"
+	"github.com/rahulkj/slipway/internal/apikeys"
+	"github.com/rahulkj/slipway/internal/audit"
+	"github.com/rahulkj/slipway/internal/ratelimit"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -122,18 +122,18 @@ func (a *auth) Wrap(next http.Handler) http.Handler {
 
 // Commands under this map require the listed role; everything else is viewer+.
 var grpcRoles = map[string]apikeys.Role{
-	"/eventing.v1.EventingService/Produce":      apikeys.RoleOperator,
-	"/eventing.v1.EventingService/JoinGroup":    apikeys.RoleOperator,
-	"/eventing.v1.EventingService/Heartbeat":    apikeys.RoleOperator,
-	"/eventing.v1.EventingService/Pull":         apikeys.RoleOperator,
-	"/eventing.v1.EventingService/Ack":          apikeys.RoleOperator,
-	"/eventing.v1.EventingService/CommitOffset": apikeys.RoleOperator,
-	"/eventing.v1.ReplicaService/ReplicaPut":    apikeys.RoleOperator,
-	"/eventing.v1.ReplicaService/ReplicaFetch":  apikeys.RoleViewer,
+	"/slipway.v1.SlipwayService/Produce":      apikeys.RoleOperator,
+	"/slipway.v1.SlipwayService/JoinGroup":    apikeys.RoleOperator,
+	"/slipway.v1.SlipwayService/Heartbeat":    apikeys.RoleOperator,
+	"/slipway.v1.SlipwayService/Pull":         apikeys.RoleOperator,
+	"/slipway.v1.SlipwayService/Ack":          apikeys.RoleOperator,
+	"/slipway.v1.SlipwayService/CommitOffset": apikeys.RoleOperator,
+	"/slipway.v1.ReplicaService/ReplicaPut":   apikeys.RoleOperator,
+	"/slipway.v1.ReplicaService/ReplicaFetch": apikeys.RoleViewer,
 }
 
 // GRPCInterceptor enforces bearer authentication and rate limiting on every
-// unary RPC. ReplicaService and EventingService both use it.
+// unary RPC. ReplicaService and SlipwayService both use it.
 func (a *auth) GRPCInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		if a.store == nil || !a.store.HasAnyKey() {

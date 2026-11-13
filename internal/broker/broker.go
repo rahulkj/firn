@@ -15,30 +15,30 @@ import (
 	"net/url"
 	"path/filepath"
 
-	"github.com/rahulkj/eventing/internal/fence"
+	"github.com/rahulkj/slipway/internal/fence"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/rahulkj/eventing/internal/groups"
-	"github.com/rahulkj/eventing/internal/log"
-	"github.com/rahulkj/eventing/internal/meta"
+	"github.com/rahulkj/slipway/internal/groups"
+	"github.com/rahulkj/slipway/internal/log"
+	"github.com/rahulkj/slipway/internal/meta"
 )
 
 // ErrPartitionOutOfRange is returned when a partition index is negative or
 // >= the topic's partition count.
-var ErrPartitionOutOfRange = errors.New("eventing/broker: partition out of range")
+var ErrPartitionOutOfRange = errors.New("slipway/broker: partition out of range")
 
 // ErrInvalidRequest is returned for negative offsets or max_records < 1.
-var ErrInvalidRequest = errors.New("eventing/broker: invalid fetch request")
+var ErrInvalidRequest = errors.New("slipway/broker: invalid fetch request")
 
 // ErrNotLeaseHolder is returned when a cluster-mode produce is routed to a
 // partition this node does not hold the write lease for (ADR-007: only the
 // lease holder may append).
-var ErrNotLeaseHolder = errors.New("eventing/broker: not lease holder for partition")
+var ErrNotLeaseHolder = errors.New("slipway/broker: not lease holder for partition")
 
 // LeaseAdvisor reports which node holds a partition's write lease.
-// eventingd wires it in cluster mode; single-node mode leaves it nil.
+// slipwayd wires it in cluster mode; single-node mode leaves it nil.
 type LeaseAdvisor interface {
 	WriteAllowed(topic string, partition int32) bool
 	Holder(topic string, partition int32) string
@@ -127,7 +127,7 @@ func WithBlockSealing(d time.Duration) Option {
 	return func(b *Broker) { b.sealAge = d }
 }
 
-// SetAdvisor wires the cluster write-lease check. Only eventingd in cluster
+// SetAdvisor wires the cluster write-lease check. Only slipwayd in cluster
 // mode calls this; nil advisor = single-node, all writes allowed.
 func (b *Broker) SetAdvisor(a LeaseAdvisor) { b.advisor = a }
 
@@ -154,11 +154,11 @@ func New(reg *meta.Registry, opts ...Option) *Broker {
 	}
 	store, err := groups.NewOffsetStore("", nil)
 	if err != nil {
-		panic(fmt.Sprintf("eventing/broker: in-memory offsets store: %v", err))
+		panic(fmt.Sprintf("slipway/broker: in-memory offsets store: %v", err))
 	}
 	coord, err := groups.NewCoordinator(reg, store, b.groupOpts...)
 	if err != nil {
-		panic(fmt.Sprintf("eventing/broker: coordinator: %v", err))
+		panic(fmt.Sprintf("slipway/broker: coordinator: %v", err))
 	}
 	b.groups = coord
 	b.internalLogs = map[string]*log.FileLog{}
@@ -203,7 +203,7 @@ func NewWithDir(reg *meta.Registry, dir string, opts ...Option) (*Broker, error)
 }
 
 // ClusterView advertises this node's identity and the cluster's
-// id->address map plus the current quorum leader. eventingd wires it in
+// id->address map plus the current quorum leader. slipwayd wires it in
 // cluster mode; nil in single-node mode.
 type ClusterView interface {
 	ID() string
@@ -213,7 +213,7 @@ type ClusterView interface {
 	Leader() string
 }
 
-// SetClusterView wires cluster metadata into /eventingd for GetMetadata.
+// SetClusterView wires cluster metadata into /slipwayd for GetMetadata.
 func (b *Broker) SetClusterView(v ClusterView) { b.cluster = v }
 
 // ClusterView returns the configured cluster view (nil in single-node mode).
@@ -287,7 +287,7 @@ func (b *Broker) Produce(ctx context.Context, topic string, key, value []byte) (
 		return 0, 0, err
 	}
 	if b.closed {
-		return 0, 0, errors.New("eventing/broker: broker is closed")
+		return 0, 0, errors.New("slipway/broker: broker is closed")
 	}
 	t, err := b.reg.Get(topic)
 	if err != nil {
@@ -341,7 +341,7 @@ func (b *Broker) Fetch(ctx context.Context, topic string, partition int32, offse
 		return nil, nil
 	}
 	if offset > hw {
-		return nil, fmt.Errorf("eventing/broker: offset %d beyond high watermark %d", offset, hw)
+		return nil, fmt.Errorf("slipway/broker: offset %d beyond high watermark %d", offset, hw)
 	}
 	return plog.Fetch(offset, maxRecords)
 }
@@ -477,7 +477,7 @@ func (b *Broker) Blocks(topic string) ([]PartitionBlockDescriptor, error) {
 	for i, pl := range logs {
 		fl, ok := pl.(*log.FileLog)
 		if !ok {
-			return nil, fmt.Errorf("eventing/broker: partition %d is not file-backed", i)
+			return nil, fmt.Errorf("slipway/broker: partition %d is not file-backed", i)
 		}
 		for _, d := range fl.Blocks() {
 			out = append(out, PartitionBlockDescriptor{Partition: int32(i), Descriptor: d})
@@ -508,7 +508,7 @@ func (b *Broker) AppendReplicatedFrames(topic string, partition int32, frames []
 	pl := logs[partition]
 	fl, ok := pl.(*log.FileLog)
 	if !ok {
-		return 0, fmt.Errorf("eventing/broker: partition %q/%d is not file-backed", topic, partition)
+		return 0, fmt.Errorf("slipway/broker: partition %q/%d is not file-backed", topic, partition)
 	}
 	for _, f := range frames {
 		hwm := fl.HighWatermark()
@@ -544,7 +544,7 @@ func (b *Broker) ReadRange(ctx context.Context, topic string, partition int32, f
 	}
 	fl, ok := logs[partition].(*log.FileLog)
 	if !ok {
-		return nil, fmt.Errorf("eventing/broker: partition %q/%d is not file-backed", topic, partition)
+		return nil, fmt.Errorf("slipway/broker: partition %q/%d is not file-backed", topic, partition)
 	}
 	return fl.ReadRange(firstOffset, lastOffset)
 }
@@ -575,7 +575,7 @@ func (b *Broker) RawAppenderFor(topic string, partition int32) (RawAppender, err
 	}
 	fl, ok := logs[partition].(*log.FileLog)
 	if !ok {
-		return nil, fmt.Errorf("eventing/broker: partition %q/%d is not file-backed", topic, partition)
+		return nil, fmt.Errorf("slipway/broker: partition %q/%d is not file-backed", topic, partition)
 	}
 	return fl, nil
 }

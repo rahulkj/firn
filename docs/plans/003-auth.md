@@ -3,7 +3,7 @@
 Derived from `docs/plans/002-ha.md` phase E. Scope for v1 landing in this plan run:
 
 1. **API keys** — `internal/apikeys`: SHA-256-hashed keys stored in the internal `__api_keys` topic (shared FileLog via the broker, replicated). Roles: `viewer`, `operator`, `admin`. Plaintext returned exactly once at creation.
-2. **Enforcement** — gRPC unary interceptor on `EventingService` and `ReplicaService` + HTTP middleware on admin routes: keys required when any exist; open when none (dev default, documented). Role-gated verbs: viewer < operator < admin.
+2. **Enforcement** — gRPC unary interceptor on `SlipwayService` and `ReplicaService` + HTTP middleware on admin routes: keys required when any exist; open when none (dev default, documented). Role-gated verbs: viewer < operator < admin.
 3. **mTLS** — `-tls-cert` / `-tls-key` flags for both listeners; `-tls-ca-cert` on the CLI; quorum transport unchanged (in-mTLS mesh already).
 4. **Rate limit** — per-key token bucket (default 100 ops/s, configurable via flag), enforced at the same interceptors, not at the broker core.
 5. **Audit** — `internal/audit` appends records to `__audit-0` for every admin mutation (topic create, key create/revoke, group reset, DLQ redrive, auth failure). Replicated via the block path automatically.

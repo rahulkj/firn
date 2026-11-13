@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rahulkj/eventing/internal/broker"
-	"github.com/rahulkj/eventing/internal/fence"
-	"github.com/rahulkj/eventing/internal/quorum"
+	"github.com/rahulkj/slipway/internal/broker"
+	"github.com/rahulkj/slipway/internal/fence"
+	"github.com/rahulkj/slipway/internal/quorum"
 )
 
 // Advisor implements broker.LeaseAdvisor against the applied quorum lease

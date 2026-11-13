@@ -7,15 +7,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rahulkj/eventing/internal/apikeys"
-	"github.com/rahulkj/eventing/internal/audit"
-	"github.com/rahulkj/eventing/internal/fence"
-	"github.com/rahulkj/eventing/internal/groups"
-	"github.com/rahulkj/eventing/internal/meta"
-	"github.com/rahulkj/eventing/internal/queue"
+	"github.com/rahulkj/slipway/internal/apikeys"
+	"github.com/rahulkj/slipway/internal/audit"
+	"github.com/rahulkj/slipway/internal/fence"
+	"github.com/rahulkj/slipway/internal/groups"
+	"github.com/rahulkj/slipway/internal/meta"
+	"github.com/rahulkj/slipway/internal/queue"
 )
 
-const maxTopicNameLen = 249 // Kafka's limit; sane upper bound for us too.
+const maxTopicNameLen = 249 // generous bound; comfortably covers every real topic name
 
 // ClusterAdmin wires cluster-aware behavior into the admin surface: topic
 // creation is proposed to the metadata quorum and dropped locally per
@@ -93,7 +93,7 @@ func NewAdminHandler(reg *meta.Registry, coord *groups.Coordinator, q *queue.Man
 				writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 					"error":  "not the cluster leader; create the topic on the leader",
 					"leader": cfg.ca.LeaderAddr(),
-					"hint":   "eventing-cli create-topic works against any node: it finds the leader itself",
+					"hint":   "slipway-cli create-topic works against any node: it finds the leader itself",
 				})
 				return
 			}

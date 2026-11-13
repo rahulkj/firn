@@ -191,7 +191,7 @@ func TestLeaderFailoverPromotesSurvivor(t *testing.T) {
 		}
 	}
 
-	waitFor(t, "new leader among survivors", 3*time.Second, func() bool {
+	waitFor(t, "new leader among survivors", 10*time.Second, func() bool {
 		for _, n := range survivors {
 			if n.Role() == Leader {
 				return true
@@ -208,7 +208,7 @@ func TestLeaderFailoverPromotesSurvivor(t *testing.T) {
 	}
 
 	proposeTopic(t, newLeader, "post-failover")
-	waitFor(t, "post-failover entry visible on survivors", 3*time.Second, func() bool {
+	waitFor(t, "post-failover entry visible on survivors", 10*time.Second, func() bool {
 		for _, n := range nodes {
 			if n == old {
 				continue

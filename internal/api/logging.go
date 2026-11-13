@@ -11,7 +11,7 @@ import (
 )
 
 // LoggingMiddleware logs each HTTP request with method, path, status, and
-// duration as JSON via slog. Register it on the admin mux in eventingd.
+// duration as JSON via slog. Register it on the admin mux in slipwayd.
 func LoggingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -38,7 +38,7 @@ func LoggingUnaryInterceptor(ctx context.Context, req any, info *grpc.UnaryServe
 	resp, err = handler(ctx, req)
 	attrs := []any{"method", info.FullMethod, "code", status.Code(err).String(), "duration_ms", time.Since(start).Milliseconds()}
 	switch info.FullMethod {
-	case "/eventing.v1.EventingService/Produce", "/eventing.v1.EventingService/Fetch":
+	case "/slipway.v1.SlipwayService/Produce", "/slipway.v1.SlipwayService/Fetch":
 		slog.Debug("grpc", attrs...)
 	default:
 		slog.Info("grpc", attrs...)
