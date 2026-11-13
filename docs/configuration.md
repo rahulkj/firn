@@ -41,9 +41,15 @@ Cluster rules: membership is **fixed at startup** (no join/leave); topics create
 
 Cluster rules for internal topics: each internal topic (`__consumer_offsets`, `__queue_attempts`, `__audit`, `__api_keys`) has exactly one **write lease** at a time — the same lease table that fences user-topic appends. Only the lease holder may write; every other node fails closed (HTTP 503 / gRPC `FailedPrecondition` on its write paths). Reads are served on every node. In single-node mode all writes are allowed. There is no `-internal-lease-ttl` knob — the fencing rides `-lease-ttl`.
 
-### What auth does and when
+### Startup modes: fail-closed, bootstrap, and enforced (security model)
 
-Once **any non-revoked API key exists** (see `POST /apikeys` in [api.md](api.md)), the broker requires `Authorization: Bearer <key>` on everything except `/healthz` and `/metrics`. Before the first key exists, the broker is open — that is deliberate, so a dev can bootstrap from nothing; it also means the very first key creation must be protected by network isolation.
+The broker is **fail-closed by default**. Three modes exist:
+
+1. **Enforced** (default once keys exist): every request except `/healthz` requires `Authorization: Bearer <key>` with a valid role.
+2. **Bootstrap** (zero keys, no escape flag): everything except `/healthz` returns `401`; the broker printed a one-time `BOOTSTRAP TOKEN` to stderr on first start. `POST /apikeys` with that bearer mints exactly one **admin** key; the token is then void; enforced mode is active from the next request. Restart with existing keys enforces immediately — no token is reprinted.
+3. **Open** (`-dev` or `-allow-open-bootstrap`): no keys required anywhere, including `/metrics` and produce/fetch. Loud warning on startup. Development only.
+
+In bootstrap mode gRPC returns `Unauthenticated` for every call; minting happens over HTTP. Client authenticated with the minted admin key may then use all endpoints and future restarts enforce with zero operator action.
 
 ## `firn-cli` — operational CLI
 

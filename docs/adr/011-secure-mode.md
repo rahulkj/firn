@@ -37,6 +37,9 @@ Firn clusters run on machines with public or semi-public IPs. Automated scanners
 
 ## Decision
 
+> **Implementation status (2026-11-13): slice 1 delivered** — fail-closed startup + bootstrap token as described below (D-001, D-002, D-004; `/metrics` keyed by default). Remaining findings are tracked in plan 005 slices 2–6.
+
+
 **D-001 — Secure-by-default startup.** `firnd`/`firnd` refuses to bind any listener unless either (a) at least one non-revoked API key exists in `__api_keys`, or (b) the operator passes `-allow-open-bootstrap` (intentionally named). `-dev` is an alias for `-allow-open-bootstrap` for local work. `/healthz` becomes the only anonymous endpoint even in bootstrap/open mode; `/metrics` is removed from the default-public set — operators who want unauth scraping must pass `-metrics-auth=false` explicitly (default: `/metrics` requires a `viewer` key).
 
 **D-002 — One-time bootstrap token.** On first start with zero keys, the daemon prints a one-time token to stderr (`BOOTSTRAP TOKEN: …`). That token authorizes exactly one key creation (`POST /apikeys` with the token as the bearer) or is burned at first use. Subsequent keys are created by authenticated admin. This erases the "fresh deploy is open for N minutes" window even before any key exists.

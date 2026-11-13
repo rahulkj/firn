@@ -13,11 +13,12 @@ Everything in this document was cross-checked against `internal/api/firn.proto` 
 
 ## Authentication & authorization (since v0.1.0 + phase E)
 
-- Before the **first API key exists**, both surfaces are open (dev bootstrap default).
-- Once any non-revoked key exists, every non-public route requires `Authorization: Bearer <key>`.
+- **Fail-closed by default.** With zero keys and no `-dev`/`-allow-open-bootstrap` flag, the broker serves `/healthz` only; every other endpoint returns 401 (gRPC: `Unauthenticated`). On first start it prints a one-time `BOOTSTRAP TOKEN` to stderr.
+- **Bootstrap**: `POST /apikeys` with `Authorization: Bearer <BOOTSTRAP TOKEN>` mints exactly one **admin** key. The token is then void. Role in the body is ignored (forced `admin`). Only reachable until that call succeeds.
+- **Enforced**: once one non-revoked key exists, every non-public route requires `Authorization: Bearer <key>`.
   - HTTP: header on every request. CLI: `-api-key` flag or `FIRN_API_KEY` env var.
   - gRPC: per-RPC `authorization` metadata (CLI attaches automatically when `-api-key` is set).
-- `/healthz` and `/metrics` are always public.
+- `/healthz` is public. `/metrics` requires a `viewer` key by default (`-metrics-auth=false` restores unauth scraping).
 - Roles (least → most privilege): `viewer` → `operator` → `admin`.
   - `viewer`: `GET` topics/groups/apikeys metadata (apikeys list itself is admin).
   - `operator`: produce/fetch/queue pull+ack/commit-offset/topic create/group ops.

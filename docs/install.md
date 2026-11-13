@@ -36,28 +36,42 @@ Run the broker:
 ```sh
 go run ./cmd/firnd
 # HTTP admin/health on :9092, gRPC on :9093; data in ./data ("" = in-memory)
+# first-ever run prints "BOOTSTRAP TOKEN: <hex64>" on stderr — see next section
 ```
 
-In another terminal — no auth yet, so plain `curl` works (auth switches on once you create an API key; see below):
+On first start the daemon prints a one-time `BOOTSTRAP TOKEN` to stderr (64 hex chars). Use it to mint the first (admin) key — exactly once. The token is then void:
+
+```sh
+# copy BOOTSTRAP TOKEN from the daemon stderr/log
+TOKEN=<the 64-hex token you saw>
+
+KEY=$(curl -s -X POST localhost:9092/apikeys \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"root","role":"admin"}' | python3 -c 'import sys,json; print(json.load(sys.stdin)["key"])')
+echo "$KEY" > ~/.firn-root-key
+```
+
+Then — everything needs the key:
 
 ```sh
 # Create a stream topic with 3 partitions
-curl -X POST localhost:9092/topics -d '{"name":"orders","partitions":3}'
+curl -H "Authorization: Bearer $KEY" -X POST localhost:9092/topics -d '{"name":"orders","partitions":3}'
 
 # Produce (FNV(key) partitions the record) via the CLI
-firn-cli produce --topic orders --key user-42 --value '{"order":123}'
+firn-cli -api-key "$KEY" produce --topic orders --key user-42 --value '{"order":123}'
 
 # Fetch from a partition
-firn-cli fetch --topic orders --partition 0
+firn-cli -api-key "$KEY" fetch --topic orders --partition 0
 ```
 
 Or drive everything over the HTTP admin API:
 
 ```sh
-curl -X POST localhost:9092/topics -d '{"name":"orders","partitions":3}'
-curl localhost:9092/topics
-curl localhost:9092/healthz
-curl localhost:9092/metrics
+curl -H "Authorization: Bearer $KEY" -X POST localhost:9092/topics -d '{"name":"orders","partitions":3}'
+curl -H "Authorization: Bearer $KEY" localhost:9092/topics
+curl localhost:9092/healthz                                        # anonymous
+curl -H "Authorization: Bearer $KEY" localhost:9092/metrics
 ```
 
 Checkpoint, full examples, and the API reference: [`docs/api.md`](api.md).
@@ -71,11 +85,13 @@ TLS on both listeners and bearer-token auth are optional but recommended anywher
 openssl req -x509 -newkey rsa:2048 -nodes -keyout key.pem -out cert.pem \
   -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost,IP:127.0.0.1" -days 365
 
-# 2. run with TLS
+# 2. run with TLS (BOOTSTRAP TOKEN is printed on stderr on first start)
 go run ./cmd/firnd -tls-cert cert.pem -tls-key key.pem
+TOKEN=$(...)   # copy from stderr output
 
 # 3. create the first (admin) key — plaintext is shown exactly once
 curl --cacert cert.pem -X POST https://localhost:9092/apikeys \
+  -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' -d '{"name":"root","role":"admin"}'
 
 # 4. use it
@@ -85,7 +101,7 @@ firn-cli -ca-cert cert.pem -api-key 'ev-…' \
 
 Key details (all verified live):
 
-- **Open by default until the first key exists.** Before you create one, every admin endpoint answers normally (this is the dev default). The moment one non-revoked key exists, all non-public routes (`/healthz` and `/metrics` stay public) require `Authorization: Bearer <key>`. There is no "off" switch other than revoking all keys.
+- **Fail-closed by default.** A fresh daemon with zero keys serves `/healthz` only; everything else returns 401/`Unauthenticated`. On first start it prints a one-time `BOOTSTRAP TOKEN` (64 hex chars) to stderr; `POST /apikeys` with it mints exactly one **admin** key (token void after use; role coerced to admin). After that, all non-public routes require a bearer key; `/healthz` stays anonymous; `/metrics` requires a key by default. `-dev` opts back into fully-open mode for local work (loud warning at startup).
 - **Roles:** `viewer` (GET topics/groups) < `operator` (produce, queue pull/ack, topic create) < `admin` (API key management + everything operator can do).
 - **CLI env vars:** `FIRN_ADDR`, `FIRN_HTTP_ADDR`, `FIRN_PEERS`, `FIRN_HTTP_PEERS`, `FIRN_API_KEY`, `FIRN_CA_CERT` — so `firn-cli` works in scripts without repeating flags.
 - Audit records for every admin mutation and refused request go to the replicated `__audit` topic. See [`docs/configuration.md`](configuration.md) and the `__audit` segment format in [`docs/api.md`](api.md).

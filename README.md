@@ -78,7 +78,7 @@ Design: [`docs/adr/007-scaled-deployment.md`](docs/adr/007-scaled-deployment.md)
 
 ## Authentication, TLS & admin UI (phase E, 2026-11-13)
 
-The broker enforces bearer-token auth on both surfaces once **any non-revoked API key exists** — open by default for bootstrap, locked down afterwards. Keys are SHA-256-hashed and stored in the replicated `__api_keys` internal topic; roles `viewer` < `operator` < `admin`; per-key token-bucket rate limit. Admin mutations are recorded in the replicated `__audit` topic. `-tls-cert`/`-tls-key` serve both listeners over TLS (min TLS 1.2); the CLI dials HTTPS/TLS gRPC with `-ca-cert`. The read-only admin UI is at `/ui/`.
+Firn is **secure by default**: a fresh daemon with zero keys refuses to serve every endpoint except `/healthz`. On first start it prints a one-time `BOOTSTRAP TOKEN` to stderr; `POST /apikeys` with that token mints exactly one admin key, then bearer auth enforces everywhere except `/healthz`. `-dev` re-enables open mode for development, loudly. Restarting with existing keys enforces immediately; the bootstrap token is never reprinted and cannot be replayed. Keys are SHA-256-hashed and stored in the replicated `__api_keys` internal topic; roles `viewer` < `operator` < `admin`; per-key token-bucket rate limit. Admin mutations are recorded in the replicated `__audit` topic. `-tls-cert`/`-tls-key` serve both listeners over TLS (min TLS 1.2); the CLI dials HTTPS/TLS gRPC with `-ca-cert`. The read-only admin UI is at `/ui/`.
 
 ```sh
 # bootstrap: create the first (admin) key before serving traffic
