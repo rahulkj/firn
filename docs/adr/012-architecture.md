@@ -1,6 +1,6 @@
 # ADR-012: Architecture — components, interactions, deployment topologies
 
-Status: accepted · 2026-11-13 · living document: the diagrams in this file are canonical for the current tree and must be updated in the same commit as any component or topology change.
+Status: accepted · 2026-11-13 · implemented · audited 2026-11-13 (see Implementation notes below) · living document: the diagrams in this file are canonical for the current tree and must be updated in the same commit as any component or topology change.
 
 ## Context
 
@@ -592,6 +592,17 @@ Where to find the operator-facing companions to each plane:
 - New components are impossible to merge without a component-catalog entry in the same PR. The catalog groups by plane, not by package, on purpose: planes rarely change, packages do.
 - ADR-012 supersedes nothing; it consolidates what changed shape across ADR-007 (HA), ADR-010 (federation), and ADR-011 (secure-by-default), and is the fastest way to orient on this codebase.
 - Diagrams are Mermaid in-markdown precisely so they can be diffed, reviewed, and rejected like code.
+
+## Implementation notes (2026-11-13)
+
+Audit of this ADR against the tree (house style: original text unchanged; this addendum wins where they disagree):
+
+- **Security architecture section** was added to this ADR on 2026-11-13 after writing it (transport layers incl. mandatory mesh mTLS for 2 clusters, per-surface authN/authZ table, bootstrap token flow, end-to-end client sequence, federation trust-boundary diagram).
+- **Port defaults** moved under ADR-011 discipline to `:9460` (HTTP admin) / `:9461` (client gRPC) / `:9471` (mesh = grpc+10) in the v0.4.0 breaking window; every default in this file was renumbered and the examples were walked through once against a live broker (healthz → mint key → create topic → produce → fetch; bootstrap token flow re-verified).
+- **Federation** shipped in v0.4.0 (plan 004, slices 1–6): passive byte-identical one-way import, active-active re-origin import, both-ways attempts mirror, client-visible cursors (`federation_hwm`, `firn_federation_cursor_lag_seconds`, `/ui/federation`), and the cutover runbook (`docs/federation-cutover.md`) — the operator path this ADR references uses those artifacts.
+- **Consistency vs this file**: every component path, RPC name, internal topic, flag, and default in this document was checked against `internal/**` at this commit; nothing listed here is aspirational. Two previously misdocumented claims were fixed during the audit pass (`.index sidecar`, `metrics unauthenticated`). The SDK gap is recorded in ADR-001/002/007/008 addenda.
+- **Known and documented flakes** (not defects in this ADR): `TestInternalTopicSingleWriter` and `TestClusterElectsSingleLeader` are time-sensitive and fail intermittently under `-race` (~1-in-12); both are tracked for separate investigation.
+- **Diagrams verified syntactically**: all Mermaid blocks pass structural checks (paired fences, balanced quotes, standardized arrows, quoted labels) as of this commit; GitHub's renderer is the final oracle.
 
 ## Maintenance notes
 

@@ -60,7 +60,29 @@ Manual-run caveats: (1) a clean-VM run was not available to the agent; all check
 - **Compaction refused on replicated internal logs**: `FileLog.Compact()` renumbers records, which would silently diverge byte-identical replicas; fenced stores refuse `Compact()` and skip auto-compact. Single-node compaction unchanged. `__consumer_offsets`/`__queue_attempts` growth in cluster mode is now bounded by commit rate, not by compaction — capacity planning note for the release checklist.
 - **`-race` fix in `FileLog`** (see Data race fix) — also required the package contract change.
 
-## Unreleased
+## v0.3.0 — 2026-11-13 (BREAKING) — Firn is the durable event broker
+
+**Eventing is now Firn** (module rename, no functional change). The rename covers every user-facing identifier; the next release is breaking by design. Note the naming history, kept honest: the project was first renamed to **Slipway**, then rejected after conflict sweeps found four live software companies under that name (incl. a funded SF AI-onboarding startup in the same space); **Firn** (compacted snow layers — the compaction/retention metaphor) swept clean in two independent searches.
+
+MIT **License added** (2026-11-13).
+
+- Module path `github.com/rahulkj/eventing` → `github.com/rahulkj/firn`
+- Binaries `eventingd` → `firnd`, `eventing-cli` → `firn-cli`; env vars `EVENTING_*` → `FIRN_*` (e.g. `FIRN_ADDR`)
+- Proto package `eventing.v1` → `firn.v1`, service `FirnService`, Go package `firnpb`; stubs regenerated with buf
+- Metrics prefix `eventing_*` → `firn_*`
+- Zero Kafka/RabbitMQ references anywhere in the tree; README/AGENTS/ADRs rewritten to describe the broker on its own terms
+- Naming: all other candidates from the shortlist are conflicted (Strata→jsedlak/strata; Outbox→pattern keyword; Palimpsest→palimpsest-wal; Wick→Wick streams framework; Gantry/Talus/Ember/Basin/Waymark/Fermata→all live software companies in adjacent spaces). See docs/license-audit.md for the full table
+- `docs/license-audit.md`: engineering due-diligence showing no code from either incumbent is incorporated (dependency graph + marker scans). **Not legal advice.** LICENSE landed (MIT); formal trademark clearance for "Firn" still required before public promotion; optional rename of the `__consumer_offsets` internal topic to `__group_offsets` to erase the last incumbent-named identifier.
+- Quorum liveness fix (see separate commit): per-election re-randomized timeout — equally-timed peers could split votes and never elect a leader after the leader died (observed intermittently under full-suite `-race`)
+- version constant bumped to 0.3.0
+
+- Docs consistency pass (post-v0.2.0): ADR status lines aligned with what actually shipped (001–006 delivered v0.1.0; 007 delivered as v0.2.0; 005 amended; 009 validation + gap-fix shipping); ADR-007 lease default corrected to 3s; `docs/api.md` internal services section now documents `ReplicaService` and `QuorumService` with request/response examples (frame layout, Raft envelope, base64-verified examples) as scoped by ADR-008. Documentation ADR (008) is now fully delivered against its own checklist.
+
+## v0.4.0 — 2026-11-13 (BREAKING) — secure-by-default + federation preview
+
+**Upcoming from v0.3.0 is a breaking release**: fresh brokers fail closed (no keys ⇒ nothing serves but `/healthz`), listener default ports moved off the Kafka-derived pair (`:9092`→`:9460`, `:9093`→`:9461`, mesh `:9471`); everything else is additive or doc-only. Read `docs/migration-v0.3-to-v0.4.md` before restarting anything.
+
+- version constant bumped to 0.4.0
 
 - **BREAKING** default listeners moved off the Kafka-derived ports: `:9092` → **`:9460`** (HTTP admin), `:9093` → **`:9461`** (client gRPC), mesh default `:9103` → **`:9471`** (grpc-addr+10, unchanged relation). All flags (`-http-addr` / `-grpc-addr` / `-mesh-addr`) and env defaults (`FIRN_ADDR` / `FIRN_HTTP_ADDR`) updated; no flags renamed, no wire changes. `GetMetadata` single-node fallback no longer hardcodes `localhost:9093` (advertises unknown; clients fall back to their seed list). 3-node example ports updated to the IANA-unassigned 9537–9542 block; all docs switched. Rationale: IANA assigns 9092 to `XmlIpcRegSvc` and 9093 to `Copycat`; the pair read as a Kafka config and collided on Kafka-hosting machines. IANA-checked unassigned block 9460–9490 adopted. See `docs/migration-v0.3-to-v0.4.md` (breaking-changes section added). Operator action items: firewall/health-check/scrape updates. Pin the old ports explicitly if you must coexist temporarily.
 
@@ -84,21 +106,3 @@ Manual-run caveats: (1) a clean-VM run was not available to the agent; all check
 - ADR-011 secure-by-default + Plan 005 added: fresh installs without a key no longer listen (fail-closed; one-time bootstrap token on stderr; `-allow-open-bootstrap`/`-dev` opt-out); mesh transport becomes mTLS-mandatory (closes F-2/F-3); `/metrics` now requires a key by default; per-key CIDR allowlist; global anonymous rate limit; data-dir `0700`/files `0600` enforced; audit always-on, bounded, append-only; HTTP hardening headers; release hardening (SPDX SBOM, cosign-signed tarballs, grype critical gate). Implementation via plan 005; storage-adjacent review gates on slices 2 & 5.
 - ADR-010 federation + plan 004 added (multi-writer content-hash merge; passive one-way DR; client-visible federation cursors via `__federation_cursors` + `FetchResponse.federation_hwm`; API-key-registered peers; pull-only v1; queues federate fully with attempt-state mirroring).
 - **BREAKING**: module path, binaries, proto package, metrics prefix, env vars renamed to Firn (see separate commit); MIT license added; repo published as rahulkj/firn public with MIT.
-
-## v0.3.0 — 2026-11-13 (BREAKING) — Firn is the durable event broker
-
-**Eventing is now Firn** (module rename, no functional change). The rename covers every user-facing identifier; the next release is breaking by design. Note the naming history, kept honest: the project was first renamed to **Slipway**, then rejected after conflict sweeps found four live software companies under that name (incl. a funded SF AI-onboarding startup in the same space); **Firn** (compacted snow layers — the compaction/retention metaphor) swept clean in two independent searches.
-
-MIT **License added** (2026-11-13).
-
-- Module path `github.com/rahulkj/eventing` → `github.com/rahulkj/firn`
-- Binaries `eventingd` → `firnd`, `eventing-cli` → `firn-cli`; env vars `EVENTING_*` → `FIRN_*` (e.g. `FIRN_ADDR`)
-- Proto package `eventing.v1` → `firn.v1`, service `FirnService`, Go package `firnpb`; stubs regenerated with buf
-- Metrics prefix `eventing_*` → `firn_*`
-- Zero Kafka/RabbitMQ references anywhere in the tree; README/AGENTS/ADRs rewritten to describe the broker on its own terms
-- Naming: all other candidates from the shortlist are conflicted (Strata→jsedlak/strata; Outbox→pattern keyword; Palimpsest→palimpsest-wal; Wick→Wick streams framework; Gantry/Talus/Ember/Basin/Waymark/Fermata→all live software companies in adjacent spaces). See docs/license-audit.md for the full table
-- `docs/license-audit.md`: engineering due-diligence showing no code from either incumbent is incorporated (dependency graph + marker scans). **Not legal advice.** LICENSE landed (MIT); formal trademark clearance for "Firn" still required before public promotion; optional rename of the `__consumer_offsets` internal topic to `__group_offsets` to erase the last incumbent-named identifier.
-- Quorum liveness fix (see separate commit): per-election re-randomized timeout — equally-timed peers could split votes and never elect a leader after the leader died (observed intermittently under full-suite `-race`)
-- version constant bumped to 0.3.0
-
-- Docs consistency pass (post-v0.2.0): ADR status lines aligned with what actually shipped (001–006 delivered v0.1.0; 007 delivered as v0.2.0; 005 amended; 009 validation + gap-fix shipping); ADR-007 lease default corrected to 3s; `docs/api.md` internal services section now documents `ReplicaService` and `QuorumService` with request/response examples (frame layout, Raft envelope, base64-verified examples) as scoped by ADR-008. Documentation ADR (008) is now fully delivered against its own checklist.
