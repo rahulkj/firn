@@ -120,6 +120,20 @@ value:  {last_source_offset, last_local_offset, mode, applied_unix}
 - Scheme/schema registry federation.
 - Conflict resolution for user metadata that inadvertently diverges (topics created on both sides with the same name but different modes). Policy requires explicit reconciliation: one side wins by operator decision.
 
+## Implementation notes (2026-11-13, updated per slice)
+
+What shipped differs from the original text in the following ways (ADR-010 stays the decision record; this records reality for plan 004):
+
+- **Pull-only, confirmed.** Push federation does not exist and will not arrive without a new ADR.
+- **Echo prevention is foreign-range filtering, serving-side.** Each node records which of its local offsets it applied from each peer (the `ForeignRanges` continuation, coalesced on write); the serving `FederationFetch` omits the requesting peer's own donated frames. `-federation-self` names this cluster to the peer; both sides register each other symmetrically under matching names. Active-active convergence verified live and under `-race`.
+- **`FederationReport` publishes `foreign_ranges`** (additive): the serving node's foreign-applied ranges for the topic, so peers whose own import history lacks the inverse mapping can still re-key attempts/acks records both ways. `partitions` rides the same response for pull-time registration validation (mismatch → no import, loud error).
+- **Re-origin applies on the sink side** via `broker.AppendReoriginedFrames` — fresh local offsets, ts/key/value preserved; no change to `internal/log`.
+- **Attempts/acks in active-active mirror with re-keying**: attempt keys carry the source's message offsets; the sink translates them into its local offset space (records imported-from-peer → local ranges; records authored locally → the peer's published inverse). Competing consumers per cluster see at-most-once each; DLQ contents converge on identical key sets (verified).
+- **Passive mode is byte-identical including `__queue_attempts`** (all-or-nothing mirror — out-of-scope keys dropped). Queue message logs ride along with named queues. Sink stays fenced until operator cutover; `-federation-self` is not required for passive one-way imports.
+- **Crash between re-origin append and cursor commit duplicates at most one batch** (at-least-once). Exactly-once across the federation remains a non-goal.
+- **Mode conflicts remain operator-enforced** (registration is two out-of-band steps; the engine does not negotiate). Both clusters must agree `active-active` for bidirectional flows; a passive `in` registration fences the sink.
+- **`federation_hwm`** in `FetchResponse` is advisory (min across inbound peers covering the topic/partition); never a correctness input. `__federation_peers`/`__federation_cursors` are intra-cluster replicated shared logs; they are never federated themselves.
+
 ## When this plan changes
 
 Scope creep of federation beyond this ADR (push mode, cross-cluster group-sync, exactly-once) requires a new ADR and never a silent expansion of a release.

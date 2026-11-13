@@ -92,6 +92,10 @@ firn-cli -api-key 'ev-…' list
 
 Details: [`docs/configuration.md`](docs/configuration.md) (flags, auth-enforcement model), [`docs/api.md`](docs/api.md) (key routes, roles, error codes), [`docs/plans/003-auth.md`](docs/plans/003-auth.md) (delivery notes).
 
+## Multi-cluster federation (preview, ADR-010)
+
+Two+ Firn clusters can replicate topics and queues between them over mTLS + a federation-scoped key. Mode is per peer: **passive** (one-way DR — sink stays fenced, offsets preserved byte-identically, until the operator cuts over) or **active-active** (both clusters accept writes; records are re-originated per cluster with fresh local offsets, ts/key/value preserved, echo filtered server-side). Selective per-topic/per-queue scoping; federation keys can call federation RPCs and nothing else; `firn federation add-peer|status` for operations; `firn_federation_cursor_lag_seconds` metric; `/ui/federation` read-only view. Two-cluster registration example: [`docs/install.md`](docs/install.md#two-cluster-federation-preview-adr-010) · semantics: [`docs/adr/010-federation.md`](docs/adr/010-federation.md).
+
 ## Design docs (read in order)
 
 1. [ADR-001 Scope](docs/adr/001-scope.md)

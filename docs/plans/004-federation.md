@@ -15,7 +15,7 @@ Non-negotiables: storage review for data-plane diffs; plan changes land here fir
 | 3 (**delivered 2026-11-13**) | `FetchResponse.federation_hwm` (advisory, min across passive covering peers; `0` until first import); `firn_federation_cursor_lag_seconds{peer,topic,partition}` gauge (rises while a peer is unreachable; ~0 while caught up); admin UI `/ui/federation` (read-only); `firn-cli fetch --json` reports `federation_hwm` | API + docs review |
 | 4 (**delivered 2026-11-13**) | `active-active` full mode: frame pull + re-origin through `broker.AppendReoriginedFrames` (fresh local offsets, ts/key/value preserved); server-side foreign-range echo filter on `FederationFetch` (+ `requesting_peer`, `-federation-self`); registration validation at pull time via `FederationReport.partitions`; cursor records foreign local ranges with coalescing; `federation_hwm` counts all inbound peers | **mandatory (storage-adjacent) — owner review pending** |
 | 5 (**delivered 2026-11-13**) | Active-active queues: `__queue_attempts` both-way replication with re-keyed offsets (foreign-range translation); `FederationReport.foreign_ranges` published by the server; convergence test (competing consumers in both clusters → every job consumed exactly once per cluster); DLQ contents converge on both sides | **mandatory — owner review pending** |
-| 6 | ADR validation pass vs ADR-010; install/config/api additions; AGENTS.md cross-link; release note | docs review |
+| 6 (**delivered 2026-11-13**) | ADR validation pass vs shipped behavior (implementation-notes addendum in ADR-010); install.md federation quickstart; federation-cutover runbook (`docs/federation-cutover.md`); api.md federation surface sync; README federation paragraph; AGENTS.md cross-link | docs review |
 
 ## Slice details
 
@@ -74,13 +74,18 @@ Delivered 2026-11-13. Deltas vs the original spec (this section is authoritative
 
 ### Slice 6 — docs, ADR validation, release readiness
 
-- ADR-010 "consequences" re-verified against shipped behavior; update if shipped semantics deviate (in the same commit).
-- `docs/configuration.md` gains federation flags & `__federation_peers/cursors` note; `docs/install.md` gains a cluster-federation quickstart; `docs/api.md` gains `FederationService` reference; README federation paragraph.
-- Release notes: federation is **preview**; two-cluster requirement; push mode unavailable.
+Delivered 2026-11-13. Notes:
+
+- ADR-010 "consequences" re-verified vs shipped behavior; deviations recorded as an **Implementation notes (2026-11-13)** addendum at the end of the ADR (original consequences preserved verbatim; the addendum wins where they disagree): pull-only confirmed; foreign-range serving-side echo filter; `FederationReport.foreign_ranges` published for either-direction attempts re-keying; re-origin crash semantics (at most one duplicated batch, at-least-once); passive mirror still byte-identical; `federation_hwm` covers all inbound peers.
+- `docs/install.md` gains the two-cluster federation quickstart (shared mesh CA → boot with `-federation-self` → bootstrap tokens → federation keys → identical topic on both sides → peer registration both directions → converge-on-write), plus a passive one-way variant with the cutover pointer. Persisted-paths table gained `__federation_peers-0/` and `__federation_cursors-0/`.
+- `docs/federation-cutover.md` (new): operator procedure pass→fail for passive → active-active flip or standalone decommission (lag-zero/attempts/partition preconditions, exact commands, verification).
+- `docs/api.md` synced: FederationService paragraph, `federation_hwm` advisory note updated (both peer modes), `/ui/federation` link, CLI map.
+- README gains the federation preview paragraph and links the quickstart + ADR.
+- v0.4.0 remains uncut and untagged (docs-only pass; no release decision taken here).
 
 ## Open items (tracked, not blocking)
 
-- Operator cutover runbook for passive→active flip (write follow-up doc in slice 6).
+- ~~Operator cutover runbook~~ delivered in slice 6 (`docs/federation-cutover.md`).
 - Metrics polish: `firn_federation_import_{frames,bytes}_total` counters per peer/topic/partition.
 - Push-federation shape (ADR-012 candidate): inbound push is strictly better for private networks without outbound access to peers' internal listeners; requires a new ADR and its own plan.
 - Mirror retention operator tooling: `firn federation reseed <peer> --topic <t>` (explicit wipe+reimport; never implicit).

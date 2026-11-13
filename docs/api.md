@@ -207,7 +207,7 @@ firn-cli -api-key "$KEY" produce --topic orders --key k1 --value hello
 
 ### Fetch (federation watermark hint)
 
-`FetchResponse.federation_hwm` (since v0.4.0): advisory minimum — the lowest `LastLocalOffset` applied from any passive federation peer covering (topic, partition); `0` when unknown or not federated. Hint only; never a correctness input cross-cluster. `firn-cli fetch --json` includes it.
+`FetchResponse.federation_hwm` (since v0.4.0): advisory minimum — the lowest `LastLocalOffset` applied from any inbound federation peer (passive or active-active) covering (topic, partition); `0` when unknown or not federated. Hint only; never a correctness input cross-cluster. `firn-cli fetch --json` includes it.
 
 ### Fetch
 
@@ -311,7 +311,7 @@ gRPC: `FederationService` is served **only on the mesh listener** (mTLS + federa
 
 `firn-cli`: `firn-cli federation add-peer|list-peers|remove-peer|keys|status` — see the command map below.
 
-Status codes: passive registration `201`; produce/pull/ack on a passively-federated resource → gRPC `FailedPrecondition` / HTTP `409` (`federated: passive`); sink stays read-only until cutover. Active-active mode is available (preview): both clusters accept writes, records are re-originated with fresh local offsets, ts/key/value preserved, and the A→B→A echo is filtered server-side via each node's foreign-applied local ranges. Full details: `docs/plans/004-federation.md`.
+Status codes: passive registration `201`; produce/pull/ack on a passively-federated resource → gRPC `FailedPrecondition` / HTTP `409` (`federated: passive`); sink stays read-only until cutover. Active-active mode is available (preview): both clusters accept writes, records are re-originated with fresh local offsets, ts/key/value preserved, and the A→B→A echo is filtered server-side via each node's foreign-applied local ranges. Full details: `docs/plans/004-federation.md`; cutover: `docs/federation-cutover.md`.
 
 ## Internal services (never call from clients)
 

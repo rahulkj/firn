@@ -141,6 +141,44 @@ firn-cli -peers 127.0.0.1:9311,127.0.0.1:9312,127.0.0.1:9313 \
 
 Cluster notes and caveats (lease re-grant lands on the quorum leader; fixed membership; at-risk unsealed tail): see [`docs/adr/007-scaled-deployment.md`](adr/007-scaled-deployment.md). Internal topics (`__consumer_offsets`, `__queue_attempts`, `__audit`, `__api_keys`) replicate with the same block machinery since phase F.
 
+## Two-cluster federation (preview, ADR-010)
+
+Federation lets two Firn clusters replicate topics (and queues) to each other over the mesh listener. Mode is per peer: `passive` (one-way source → sink, sink fenced until cutover) or `active-active` (both clusters accept writes; records are re-originated with fresh local offsets). Federation is pull-only in v1 — no push. Both clusters must share the mesh CA (or the sink can pin the source's CA via the peer's `ca_crt_pem`).
+
+```sh
+# 0. one shared mesh CA for the pair (or use per-cluster CAs with ca_crt_pem pinning)
+firn-cli mesh-ca init -out shared-ca
+for d in east west; do mkdir -p $d/mesh-ca && cp shared-ca/ca.* $d/mesh-ca/ && chmod 0600 $d/mesh-ca/ca.*; done
+
+# 1. boot both — -federation-self is REQUIRED for active-active (echo filter)
+firnd -data-dir ./east -federation-self east -http-addr :9300 -grpc-addr :9301 -mesh-addr :9302 &
+firnd -data-dir ./west -federation-self west -http-addr :9410 -grpc-addr :9411 -mesh-addr :9412 &
+
+# 2. mint one admin key per cluster via the bootstrap token (printed on stderr)
+curl -s -X POST localhost:9300/apikeys -H "Authorization: Bearer <EAST_TOKEN>" -d '{"name":"root","role":"admin"}'
+curl -s -X POST localhost:9410/apikeys -H "Authorization: Bearer <WEST_TOKEN>" -d '{"name":"root","role":"admin"}'
+
+# 3. each side mints a FEDERATION key for the other
+curl -s -X POST localhost:9300/federation/keys -H "Authorization: Bearer <EAST_ADMIN>" -d '{"name":"west"}'
+curl -s -X POST localhost:9410/federation/keys -H "Authorization: Bearer <WEST_ADMIN>" -d '{"name":"east"}'
+
+# 4. create the SAME topic on both sides (partition counts must match or the import refuses)
+curl -s -X POST localhost:9300/topics -H "Authorization: Bearer <EAST_ADMIN>" -d '{"name":"orders","partitions":1}'
+curl -s -X POST localhost:9410/topics -H "Authorization: Bearer <WEST_ADMIN>" -d '{"name":"orders","partitions":1}'
+
+# 5. register peers both directions (active-active)
+firn-cli -http-addr localhost:9300 -api-key <EAST_ADMIN> federation add-peer --name west --addr 127.0.0.1:9412 --server-name <west-node-id> --direction both --mode active-active --topics orders --key <KEY_WEST_ISSUED>
+firn-cli -http-addr localhost:9410 -api-key <WEST_ADMIN> federation add-peer --name east --addr 127.0.0.1:9302 --server-name <east-node-id> --direction both --mode active-active --topics orders --key <KEY_EAST_ISSUED>
+
+# 6. write on either side; both clusters converge
+firn-cli -addr localhost:9301 -api-key <EAST_ADMIN> produce --topic orders --key k1 --value hello
+firn-cli -addr localhost:9411 -api-key <WEST_ADMIN> fetch --topic orders --offset 0
+```
+
+For **passive (one-way DR)**: boot the sink with the same CA and `-federation-self`, create the topic on both sides, register the sink with `--direction in --mode passive`, and produce only on the source — the sink is fenced (produce/pull/ack → `409`/`FailedPrecondition`) until the operator cuts over (see `docs/api.md`).
+
+`firn federation status` shows per-`(peer, topic, partition)` import cursors; offsets are preserved in passive imports and re-originated to fresh local offsets in active-active imports (ts/key/value preserved either way). For cutting a passive sink over to writable: [`docs/federation-cutover.md`](federation-cutover.md). `firn_federation_cursor_lag_seconds{peer,topic,partition}` reports lag; `/ui/federation` is read-only. Constraints: push federation doesn't exist, cross-cluster ordering is undefined, DLQ trims stay at-least-once across the pair — see [`docs/adr/010-federation.md`](adr/010-federation.md) and [`docs/plans/004-federation.md`](plans/004-federation.md).
+
 ## What gets persisted where (`-data-dir`, default `./data`)
 
 | Path | Contents |
@@ -151,6 +189,8 @@ Cluster notes and caveats (lease re-grant lands on the quorum leader; fixed memb
 | `__queue_attempts-0/` | Per-message queue attempt counters (redelivery + DLQ bookkeeping). |
 | `__audit-0/` | Audit records (topic create/revoke, key create/revoke, authz refusals). |
 | `__api_keys-0/` | Hashed API keys (SHA-256; plaintext never at rest). |
+| `__federation_peers-0/` | Federation peer registry (addr, key ref, policy). Replicates intra-cluster; never federates. |
+| `__federation_cursors-0/` | Per-peer import cursors + foreign-applied ranges (echo filter). Replicates intra-cluster; never federates. |
 | `metadata/hardstate.json`, `metadata/log.bin` | Cluster-mode only: Raft hard state + quorum log (topic creates, block commits, lease grants). |
 
 Every file under `-data-dir` may be copied for backup only with the broker stopped. There is no format version stamp yet (see [ADR-009](adr/009-storage-solutions.md)) — treat copies as opaque until one ships.
