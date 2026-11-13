@@ -118,16 +118,72 @@ type Peer struct {
 	UpdatedUnix int64      `json:"updated_unix"`
 }
 
+// LocalRange is a contiguous interval of LOCAL offsets [Start, End] that
+// this cluster imported from a peer (the foreign-applied ranges of ADR-010).
+// The serving filter uses one peer's ranges to omit exactly the frames that
+// peer donated to us, closing the A→B→A echo without frame headers.
+type LocalRange struct {
+	Start int64 `json:"start"`
+	End   int64 `json:"end"`
+}
+
+// mergeLocalRanges sorts and coalesces overlapping or adjacent ranges.
+func mergeLocalRanges(rs []LocalRange) []LocalRange {
+	if len(rs) == 0 {
+		return nil
+	}
+	out := append([]LocalRange(nil), rs...)
+	sort.Slice(out, func(i, j int) bool { return out[i].Start < out[j].Start })
+	merged := []LocalRange{out[0]}
+	for _, r := range out[1:] {
+		last := &merged[len(merged)-1]
+		if r.Start <= last.End+1 {
+			if r.End > last.End {
+				last.End = r.End
+			}
+			continue
+		}
+		merged = append(merged, r)
+	}
+	return merged
+}
+
+// RangeContains reports whether offset falls inside any range.
+func RangeContains(rs []LocalRange, offset int64) bool {
+	for _, r := range rs {
+		if offset >= r.Start && offset <= r.End {
+			return true
+		}
+	}
+	return false
+}
+
+// ForeignRanges returns the merged foreign-applied ranges recorded for
+// (peer, topic, partition) on this node: the local ranges WE imported from
+// that peer. Used by the serving-side echo filter.
+func (s *Store) ForeignRanges(peer, topic string, partition int32) []LocalRange {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_ = s.loadLocked()
+	c, ok := s.curCache[fmt.Sprintf("%s/%s/%d", peer, topic, partition)]
+	if !ok {
+		return nil
+	}
+	return mergeLocalRanges(c.ForeignRanges)
+}
+
 // Cursor tracks per-(peer, topic, partition) import progress.
 // Written by the puller; read by every node for `/federation/cursors`.
 type Cursor struct {
-	Peer             string `json:"peer"`
-	Topic            string `json:"topic"`
-	Partition        int32  `json:"partition"`
-	LastSourceOffset int64  `json:"last_source_offset"`
-	LastLocalOffset  int64  `json:"last_local_offset"`
-	Mode             Mode   `json:"mode"`
-	UpdatedUnix      int64  `json:"updated_unix"`
+	Peer             string       `json:"peer"`
+	Topic            string       `json:"topic"`
+	Partition        int32        `json:"partition"`
+	LastSourceOffset int64        `json:"last_source_offset"`
+	LastLocalOffset  int64        `json:"last_local_offset"`
+	Mode             Mode         `json:"mode"`
+	UpdatedUnix      int64        `json:"updated_unix"`
+	Origin           string       `json:"origin,omitempty"`         // "remote" for federation-applied imports
+	ForeignRanges    []LocalRange `json:"foreign_ranges,omitempty"` // local ranges applied from the peer (echo filter)
 }
 
 // internalPrefix is the reserved namespace for firn-internal topics. No
@@ -369,6 +425,7 @@ func (s *Store) SetCursor(c Cursor) error {
 	defer s.mu.Unlock()
 	now := time.Now().UnixMilli()
 	c.UpdatedUnix = now
+	c.ForeignRanges = mergeLocalRanges(c.ForeignRanges)
 	data, _ := json.Marshal(c)
 	s.cursors.Append([]byte(fmt.Sprintf("cursor:%s/%s/%d", c.Peer, c.Topic, c.Partition)), data)
 	s.curHWM = s.cursors.HighWatermark()

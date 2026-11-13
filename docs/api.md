@@ -301,7 +301,7 @@ Multiple Firn clusters can register as peers and replicate records one-way (`pas
 
 | Method | Path | Description |
 |---|---|---|
-| `POST` | `/federation/peers` | Register (or overwrite) a peer. Body: `{name, addr, direction (in\|out\|both), mode (passive\|active-active), key, topics?[], queues?[], ca_crt_pem? (base64 PEM), server_name?}`. `key` is the bearer issued by the **peer**; `direction` `in`/`both` require it. Never echoed by any endpoint. |
+| `POST` | `/federation/peers` | Register (or overwrite) a peer. Body: `{name, addr, direction (in\|out\|both), mode (passive\|active-active), key, topics?[], queues?[], ca_crt_pem? (base64 PEM), server_name?}`. `key` is the bearer issued by the **peer**; `direction` `in`/`both` require it. Never echoed by any endpoint. Active-active requires `-federation-self` be set on both clusters. |
 | `GET` | `/federation/peers` | List peers (`keySet` is reported; the key is not). |
 | `DELETE` | `/federation/peers/{name}` | Remove a peer. Cursors for the peer are **not** deleted; a full re-import requires deleting the peer and re-registering (operator action). |
 | `POST` | `/federation/keys` | Mint a federation-scoped key for *this* cluster (shown once). Body: `{name, allowed_ips?[]}`. |
@@ -311,7 +311,7 @@ gRPC: `FederationService` is served **only on the mesh listener** (mTLS + federa
 
 `firn-cli`: `firn-cli federation add-peer|list-peers|remove-peer|keys|status` — see the command map below.
 
-Status codes: passive registration `201`; produce/pull/ack on a passively-federated resource → gRPC `FailedPrecondition` / HTTP `409` (`federated: passive`); sink stays read-only until cutover. Passive mode is a preview; active-active is not yet available. Full details: `docs/plans/004-federation.md`, cutover runbook lands in slice 6.
+Status codes: passive registration `201`; produce/pull/ack on a passively-federated resource → gRPC `FailedPrecondition` / HTTP `409` (`federated: passive`); sink stays read-only until cutover. Active-active mode is available (preview): both clusters accept writes, records are re-originated with fresh local offsets, ts/key/value preserved, and the A→B→A echo is filtered server-side via each node's foreign-applied local ranges. Full details: `docs/plans/004-federation.md`.
 
 ## Internal services (never call from clients)
 

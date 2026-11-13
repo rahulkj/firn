@@ -242,6 +242,11 @@ message FederationFetchRequest {
   int32 partition = 2;
   int64 first_offset = 3;
   int64 last_offset = 4; // inclusive; clamps to high watermark
+  // Name under which the CALLER is registered in THIS cluster's peer list.
+  // Used as the echo filter for active-active (the serving node knows which
+  // of its own local offset ranges it imported from that peer and omits
+  // them). Empty = no filtering (passive one-way setups may leave it unset).
+  string requesting_peer = 5;
 }
 
 message FederationFetchResponse {
@@ -257,6 +262,7 @@ message FederationReportRequest {
 message FederationReportResponse {
   int64 high_watermark = 1; // source's high watermark
   int64 retention_horizon = 2;
+  int32 partitions = 3;     // partition count of the topic on the source (registration validation)
 }
 
 // --- ADR-007 phase D: client routing surface ---

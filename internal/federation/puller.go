@@ -44,6 +44,10 @@ type PullerConfig struct {
 	Dial       func(ctx context.Context, peer Peer) (*grpc.ClientConn, error)
 	Logger     *slog.Logger
 	LagSeconds LagFunc
+	// SelfName is this cluster's identity as the peer registers it, sent as
+	// requesting_peer so the serving side can omit the frames this cluster
+	// donated to it (the echo filter). Empty disables the filter.
+	SelfName string
 }
 
 type Puller struct {
@@ -93,12 +97,12 @@ func (p *Puller) Run(ctx context.Context) {
 
 func (p *Puller) Stop() { close(p.stop) }
 
-// poll pulls from every passive peer registered with direction in|both.
-// Failures are logged and retried next tick; they never abort the loop.
+// poll pulls from every passive- or active-active peer registered with
+// direction in|both. Failures are logged and retried next tick; abort none.
 func (p *Puller) poll(ctx context.Context) {
 	for _, peer := range p.cfg.Store.ListPeers() {
 		peer := peer
-		if peer.Mode != ModePassive {
+		if peer.Mode != ModePassive && peer.Mode != ModeActiveActive {
 			continue
 		}
 		if peer.Direction != DirectionIn && peer.Direction != DirectionBoth {
@@ -187,15 +191,40 @@ func (p *Puller) pullPartition(ctx context.Context, peer Peer, topic string, par
 		return
 	}
 	defer func() { _ = conn.Close() }()
+	client := firnpb.NewFederationServiceClient(conn)
+
+	// Registration validation (ADR-010): partition counts must match on both
+	// sides. A mismatch is fatal for the import — log loudly, skip, move on.
+	// Also the only cheap place to detect a peer that died between ticks.
+	ctxRpt, cancelRpt := context.WithTimeout(outgoingBearer(ctx, peer.Key), 30*time.Second)
+	rpt, err := client.FederationReport(ctxRpt, &firnpb.FederationReportRequest{Topic: topic, Partition: partition})
+	cancelRpt()
+	if err != nil {
+		p.observeLag(peer.Name, topic, partition, false)
+		p.logger.Warn("federation: report failed", "peer", peer.Name, "topic", topic, "err", err)
+		return
+	}
+	tmeta, err := p.cfg.Broker.TopicMeta(topic)
+	if err != nil {
+		p.observeLag(peer.Name, topic, partition, false)
+		p.logger.Warn("federation: topic not known on sink; pre-create it", "peer", peer.Name, "topic", topic)
+		return
+	}
+	if rpt.Partitions != int32(tmeta.Partitions) {
+		p.observeLag(peer.Name, topic, partition, false)
+		p.logger.Error("federation: partition count mismatch — create the topic on both sides with the SAME partition count", "peer", peer.Name, "topic", topic, "source", rpt.Partitions, "local", tmeta.Partitions)
+		return
+	}
 
 	ctx2, cancel := context.WithTimeout(outgoingBearer(ctx, peer.Key), 30*time.Second)
-	defer cancel()
-	fr, err := firnpb.NewFederationServiceClient(conn).FederationFetch(ctx2, &firnpb.FederationFetchRequest{
-		Topic:       topic,
-		Partition:   partition,
-		FirstOffset: first,
-		LastOffset:  -1, // clamp to source high watermark
+	fr, err := client.FederationFetch(ctx2, &firnpb.FederationFetchRequest{
+		Topic:          topic,
+		Partition:      partition,
+		FirstOffset:    first,
+		LastOffset:     -1, // clamp to source high watermark
+		RequestingPeer: p.cfg.SelfName,
 	})
+	cancel()
 	if err != nil {
 		p.observeLag(peer.Name, topic, partition, false)
 		p.logger.Warn("federation: fetch failed", "peer", peer.Name, "topic", topic, "partition", partition, "err", err)
@@ -203,7 +232,16 @@ func (p *Puller) pullPartition(ctx context.Context, peer Peer, topic string, par
 	}
 
 	if len(fr.Frames) == 0 {
-		// Fully caught up — do not rewrite the cursor on every tick.
+		// Everything in the requested window was echo content the peer
+		// filtered out — advance the cursor to the source HWM so the echo
+		// does not re-fetch forever. If we already had a cursor, keep it.
+		if hasCursor && fr.SourceHwm > 0 && fr.SourceHwm-1 > cursor.LastSourceOffset {
+			cursor.LastSourceOffset = fr.SourceHwm - 1
+			if hw, err := p.cfg.Broker.PartitionHighWatermark(ctx, topic, partition); err == nil && hw > 0 {
+				cursor.LastLocalOffset = hw - 1
+			}
+			_ = p.cfg.Store.SetCursor(cursor)
+		}
 		p.observeLag(peer.Name, topic, partition, true)
 		return
 	}
@@ -214,28 +252,61 @@ func (p *Puller) pullPartition(ctx context.Context, peer Peer, topic string, par
 		p.logger.Error("federation: CRC/parse failure; dropping range, cursor untouched", "peer", peer.Name, "topic", topic, "partition", partition, "err", err)
 		return
 	}
-	if _, err := p.cfg.Broker.AppendReplicatedFrames(topic, partition, frames); err != nil {
-		p.observeLag(peer.Name, topic, partition, false)
-		p.logger.Error("federation: apply failed; cursor untouched", "peer", peer.Name, "topic", topic, "partition", partition, "err", err)
-		return
+	// Redelivery safety: skip any served frame at or below the source offset
+	// already imported (server-side filter may be absent).
+	if hasCursor && cursor.LastSourceOffset >= 0 {
+		kept := frames[:0]
+		for _, f := range frames {
+			if f.Offset > cursor.LastSourceOffset {
+				kept = append(kept, f)
+			}
+		}
+		frames = kept
+	}
+
+	var firstLocal, hwm int64 = -1, -1
+	if len(frames) > 0 {
+		if peer.Mode == ModeActiveActive {
+			firstLocal, hwm, err = p.cfg.Broker.AppendReoriginedFrames(topic, partition, frames)
+			if err != nil {
+				p.observeLag(peer.Name, topic, partition, false)
+				p.logger.Error("federation: reorigin apply failed; cursor untouched", "peer", peer.Name, "topic", topic, "partition", partition, "err", err)
+				return
+			}
+		} else {
+			// Passive: byte-identical import via the replicated-apply path.
+			preHWM, _ := p.cfg.Broker.PartitionHighWatermark(ctx, topic, partition)
+			hw, err := p.cfg.Broker.AppendReplicatedFrames(topic, partition, frames)
+			if err != nil {
+				p.observeLag(peer.Name, topic, partition, false)
+				p.logger.Error("federation: apply failed; cursor untouched", "peer", peer.Name, "topic", topic, "partition", partition, "err", err)
+				return
+			}
+			hwm = hw
+			firstLocal = preHWM
+		}
 	}
 	p.observeLag(peer.Name, topic, partition, true)
 
-	lastSource := frames[len(frames)-1].Offset
-	localHWM, err := p.cfg.Broker.PartitionHighWatermark(ctx, topic, partition)
-	lastLocal := lastSource
-	if err == nil && localHWM > 0 {
-		lastLocal = localHWM - 1
+	lastLocal := int64(-1)
+	if hw, err := p.cfg.Broker.PartitionHighWatermark(ctx, topic, partition); err == nil {
+		lastLocal = hw - 1
 	}
-	_ = p.cfg.Store.SetCursor(Cursor{
+	cursor = Cursor{
 		Peer:             peer.Name,
 		Topic:            topic,
 		Partition:        partition,
-		LastSourceOffset: lastSource,
+		LastSourceOffset: fr.SourceHwm - 1,
 		LastLocalOffset:  lastLocal,
-		Mode:             ModePassive,
-	})
-	p.logger.Info("federation: imported", "peer", peer.Name, "topic", topic, "partition", partition, "frames", len(frames))
+		Mode:             peer.Mode,
+		Origin:           "remote",
+		ForeignRanges:    cursor.ForeignRanges,
+	}
+	if len(frames) > 0 && firstLocal >= 0 {
+		cursor.ForeignRanges = append(cursor.ForeignRanges, LocalRange{Start: firstLocal, End: hwm - 1})
+	}
+	_ = p.cfg.Store.SetCursor(cursor)
+	p.logger.Info("federation: imported", "peer", peer.Name, "topic", topic, "partition", partition, "mode", peer.Mode.String(), "frames", len(frames))
 }
 
 // importQueueAttempts mirrors the source's __queue_attempts log
@@ -268,10 +339,11 @@ func (p *Puller) importQueueAttempts(ctx context.Context, peer Peer) {
 	ctx2, cancel := context.WithTimeout(outgoingBearer(ctx, peer.Key), 30*time.Second)
 	defer cancel()
 	fr, err := firnpb.NewFederationServiceClient(conn).FederationFetch(ctx2, &firnpb.FederationFetchRequest{
-		Topic:       QueueAttemptsTopic,
-		Partition:   0,
-		FirstOffset: first,
-		LastOffset:  -1,
+		Topic:          QueueAttemptsTopic,
+		Partition:      0,
+		FirstOffset:    first,
+		LastOffset:     -1,
+		RequestingPeer: p.cfg.SelfName,
 	})
 	if err != nil {
 		p.observeLag(peer.Name, QueueAttemptsTopic, 0, false)
@@ -279,6 +351,13 @@ func (p *Puller) importQueueAttempts(ctx context.Context, peer Peer) {
 		return
 	}
 	if len(fr.Frames) == 0 {
+		// All echoes filtered out: advance the cursor so the filter
+		// boundary does not re-fetch forever.
+		if hasCursor && fr.SourceHwm > 0 && fr.SourceHwm-1 > cursor.LastSourceOffset {
+			cursor.LastSourceOffset = fr.SourceHwm - 1
+			cursor.LastLocalOffset = fl.HighWatermark() - 1
+			_ = p.cfg.Store.SetCursor(cursor)
+		}
 		p.observeLag(peer.Name, QueueAttemptsTopic, 0, true)
 		return // caught up
 	}
@@ -289,21 +368,39 @@ func (p *Puller) importQueueAttempts(ctx context.Context, peer Peer) {
 		p.logger.Error("federation: attempts CRC failure; cursor untouched", "peer", peer.Name, "err", err)
 		return
 	}
+	// Redelivery safety + shared skip logic: server filters echoes, we skip
+	// at-or-below the cursor defensively.
+	if hasCursor && cursor.LastSourceOffset >= 0 {
+		kept := frames[:0]
+		for _, f := range frames {
+			if f.Offset > cursor.LastSourceOffset {
+				kept = append(kept, f)
+			}
+		}
+		frames = kept
+	}
+	preHWM := fl.HighWatermark()
 	if _, err := applyFramesToReplicatedLog(fl, frames); err != nil {
 		p.observeLag(peer.Name, QueueAttemptsTopic, 0, false)
 		p.logger.Error("federation: attempts apply failed; reconcile the sink reseed before cutover", "peer", peer.Name, "err", err)
 		return
 	}
 	p.observeLag(peer.Name, QueueAttemptsTopic, 0, true)
-	lastSource := frames[len(frames)-1].Offset
-	_ = p.cfg.Store.SetCursor(Cursor{
+	hwm := fl.HighWatermark()
+	cursor = Cursor{
 		Peer:             peer.Name,
 		Topic:            QueueAttemptsTopic,
 		Partition:        0,
-		LastSourceOffset: lastSource,
-		LastLocalOffset:  fl.HighWatermark() - 1,
+		LastSourceOffset: fr.SourceHwm - 1,
+		LastLocalOffset:  hwm - 1,
 		Mode:             ModePassive,
-	})
+		Origin:           "remote",
+		ForeignRanges:    cursor.ForeignRanges,
+	}
+	if hwm > preHWM {
+		cursor.ForeignRanges = append(cursor.ForeignRanges, LocalRange{Start: preHWM, End: hwm - 1})
+	}
+	_ = p.cfg.Store.SetCursor(cursor)
 	p.logger.Info("federation: mirrored attempts", "peer", peer.Name, "frames", len(frames))
 }
 

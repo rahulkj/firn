@@ -1857,13 +1857,18 @@ func (x *ReplicaPutResponse) GetHighWatermark() int64 {
 }
 
 type FederationFetchRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
-	Partition     int32                  `protobuf:"varint,2,opt,name=partition,proto3" json:"partition,omitempty"`
-	FirstOffset   int64                  `protobuf:"varint,3,opt,name=first_offset,json=firstOffset,proto3" json:"first_offset,omitempty"`
-	LastOffset    int64                  `protobuf:"varint,4,opt,name=last_offset,json=lastOffset,proto3" json:"last_offset,omitempty"` // inclusive; clamps to high watermark
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Topic       string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
+	Partition   int32                  `protobuf:"varint,2,opt,name=partition,proto3" json:"partition,omitempty"`
+	FirstOffset int64                  `protobuf:"varint,3,opt,name=first_offset,json=firstOffset,proto3" json:"first_offset,omitempty"`
+	LastOffset  int64                  `protobuf:"varint,4,opt,name=last_offset,json=lastOffset,proto3" json:"last_offset,omitempty"` // inclusive; clamps to high watermark
+	// Name under which the CALLER is registered in THIS cluster's peer list.
+	// Used as the echo filter for active-active (the serving node knows which
+	// of its own local offset ranges it imported from that peer and omits
+	// them). Empty = no filtering (passive one-way setups may leave it unset).
+	RequestingPeer string `protobuf:"bytes,5,opt,name=requesting_peer,json=requestingPeer,proto3" json:"requesting_peer,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
 }
 
 func (x *FederationFetchRequest) Reset() {
@@ -1922,6 +1927,13 @@ func (x *FederationFetchRequest) GetLastOffset() int64 {
 		return x.LastOffset
 	}
 	return 0
+}
+
+func (x *FederationFetchRequest) GetRequestingPeer() string {
+	if x != nil {
+		return x.RequestingPeer
+	}
+	return ""
 }
 
 type FederationFetchResponse struct {
@@ -2032,6 +2044,7 @@ type FederationReportResponse struct {
 	state            protoimpl.MessageState `protogen:"open.v1"`
 	HighWatermark    int64                  `protobuf:"varint,1,opt,name=high_watermark,json=highWatermark,proto3" json:"high_watermark,omitempty"` // source's high watermark
 	RetentionHorizon int64                  `protobuf:"varint,2,opt,name=retention_horizon,json=retentionHorizon,proto3" json:"retention_horizon,omitempty"`
+	Partitions       int32                  `protobuf:"varint,3,opt,name=partitions,proto3" json:"partitions,omitempty"` // partition count of the topic on the source (registration validation)
 	unknownFields    protoimpl.UnknownFields
 	sizeCache        protoimpl.SizeCache
 }
@@ -2076,6 +2089,13 @@ func (x *FederationReportResponse) GetHighWatermark() int64 {
 func (x *FederationReportResponse) GetRetentionHorizon() int64 {
 	if x != nil {
 		return x.RetentionHorizon
+	}
+	return 0
+}
+
+func (x *FederationReportResponse) GetPartitions() int32 {
+	if x != nil {
+		return x.Partitions
 	}
 	return 0
 }
@@ -2501,23 +2521,27 @@ const file_firn_proto_rawDesc = "" +
 	"\vbase_offset\x18\x04 \x01(\x03R\n" +
 	"baseOffset\";\n" +
 	"\x12ReplicaPutResponse\x12%\n" +
-	"\x0ehigh_watermark\x18\x01 \x01(\x03R\rhighWatermark\"\x90\x01\n" +
+	"\x0ehigh_watermark\x18\x01 \x01(\x03R\rhighWatermark\"\xb9\x01\n" +
 	"\x16FederationFetchRequest\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x1c\n" +
 	"\tpartition\x18\x02 \x01(\x05R\tpartition\x12!\n" +
 	"\ffirst_offset\x18\x03 \x01(\x03R\vfirstOffset\x12\x1f\n" +
 	"\vlast_offset\x18\x04 \x01(\x03R\n" +
-	"lastOffset\"P\n" +
+	"lastOffset\x12'\n" +
+	"\x0frequesting_peer\x18\x05 \x01(\tR\x0erequestingPeer\"P\n" +
 	"\x17FederationFetchResponse\x12\x16\n" +
 	"\x06frames\x18\x01 \x01(\fR\x06frames\x12\x1d\n" +
 	"\n" +
 	"source_hwm\x18\x02 \x01(\x03R\tsourceHwm\"M\n" +
 	"\x17FederationReportRequest\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x1c\n" +
-	"\tpartition\x18\x02 \x01(\x05R\tpartition\"n\n" +
+	"\tpartition\x18\x02 \x01(\x05R\tpartition\"\x8e\x01\n" +
 	"\x18FederationReportResponse\x12%\n" +
 	"\x0ehigh_watermark\x18\x01 \x01(\x03R\rhighWatermark\x12+\n" +
-	"\x11retention_horizon\x18\x02 \x01(\x03R\x10retentionHorizon\"o\n" +
+	"\x11retention_horizon\x18\x02 \x01(\x03R\x10retentionHorizon\x12\x1e\n" +
+	"\n" +
+	"partitions\x18\x03 \x01(\x05R\n" +
+	"partitions\"o\n" +
 	"\x11PartitionMetadata\x12!\n" +
 	"\fpartition_id\x18\x01 \x01(\x05R\vpartitionId\x12\x16\n" +
 	"\x06leader\x18\x02 \x01(\tR\x06leader\x12\x1f\n" +

@@ -73,7 +73,7 @@ func TestPassivePullByteIdenticalAndResumes(t *testing.T) {
 	// Source federation endpoint on bufconn.
 	lis := bufconnListen(t)
 	srv := grpc.NewServer()
-	firnpb.RegisterFederationServiceServer(srv, api.NewFederationServer(src))
+	firnpb.RegisterFederationServiceServer(srv, api.NewFederationServer(src, federation.OpenInMemory()))
 	go func() { _ = srv.Serve(lis) }()
 	defer srv.Stop()
 
@@ -196,7 +196,7 @@ func TestFederationKeyIsolationOverGRPC(t *testing.T) {
 	authorizer := api.NewAuthorizer(store, ratelimit.New(1000, 1000), nil)
 	lis := bufconnListen(t)
 	srv := grpc.NewServer(grpc.UnaryInterceptor(authorizer.GRPCInterceptor()))
-	firnpb.RegisterFederationServiceServer(srv, api.NewFederationServer(src))
+	firnpb.RegisterFederationServiceServer(srv, api.NewFederationServer(src, federation.OpenInMemory()))
 	firnpb.RegisterFirnServiceServer(srv, api.NewServer(src, nil))
 	go func() { _ = srv.Serve(lis) }()
 	defer srv.Stop()

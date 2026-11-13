@@ -43,6 +43,7 @@ firnd \
 | `-federation-interval` | `500ms` | duration | Passive federation pull cadence (ADR-010). Data only moves when a passive peer is registered; the loop otherwise no-ops. |
 | `-federation-batch` | `1024` | int | Max frames per federation pull window. |
 | `-federation-max-range` | `1048576` | bytes | Max bytes per federation pull window. |
+| `-federation-self` | `""` | name | This cluster's identity as federation peers register it; sent as `requesting_peer` so the serving side can filter the echo out of frame windows (active-active). Required for active-active federation; empty disables the echo filter. |
 
 Federation is a **preview** (ADR-010): one-way `passive` mode replicates byte-identical blocks from a source cluster to a sink; the sink stays read-fenced until cutover. Peers authenticate with **federation-scoped keys** over mTLS; both clusters must share a mesh CA (or the sink can pin the peer's CA with a peer-specific `ca_crt_pem`). Internal topics `__federation_peers`/`__federation_cursors` are cluster-local. `__queue_attempts` is mirrored byte-identically when a queue is in scope. See `docs/plans/004-federation.md`; active-active (full) mode lands in slice 4.
 

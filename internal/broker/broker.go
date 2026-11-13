@@ -583,6 +583,37 @@ func (b *Broker) AppendReplicatedFrames(topic string, partition int32, frames []
 	return fl.HighWatermark(), nil
 }
 
+// AppendReoriginedFrames applies foreign frames with FRESH local offsets,
+// preserving key/value/ts/order (active-active federation, ADR-010 slice 4).
+// Unlike AppendReplicatedFrames there is no fork check, no skip-below-HWM
+// rule: offsets are assigned locally and monotonically. Returns the first
+// assigned local offset and the new high watermark. MemLog is not supported.
+func (b *Broker) AppendReoriginedFrames(topic string, partition int32, frames []log.Frame) (int64, int64, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	t, err := b.reg.Get(topic)
+	if err != nil {
+		return 0, 0, fmt.Errorf("reorigin append: %w", err)
+	}
+	if partition < 0 || int(partition) >= t.Partitions {
+		return 0, 0, fmt.Errorf("%w: topic %q partition %d", ErrPartitionOutOfRange, topic, partition)
+	}
+	logs, err := b.partitionLogs(t)
+	if err != nil {
+		return 0, 0, fmt.Errorf("reorigin append: %w", err)
+	}
+	pl := logs[partition]
+	fl, ok := pl.(*log.FileLog)
+	if !ok {
+		return 0, 0, fmt.Errorf("firn/broker: partition %q/%d is not file-backed", topic, partition)
+	}
+	first := fl.HighWatermark()
+	for _, f := range frames {
+		fl.AppendReplicated(f.Ts, f.Key, f.Value)
+	}
+	return first, fl.HighWatermark(), nil
+}
+
 // ReadRange returns the raw bytes of frames [firstOffset, lastOffset] for
 // the given partition — the replication read path. MemLog is not supported.
 func (b *Broker) ReadRange(ctx context.Context, topic string, partition int32, firstOffset, lastOffset int64) ([]byte, error) {

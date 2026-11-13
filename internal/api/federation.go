@@ -20,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/rahulkj/firn/internal/api/firnpb"
+	"github.com/rahulkj/firn/internal/log"
 )
 
 // FederationSink wraps the federation control-plane store for the admin
@@ -257,10 +258,13 @@ var _ = apikeys.RoleAdmin        // reserved for later slices
 type FederationServer struct {
 	firnpb.UnimplementedFederationServiceServer
 
-	b *broker.Broker
+	b     *broker.Broker
+	store *federation.Store // echo filter source; may be nil (no filtering)
 }
 
-func NewFederationServer(b *broker.Broker) *FederationServer { return &FederationServer{b: b} }
+func NewFederationServer(b *broker.Broker, store *federation.Store) *FederationServer {
+	return &FederationServer{b: b, store: store}
+}
 
 func (s *FederationServer) FederationFetch(ctx context.Context, req *firnpb.FederationFetchRequest) (*firnpb.FederationFetchResponse, error) {
 	if s == nil || s.b == nil {
@@ -270,6 +274,12 @@ func (s *FederationServer) FederationFetch(ctx context.Context, req *firnpb.Fede
 		return nil, status.Error(codes.InvalidArgument, "federation: topic and partition are required")
 	}
 	topic := strings.TrimSpace(req.Topic)
+	// Echo filter (active-active, ADR-010): omit the frames this very
+	// cluster imported from the requesting peer. The serving side knows its
+	// own foreign-applied local ranges; the requesting cluster passes its
+	// registered peer name so both sides filter symmetrically.
+	filterRequestingPeer := strings.TrimSpace(req.RequestingPeer)
+
 	if strings.HasPrefix(topic, "__") {
 		// Internal topics are cluster-local by construction. The single
 		// sanctioned exception is __queue_attempts, mirrored byte-identically
@@ -298,7 +308,27 @@ func (s *FederationServer) FederationFetch(ctx context.Context, req *firnpb.Fede
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "federation: %v", err)
 	}
+	raw = filterEchoFrames(s.store, filterRequestingPeer, topic, req.Partition, raw)
 	return &firnpb.FederationFetchResponse{Frames: raw, SourceHwm: hw}, nil
+}
+
+// filterEchoFrames parses a served frame window and omits the frames the
+// requesting peer itself exported (they re-arrive via A→B→A). CRC failures
+// on the raw range are loud: a federated range that doesn't parse is a
+// peer-side corruption signal, never silently passed through.
+func filterEchoFrames(store *federation.Store, requestingPeer, topic string, partition int32, raw []byte) []byte {
+	if store == nil || requestingPeer == "" || len(raw) == 0 {
+		return raw
+	}
+	ranges := store.ForeignRanges(requestingPeer, topic, partition)
+	if len(ranges) == 0 {
+		return raw
+	}
+	frames, err := log.ParseFrames(raw)
+	if err != nil {
+		return nil // refuse to serve an unparseable range rather than guess
+	}
+	return federation.ExportFramesWithout(frames, ranges)
 }
 
 // fetchQueueAttempts serves a byte-identical window of the source's
@@ -330,6 +360,7 @@ func (s *FederationServer) fetchQueueAttempts(ctx context.Context, req *firnpb.F
 	if err != nil {
 		return nil, status.Errorf(codes.Unavailable, "federation: %v", err)
 	}
+	raw = filterEchoFrames(s.store, strings.TrimSpace(req.RequestingPeer), federation.QueueAttemptsTopic, 0, raw)
 	return &firnpb.FederationFetchResponse{Frames: raw, SourceHwm: hw}, nil
 }
 
@@ -340,6 +371,13 @@ func (s *FederationServer) FederationReport(ctx context.Context, req *firnpb.Fed
 	if req.Topic == "" || req.Partition < 0 {
 		return nil, status.Error(codes.InvalidArgument, "federation: topic and partition are required")
 	}
-	hw, _ := s.b.PartitionHighWatermark(ctx, strings.TrimSpace(req.Topic), req.Partition)
-	return &firnpb.FederationReportResponse{HighWatermark: hw, RetentionHorizon: 0}, nil
+	topic := strings.TrimSpace(req.Topic)
+	partitions := int32(0)
+	if topic == federation.QueueAttemptsTopic {
+		partitions = 1
+	} else if t, err := s.b.TopicMeta(topic); err == nil {
+		partitions = int32(t.Partitions)
+	}
+	hw, _ := s.b.PartitionHighWatermark(ctx, topic, req.Partition)
+	return &firnpb.FederationReportResponse{HighWatermark: hw, RetentionHorizon: 0, Partitions: partitions}, nil
 }

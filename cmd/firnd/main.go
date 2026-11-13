@@ -246,6 +246,7 @@ func main() {
 	federationInterval := flag.Duration("federation-interval", 500*time.Millisecond, "federation pull cadence (passive one-way mode)")
 	federationBatch := flag.Int("federation-batch", 1024, "max frames per federation pull window")
 	federationMaxRange := flag.Int64("federation-max-range", 1<<20, "max bytes per federation pull window")
+	federationSelf := flag.String("federation-self", "", "this cluster's identity name as peers register it — sent as requesting_peer so the serving side can filter out frames this cluster donated (echo prevention, active-active). Empty disables the echo filter")
 	anonWindow := flag.Duration("anon-window", time.Minute, "sliding window for -anon-rate")
 	meshAddr := flag.String("mesh-addr", "", "mesh (internal) gRPC listen address — defaults to -grpc-addr with the port bumped by 10; serves only QuorumService/ReplicaService behind mTLS")
 	meshCABundle := flag.String("mesh-ca-bundle", "", "pre-provisioned mesh cluster CA certificate PEM (alternative to auto-provision; required for non-loopback clusters)")
@@ -497,12 +498,20 @@ func main() {
 			federationStore.SetCursorsLog(fl)
 		}
 	}
-	// Shared passive-peer predicate used by the produce fence (broker),
-	// the queue delivery fence (qm), and the advisory federation watermark.
+	// Shared passive-peer predicate used by the produce fence (broker) and
+	// the queue delivery fence (qm): only PASSIVE peers fence local writes.
 	// ListPeersCached folds at most once per second, so the hot append path
 	// never re-folds on every write.
 	passivePeer := func(peer federation.Peer) bool {
 		if peer.Mode != federation.ModePassive {
+			return false
+		}
+		return peer.Direction == federation.DirectionIn || peer.Direction == federation.DirectionBoth
+	}
+	// inboundPeer: passive AND active-active both count toward the advisory
+	// federation watermark (min across all inbound peers, ADR-010).
+	inboundPeer := func(peer federation.Peer) bool {
+		if peer.Mode != federation.ModePassive && peer.Mode != federation.ModeActiveActive {
 			return false
 		}
 		return peer.Direction == federation.DirectionIn || peer.Direction == federation.DirectionBoth
@@ -550,7 +559,7 @@ func main() {
 		peers := federationStore.ListPeersCached(time.Second)
 		cursors := federationStore.ListCursorsCached(time.Second)
 		for _, peer := range peers {
-			if !passivePeer(peer) || !coversTopic(peer, topic) {
+			if !inboundPeer(peer) || !coversTopic(peer, topic) {
 				continue
 			}
 			found := false
@@ -585,6 +594,7 @@ func main() {
 		Interval: *federationInterval,
 		Batch:    *federationBatch,
 		MaxRange: *federationMaxRange,
+		SelfName: *federationSelf,
 		LagSeconds: func(peer, topic string, partition int32, lag float64) {
 			met.FederationCursorLagSeconds.WithLabelValues(peer, topic, strconv.Itoa(int(partition))).Set(lag)
 		},
@@ -700,7 +710,7 @@ func main() {
 		os.Exit(1)
 	}
 	// Register FederationService on the mesh listener (mTLS-gated).
-	firnpb.RegisterFederationServiceServer(meshServer, api.NewFederationServer(b))
+	firnpb.RegisterFederationServiceServer(meshServer, api.NewFederationServer(b, federationStore))
 
 	go func() {
 		if err := meshServer.Serve(meshLis); err != nil {
