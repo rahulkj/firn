@@ -2,13 +2,13 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             (unknown)
-// source: slipway.proto
+// source: firn.proto
 
-// SlipwayService is the v1 hot path (docs/adr/002-api.md): clean API, not a
+// FirnService is the v1 hot path (docs/adr/002-api.md): clean API, not a
 // wire protocol compatible with any other broker. HTTP/JSON is used only
 // for admin (create list topics, health), not for produce/fetch.
 
-package slipwaypb
+package firnpb
 
 import (
 	context "context"
@@ -23,24 +23,24 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	SlipwayService_Produce_FullMethodName           = "/slipway.v1.SlipwayService/Produce"
-	SlipwayService_Fetch_FullMethodName             = "/slipway.v1.SlipwayService/Fetch"
-	SlipwayService_JoinGroup_FullMethodName         = "/slipway.v1.SlipwayService/JoinGroup"
-	SlipwayService_SyncGroup_FullMethodName         = "/slipway.v1.SlipwayService/SyncGroup"
-	SlipwayService_Heartbeat_FullMethodName         = "/slipway.v1.SlipwayService/Heartbeat"
-	SlipwayService_LeaveGroup_FullMethodName        = "/slipway.v1.SlipwayService/LeaveGroup"
-	SlipwayService_CommitOffset_FullMethodName      = "/slipway.v1.SlipwayService/CommitOffset"
-	SlipwayService_FetchOffset_FullMethodName       = "/slipway.v1.SlipwayService/FetchOffset"
-	SlipwayService_FetchGroupOffsets_FullMethodName = "/slipway.v1.SlipwayService/FetchGroupOffsets"
-	SlipwayService_Pull_FullMethodName              = "/slipway.v1.SlipwayService/Pull"
-	SlipwayService_Ack_FullMethodName               = "/slipway.v1.SlipwayService/Ack"
-	SlipwayService_GetMetadata_FullMethodName       = "/slipway.v1.SlipwayService/GetMetadata"
+	FirnService_Produce_FullMethodName           = "/firn.v1.FirnService/Produce"
+	FirnService_Fetch_FullMethodName             = "/firn.v1.FirnService/Fetch"
+	FirnService_JoinGroup_FullMethodName         = "/firn.v1.FirnService/JoinGroup"
+	FirnService_SyncGroup_FullMethodName         = "/firn.v1.FirnService/SyncGroup"
+	FirnService_Heartbeat_FullMethodName         = "/firn.v1.FirnService/Heartbeat"
+	FirnService_LeaveGroup_FullMethodName        = "/firn.v1.FirnService/LeaveGroup"
+	FirnService_CommitOffset_FullMethodName      = "/firn.v1.FirnService/CommitOffset"
+	FirnService_FetchOffset_FullMethodName       = "/firn.v1.FirnService/FetchOffset"
+	FirnService_FetchGroupOffsets_FullMethodName = "/firn.v1.FirnService/FetchGroupOffsets"
+	FirnService_Pull_FullMethodName              = "/firn.v1.FirnService/Pull"
+	FirnService_Ack_FullMethodName               = "/firn.v1.FirnService/Ack"
+	FirnService_GetMetadata_FullMethodName       = "/firn.v1.FirnService/GetMetadata"
 )
 
-// SlipwayServiceClient is the client API for SlipwayService service.
+// FirnServiceClient is the client API for FirnService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type SlipwayServiceClient interface {
+type FirnServiceClient interface {
 	Produce(ctx context.Context, in *ProduceRequest, opts ...grpc.CallOption) (*ProduceResponse, error)
 	Fetch(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (*FetchResponse, error)
 	JoinGroup(ctx context.Context, in *JoinGroupRequest, opts ...grpc.CallOption) (*JoinGroupResponse, error)
@@ -55,138 +55,138 @@ type SlipwayServiceClient interface {
 	GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error)
 }
 
-type slipwayServiceClient struct {
+type firnServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewSlipwayServiceClient(cc grpc.ClientConnInterface) SlipwayServiceClient {
-	return &slipwayServiceClient{cc}
+func NewFirnServiceClient(cc grpc.ClientConnInterface) FirnServiceClient {
+	return &firnServiceClient{cc}
 }
 
-func (c *slipwayServiceClient) Produce(ctx context.Context, in *ProduceRequest, opts ...grpc.CallOption) (*ProduceResponse, error) {
+func (c *firnServiceClient) Produce(ctx context.Context, in *ProduceRequest, opts ...grpc.CallOption) (*ProduceResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProduceResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_Produce_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_Produce_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *slipwayServiceClient) Fetch(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (*FetchResponse, error) {
+func (c *firnServiceClient) Fetch(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (*FetchResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FetchResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_Fetch_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_Fetch_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *slipwayServiceClient) JoinGroup(ctx context.Context, in *JoinGroupRequest, opts ...grpc.CallOption) (*JoinGroupResponse, error) {
+func (c *firnServiceClient) JoinGroup(ctx context.Context, in *JoinGroupRequest, opts ...grpc.CallOption) (*JoinGroupResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(JoinGroupResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_JoinGroup_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_JoinGroup_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *slipwayServiceClient) SyncGroup(ctx context.Context, in *SyncGroupRequest, opts ...grpc.CallOption) (*SyncGroupResponse, error) {
+func (c *firnServiceClient) SyncGroup(ctx context.Context, in *SyncGroupRequest, opts ...grpc.CallOption) (*SyncGroupResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SyncGroupResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_SyncGroup_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_SyncGroup_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *slipwayServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
+func (c *firnServiceClient) Heartbeat(ctx context.Context, in *HeartbeatRequest, opts ...grpc.CallOption) (*HeartbeatResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(HeartbeatResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_Heartbeat_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_Heartbeat_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *slipwayServiceClient) LeaveGroup(ctx context.Context, in *LeaveGroupRequest, opts ...grpc.CallOption) (*LeaveGroupResponse, error) {
+func (c *firnServiceClient) LeaveGroup(ctx context.Context, in *LeaveGroupRequest, opts ...grpc.CallOption) (*LeaveGroupResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(LeaveGroupResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_LeaveGroup_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_LeaveGroup_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *slipwayServiceClient) CommitOffset(ctx context.Context, in *CommitOffsetRequest, opts ...grpc.CallOption) (*CommitOffsetResponse, error) {
+func (c *firnServiceClient) CommitOffset(ctx context.Context, in *CommitOffsetRequest, opts ...grpc.CallOption) (*CommitOffsetResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CommitOffsetResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_CommitOffset_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_CommitOffset_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *slipwayServiceClient) FetchOffset(ctx context.Context, in *FetchOffsetRequest, opts ...grpc.CallOption) (*FetchOffsetResponse, error) {
+func (c *firnServiceClient) FetchOffset(ctx context.Context, in *FetchOffsetRequest, opts ...grpc.CallOption) (*FetchOffsetResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FetchOffsetResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_FetchOffset_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_FetchOffset_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *slipwayServiceClient) FetchGroupOffsets(ctx context.Context, in *FetchGroupOffsetsRequest, opts ...grpc.CallOption) (*FetchGroupOffsetsResponse, error) {
+func (c *firnServiceClient) FetchGroupOffsets(ctx context.Context, in *FetchGroupOffsetsRequest, opts ...grpc.CallOption) (*FetchGroupOffsetsResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(FetchGroupOffsetsResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_FetchGroupOffsets_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_FetchGroupOffsets_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *slipwayServiceClient) Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*PullResponse, error) {
+func (c *firnServiceClient) Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*PullResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(PullResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_Pull_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_Pull_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *slipwayServiceClient) Ack(ctx context.Context, in *AckRequest, opts ...grpc.CallOption) (*AckResponse, error) {
+func (c *firnServiceClient) Ack(ctx context.Context, in *AckRequest, opts ...grpc.CallOption) (*AckResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(AckResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_Ack_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_Ack_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *slipwayServiceClient) GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error) {
+func (c *firnServiceClient) GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetMetadataResponse)
-	err := c.cc.Invoke(ctx, SlipwayService_GetMetadata_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, FirnService_GetMetadata_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// SlipwayServiceServer is the server API for SlipwayService service.
-// All implementations must embed UnimplementedSlipwayServiceServer
+// FirnServiceServer is the server API for FirnService service.
+// All implementations must embed UnimplementedFirnServiceServer
 // for forward compatibility.
-type SlipwayServiceServer interface {
+type FirnServiceServer interface {
 	Produce(context.Context, *ProduceRequest) (*ProduceResponse, error)
 	Fetch(context.Context, *FetchRequest) (*FetchResponse, error)
 	JoinGroup(context.Context, *JoinGroupRequest) (*JoinGroupResponse, error)
@@ -199,351 +199,351 @@ type SlipwayServiceServer interface {
 	Pull(context.Context, *PullRequest) (*PullResponse, error)
 	Ack(context.Context, *AckRequest) (*AckResponse, error)
 	GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error)
-	mustEmbedUnimplementedSlipwayServiceServer()
+	mustEmbedUnimplementedFirnServiceServer()
 }
 
-// UnimplementedSlipwayServiceServer must be embedded to have
+// UnimplementedFirnServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedSlipwayServiceServer struct{}
+type UnimplementedFirnServiceServer struct{}
 
-func (UnimplementedSlipwayServiceServer) Produce(context.Context, *ProduceRequest) (*ProduceResponse, error) {
+func (UnimplementedFirnServiceServer) Produce(context.Context, *ProduceRequest) (*ProduceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Produce not implemented")
 }
-func (UnimplementedSlipwayServiceServer) Fetch(context.Context, *FetchRequest) (*FetchResponse, error) {
+func (UnimplementedFirnServiceServer) Fetch(context.Context, *FetchRequest) (*FetchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Fetch not implemented")
 }
-func (UnimplementedSlipwayServiceServer) JoinGroup(context.Context, *JoinGroupRequest) (*JoinGroupResponse, error) {
+func (UnimplementedFirnServiceServer) JoinGroup(context.Context, *JoinGroupRequest) (*JoinGroupResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method JoinGroup not implemented")
 }
-func (UnimplementedSlipwayServiceServer) SyncGroup(context.Context, *SyncGroupRequest) (*SyncGroupResponse, error) {
+func (UnimplementedFirnServiceServer) SyncGroup(context.Context, *SyncGroupRequest) (*SyncGroupResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SyncGroup not implemented")
 }
-func (UnimplementedSlipwayServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
+func (UnimplementedFirnServiceServer) Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Heartbeat not implemented")
 }
-func (UnimplementedSlipwayServiceServer) LeaveGroup(context.Context, *LeaveGroupRequest) (*LeaveGroupResponse, error) {
+func (UnimplementedFirnServiceServer) LeaveGroup(context.Context, *LeaveGroupRequest) (*LeaveGroupResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method LeaveGroup not implemented")
 }
-func (UnimplementedSlipwayServiceServer) CommitOffset(context.Context, *CommitOffsetRequest) (*CommitOffsetResponse, error) {
+func (UnimplementedFirnServiceServer) CommitOffset(context.Context, *CommitOffsetRequest) (*CommitOffsetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CommitOffset not implemented")
 }
-func (UnimplementedSlipwayServiceServer) FetchOffset(context.Context, *FetchOffsetRequest) (*FetchOffsetResponse, error) {
+func (UnimplementedFirnServiceServer) FetchOffset(context.Context, *FetchOffsetRequest) (*FetchOffsetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FetchOffset not implemented")
 }
-func (UnimplementedSlipwayServiceServer) FetchGroupOffsets(context.Context, *FetchGroupOffsetsRequest) (*FetchGroupOffsetsResponse, error) {
+func (UnimplementedFirnServiceServer) FetchGroupOffsets(context.Context, *FetchGroupOffsetsRequest) (*FetchGroupOffsetsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method FetchGroupOffsets not implemented")
 }
-func (UnimplementedSlipwayServiceServer) Pull(context.Context, *PullRequest) (*PullResponse, error) {
+func (UnimplementedFirnServiceServer) Pull(context.Context, *PullRequest) (*PullResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Pull not implemented")
 }
-func (UnimplementedSlipwayServiceServer) Ack(context.Context, *AckRequest) (*AckResponse, error) {
+func (UnimplementedFirnServiceServer) Ack(context.Context, *AckRequest) (*AckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Ack not implemented")
 }
-func (UnimplementedSlipwayServiceServer) GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error) {
+func (UnimplementedFirnServiceServer) GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetMetadata not implemented")
 }
-func (UnimplementedSlipwayServiceServer) mustEmbedUnimplementedSlipwayServiceServer() {}
-func (UnimplementedSlipwayServiceServer) testEmbeddedByValue()                        {}
+func (UnimplementedFirnServiceServer) mustEmbedUnimplementedFirnServiceServer() {}
+func (UnimplementedFirnServiceServer) testEmbeddedByValue()                     {}
 
-// UnsafeSlipwayServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to SlipwayServiceServer will
+// UnsafeFirnServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to FirnServiceServer will
 // result in compilation errors.
-type UnsafeSlipwayServiceServer interface {
-	mustEmbedUnimplementedSlipwayServiceServer()
+type UnsafeFirnServiceServer interface {
+	mustEmbedUnimplementedFirnServiceServer()
 }
 
-func RegisterSlipwayServiceServer(s grpc.ServiceRegistrar, srv SlipwayServiceServer) {
-	// If the following call panics, it indicates UnimplementedSlipwayServiceServer was
+func RegisterFirnServiceServer(s grpc.ServiceRegistrar, srv FirnServiceServer) {
+	// If the following call panics, it indicates UnimplementedFirnServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&SlipwayService_ServiceDesc, srv)
+	s.RegisterService(&FirnService_ServiceDesc, srv)
 }
 
-func _SlipwayService_Produce_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_Produce_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ProduceRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).Produce(ctx, in)
+		return srv.(FirnServiceServer).Produce(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_Produce_FullMethodName,
+		FullMethod: FirnService_Produce_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).Produce(ctx, req.(*ProduceRequest))
+		return srv.(FirnServiceServer).Produce(ctx, req.(*ProduceRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SlipwayService_Fetch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_Fetch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(FetchRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).Fetch(ctx, in)
+		return srv.(FirnServiceServer).Fetch(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_Fetch_FullMethodName,
+		FullMethod: FirnService_Fetch_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).Fetch(ctx, req.(*FetchRequest))
+		return srv.(FirnServiceServer).Fetch(ctx, req.(*FetchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SlipwayService_JoinGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_JoinGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(JoinGroupRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).JoinGroup(ctx, in)
+		return srv.(FirnServiceServer).JoinGroup(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_JoinGroup_FullMethodName,
+		FullMethod: FirnService_JoinGroup_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).JoinGroup(ctx, req.(*JoinGroupRequest))
+		return srv.(FirnServiceServer).JoinGroup(ctx, req.(*JoinGroupRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SlipwayService_SyncGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_SyncGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SyncGroupRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).SyncGroup(ctx, in)
+		return srv.(FirnServiceServer).SyncGroup(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_SyncGroup_FullMethodName,
+		FullMethod: FirnService_SyncGroup_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).SyncGroup(ctx, req.(*SyncGroupRequest))
+		return srv.(FirnServiceServer).SyncGroup(ctx, req.(*SyncGroupRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SlipwayService_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(HeartbeatRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).Heartbeat(ctx, in)
+		return srv.(FirnServiceServer).Heartbeat(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_Heartbeat_FullMethodName,
+		FullMethod: FirnService_Heartbeat_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).Heartbeat(ctx, req.(*HeartbeatRequest))
+		return srv.(FirnServiceServer).Heartbeat(ctx, req.(*HeartbeatRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SlipwayService_LeaveGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_LeaveGroup_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(LeaveGroupRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).LeaveGroup(ctx, in)
+		return srv.(FirnServiceServer).LeaveGroup(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_LeaveGroup_FullMethodName,
+		FullMethod: FirnService_LeaveGroup_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).LeaveGroup(ctx, req.(*LeaveGroupRequest))
+		return srv.(FirnServiceServer).LeaveGroup(ctx, req.(*LeaveGroupRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SlipwayService_CommitOffset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_CommitOffset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CommitOffsetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).CommitOffset(ctx, in)
+		return srv.(FirnServiceServer).CommitOffset(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_CommitOffset_FullMethodName,
+		FullMethod: FirnService_CommitOffset_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).CommitOffset(ctx, req.(*CommitOffsetRequest))
+		return srv.(FirnServiceServer).CommitOffset(ctx, req.(*CommitOffsetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SlipwayService_FetchOffset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_FetchOffset_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(FetchOffsetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).FetchOffset(ctx, in)
+		return srv.(FirnServiceServer).FetchOffset(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_FetchOffset_FullMethodName,
+		FullMethod: FirnService_FetchOffset_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).FetchOffset(ctx, req.(*FetchOffsetRequest))
+		return srv.(FirnServiceServer).FetchOffset(ctx, req.(*FetchOffsetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SlipwayService_FetchGroupOffsets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_FetchGroupOffsets_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(FetchGroupOffsetsRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).FetchGroupOffsets(ctx, in)
+		return srv.(FirnServiceServer).FetchGroupOffsets(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_FetchGroupOffsets_FullMethodName,
+		FullMethod: FirnService_FetchGroupOffsets_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).FetchGroupOffsets(ctx, req.(*FetchGroupOffsetsRequest))
+		return srv.(FirnServiceServer).FetchGroupOffsets(ctx, req.(*FetchGroupOffsetsRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SlipwayService_Pull_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_Pull_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(PullRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).Pull(ctx, in)
+		return srv.(FirnServiceServer).Pull(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_Pull_FullMethodName,
+		FullMethod: FirnService_Pull_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).Pull(ctx, req.(*PullRequest))
+		return srv.(FirnServiceServer).Pull(ctx, req.(*PullRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SlipwayService_Ack_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_Ack_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(AckRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).Ack(ctx, in)
+		return srv.(FirnServiceServer).Ack(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_Ack_FullMethodName,
+		FullMethod: FirnService_Ack_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).Ack(ctx, req.(*AckRequest))
+		return srv.(FirnServiceServer).Ack(ctx, req.(*AckRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _SlipwayService_GetMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _FirnService_GetMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetMetadataRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(SlipwayServiceServer).GetMetadata(ctx, in)
+		return srv.(FirnServiceServer).GetMetadata(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: SlipwayService_GetMetadata_FullMethodName,
+		FullMethod: FirnService_GetMetadata_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(SlipwayServiceServer).GetMetadata(ctx, req.(*GetMetadataRequest))
+		return srv.(FirnServiceServer).GetMetadata(ctx, req.(*GetMetadataRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// SlipwayService_ServiceDesc is the grpc.ServiceDesc for SlipwayService service.
+// FirnService_ServiceDesc is the grpc.ServiceDesc for FirnService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var SlipwayService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "slipway.v1.SlipwayService",
-	HandlerType: (*SlipwayServiceServer)(nil),
+var FirnService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "firn.v1.FirnService",
+	HandlerType: (*FirnServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "Produce",
-			Handler:    _SlipwayService_Produce_Handler,
+			Handler:    _FirnService_Produce_Handler,
 		},
 		{
 			MethodName: "Fetch",
-			Handler:    _SlipwayService_Fetch_Handler,
+			Handler:    _FirnService_Fetch_Handler,
 		},
 		{
 			MethodName: "JoinGroup",
-			Handler:    _SlipwayService_JoinGroup_Handler,
+			Handler:    _FirnService_JoinGroup_Handler,
 		},
 		{
 			MethodName: "SyncGroup",
-			Handler:    _SlipwayService_SyncGroup_Handler,
+			Handler:    _FirnService_SyncGroup_Handler,
 		},
 		{
 			MethodName: "Heartbeat",
-			Handler:    _SlipwayService_Heartbeat_Handler,
+			Handler:    _FirnService_Heartbeat_Handler,
 		},
 		{
 			MethodName: "LeaveGroup",
-			Handler:    _SlipwayService_LeaveGroup_Handler,
+			Handler:    _FirnService_LeaveGroup_Handler,
 		},
 		{
 			MethodName: "CommitOffset",
-			Handler:    _SlipwayService_CommitOffset_Handler,
+			Handler:    _FirnService_CommitOffset_Handler,
 		},
 		{
 			MethodName: "FetchOffset",
-			Handler:    _SlipwayService_FetchOffset_Handler,
+			Handler:    _FirnService_FetchOffset_Handler,
 		},
 		{
 			MethodName: "FetchGroupOffsets",
-			Handler:    _SlipwayService_FetchGroupOffsets_Handler,
+			Handler:    _FirnService_FetchGroupOffsets_Handler,
 		},
 		{
 			MethodName: "Pull",
-			Handler:    _SlipwayService_Pull_Handler,
+			Handler:    _FirnService_Pull_Handler,
 		},
 		{
 			MethodName: "Ack",
-			Handler:    _SlipwayService_Ack_Handler,
+			Handler:    _FirnService_Ack_Handler,
 		},
 		{
 			MethodName: "GetMetadata",
-			Handler:    _SlipwayService_GetMetadata_Handler,
+			Handler:    _FirnService_GetMetadata_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "slipway.proto",
+	Metadata: "firn.proto",
 }
 
 const (
-	QuorumService_QuorumMessage_FullMethodName = "/slipway.v1.QuorumService/QuorumMessage"
+	QuorumService_QuorumMessage_FullMethodName = "/firn.v1.QuorumService/QuorumMessage"
 )
 
 // QuorumServiceClient is the client API for QuorumService service.
@@ -632,7 +632,7 @@ func _QuorumService_QuorumMessage_Handler(srv interface{}, ctx context.Context, 
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var QuorumService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "slipway.v1.QuorumService",
+	ServiceName: "firn.v1.QuorumService",
 	HandlerType: (*QuorumServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -641,12 +641,12 @@ var QuorumService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "slipway.proto",
+	Metadata: "firn.proto",
 }
 
 const (
-	ReplicaService_ReplicaFetch_FullMethodName = "/slipway.v1.ReplicaService/ReplicaFetch"
-	ReplicaService_ReplicaPut_FullMethodName   = "/slipway.v1.ReplicaService/ReplicaPut"
+	ReplicaService_ReplicaFetch_FullMethodName = "/firn.v1.ReplicaService/ReplicaFetch"
+	ReplicaService_ReplicaPut_FullMethodName   = "/firn.v1.ReplicaService/ReplicaPut"
 )
 
 // ReplicaServiceClient is the client API for ReplicaService service.
@@ -768,7 +768,7 @@ func _ReplicaService_ReplicaPut_Handler(srv interface{}, ctx context.Context, de
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var ReplicaService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "slipway.v1.ReplicaService",
+	ServiceName: "firn.v1.ReplicaService",
 	HandlerType: (*ReplicaServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
@@ -781,5 +781,5 @@ var ReplicaService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "slipway.proto",
+	Metadata: "firn.proto",
 }

@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rahulkj/slipway/internal/meta"
+	"github.com/rahulkj/firn/internal/meta"
 )
 
 type fakeClock struct{ t time.Time }

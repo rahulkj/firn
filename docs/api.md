@@ -1,21 +1,21 @@
 # API reference
 
-Slipway exposes two surfaces:
+Firn exposes two surfaces:
 
 | Surface | Port (default) | Protocol | Audience |
 |---|---|---|---|
 | Admin / operations | `:9092` | HTTP + JSON | Operators, CLI, health checks |
-| Broker / data plane | `:9093` | gRPC (HTTP/2, protobuf) | Applications, `slipway-cli` |
+| Broker / data plane | `:9093` | gRPC (HTTP/2, protobuf) | Applications, `firn-cli` |
 
 Plus three **internal** services on the gRPC port used between nodes — documented here for completeness, not for client use: `QuorumService` (Raft messages), `ReplicaService` (block push/pull), and the gRPC path of `GetMetadata`.
 
-Everything in this document was cross-checked against `internal/api/slipway.proto` and the handlers; request/response samples marked *(live)* were copied from a running broker.
+Everything in this document was cross-checked against `internal/api/firn.proto` and the handlers; request/response samples marked *(live)* were copied from a running broker.
 
 ## Authentication & authorization (since v0.1.0 + phase E)
 
 - Before the **first API key exists**, both surfaces are open (dev bootstrap default).
 - Once any non-revoked key exists, every non-public route requires `Authorization: Bearer <key>`.
-  - HTTP: header on every request. CLI: `-api-key` flag or `SLIPWAY_API_KEY` env var.
+  - HTTP: header on every request. CLI: `-api-key` flag or `FIRN_API_KEY` env var.
   - gRPC: per-RPC `authorization` metadata (CLI attaches automatically when `-api-key` is set).
 - `/healthz` and `/metrics` are always public.
 - Roles (least → most privilege): `viewer` → `operator` → `admin`.
@@ -183,9 +183,9 @@ Read-only HTML dashboard (topics, groups, generation/leader/members). Renders be
 
 ---
 
-## gRPC SlipwayService (`:9093`)
+## gRPC FirnService (`:9093`)
 
-Package `slipway.v1` — full definitions in `internal/api/slipway.proto`. All RPCs are unary; streaming is deliberately not in v1.
+Package `firn.v1` — full definitions in `internal/api/firn.proto`. All RPCs are unary; streaming is deliberately not in v1.
 
 ### Produce
 
@@ -198,7 +198,7 @@ Key set → FNV-64a(key) % partitions. Key unset → round-robin. Cluster mode: 
 
 *(live)*
 ```sh
-slipway-cli -api-key "$KEY" produce --topic orders --key k1 --value hello
+firn-cli -api-key "$KEY" produce --topic orders --key k1 --value hello
 # produced to orders partition=1 offset=0
 ```
 
@@ -228,7 +228,7 @@ message FetchGroupOffsetsRequest { string group_id = 1; }
 
 ### Queue mode (ack / visibility / DLQ)
 
-`Pull(queue, max_messages, visibility_timeout_ms)` → lease delivery. `Ack(queue, delivery_id)` settles it. Unacked messages are redelivered at lease expiry (at-least-once); after **3 delivery attempts** a message is diverted to `<queue>.dlq` (auto-created stream topic). DLQ recovery is manual: `slipway-cli dlq list|redrive --queue <name>` — redrive re-produces records into the source queue.
+`Pull(queue, max_messages, visibility_timeout_ms)` → lease delivery. `Ack(queue, delivery_id)` settles it. Unacked messages are redelivered at lease expiry (at-least-once); after **3 delivery attempts** a message is diverted to `<queue>.dlq` (auto-created stream topic). DLQ recovery is manual: `firn-cli dlq list|redrive --queue <name>` — redrive re-produces records into the source queue.
 
 ```proto
 message QueueDelivery {
@@ -289,7 +289,7 @@ message GetMetadataResponse {
 
 ## Internal services (never call from clients)
 
-These two services ride the same gRPC listener as `SlipwayService`. They exist for node-to-node traffic, are **not** part of the public API contract, and may change shape without deprecation notice. Clients authenticate with the same bearer keys once any exists (they stay public pre-bootstrap); never route application traffic here.
+These two services ride the same gRPC listener as `FirnService`. They exist for node-to-node traffic, are **not** part of the public API contract, and may change shape without deprecation notice. Clients authenticate with the same bearer keys once any exists (they stay public pre-bootstrap); never route application traffic here.
 
 ### ReplicaService
 
@@ -364,7 +364,7 @@ Example — AppendEntries carrying a `topic-create` entry:
 
 Failure modes operators actually see: a partition leader that loses quorum steps down; followers reject `AppendEntries` with `success:false`; block commits and lease grants only apply once the current-term entry is committed by a majority.
 
-## `slipway-cli` command ↔ API map
+## `firn-cli` command ↔ API map
 
 | CLI | Path |
 |---|---|

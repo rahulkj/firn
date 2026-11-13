@@ -1,4 +1,4 @@
-// slipwayd is the broker daemon for the slipway project.
+// firnd is the broker daemon for the firn project.
 //
 // Slice 6 (docs/plans/001-mvp-single-node.md): MVP hardening, on top of
 // the durable file log, persisted topics, consumer groups, and queue mode.
@@ -10,7 +10,7 @@
 // Surfaces:
 //
 //	HTTP  :9092  /healthz, /topics, /groups, /metrics (admin) — override with -http-addr
-//	gRPC  :9093  SlipwayService                              — override with -grpc-addr
+//	gRPC  :9093  FirnService                              — override with -grpc-addr
 //
 // Logging is JSON via log/slog on stderr.
 package main
@@ -35,19 +35,19 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/rahulkj/slipway/internal/adminui"
-	"github.com/rahulkj/slipway/internal/api"
-	"github.com/rahulkj/slipway/internal/api/slipwaypb"
-	"github.com/rahulkj/slipway/internal/apikeys"
-	"github.com/rahulkj/slipway/internal/audit"
-	"github.com/rahulkj/slipway/internal/broker"
-	"github.com/rahulkj/slipway/internal/groups"
-	"github.com/rahulkj/slipway/internal/meta"
-	"github.com/rahulkj/slipway/internal/metrics"
-	"github.com/rahulkj/slipway/internal/queue"
-	"github.com/rahulkj/slipway/internal/quorum"
-	"github.com/rahulkj/slipway/internal/ratelimit"
-	"github.com/rahulkj/slipway/internal/replication"
+	"github.com/rahulkj/firn/internal/adminui"
+	"github.com/rahulkj/firn/internal/api"
+	"github.com/rahulkj/firn/internal/api/firnpb"
+	"github.com/rahulkj/firn/internal/apikeys"
+	"github.com/rahulkj/firn/internal/audit"
+	"github.com/rahulkj/firn/internal/broker"
+	"github.com/rahulkj/firn/internal/groups"
+	"github.com/rahulkj/firn/internal/meta"
+	"github.com/rahulkj/firn/internal/metrics"
+	"github.com/rahulkj/firn/internal/queue"
+	"github.com/rahulkj/firn/internal/quorum"
+	"github.com/rahulkj/firn/internal/ratelimit"
+	"github.com/rahulkj/firn/internal/replication"
 )
 
 // advertisedAddr makes a listener address usable for client dialing:
@@ -322,14 +322,14 @@ func main() {
 		serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(tlsCfg)))
 	}
 	grpcSrv := grpc.NewServer(serverOpts...)
-	slipwaypb.RegisterSlipwayServiceServer(grpcSrv, api.NewServer(b, qm, met))
-	slipwaypb.RegisterReplicaServiceServer(grpcSrv, api.NewReplicaServer(b))
+	firnpb.RegisterFirnServiceServer(grpcSrv, api.NewServer(b, qm, met))
+	firnpb.RegisterReplicaServiceServer(grpcSrv, api.NewReplicaServer(b))
 	if clusterMode {
-		slipwaypb.RegisterQuorumServiceServer(grpcSrv, api.NewQuorumServer(qnode))
+		firnpb.RegisterQuorumServiceServer(grpcSrv, api.NewQuorumServer(qnode))
 	}
 
 	go func() {
-		slog.Info("slipwayd starting", "version", version, "http", *httpAddr, "grpc", *grpcAddr, "data_dir", *dataDir, "tls", tlsCfg != nil)
+		slog.Info("firnd starting", "version", version, "http", *httpAddr, "grpc", *grpcAddr, "data_dir", *dataDir, "tls", tlsCfg != nil)
 		var listenErr error
 		if tlsCfg != nil {
 			listenErr = httpSrv.ListenAndServeTLS(*tlsCert, *tlsKey) // config has certs too
@@ -395,5 +395,5 @@ func main() {
 	if err := b.Close(); err != nil {
 		slog.Error("close broker", "err", err)
 	}
-	slog.Info("slipwayd stopped")
+	slog.Info("firnd stopped")
 }

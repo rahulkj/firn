@@ -18,8 +18,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/rahulkj/slipway/internal/fence"
-	"github.com/rahulkj/slipway/internal/log"
+	"github.com/rahulkj/firn/internal/fence"
+	"github.com/rahulkj/firn/internal/log"
 )
 
 const compactEveryCommits = 1000
@@ -65,7 +65,7 @@ func NewOffsetStore(dir string, fl *log.FileLog) (*OffsetStore, error) {
 			var err error
 			fl, err = log.Open(filepath.Join(dir, "__consumer_offsets-0"))
 			if err != nil {
-				return nil, fmt.Errorf("slipway/groups: open offsets store: %w", err)
+				return nil, fmt.Errorf("firn/groups: open offsets store: %w", err)
 			}
 		}
 		s = &OffsetStore{inner: fl, dir: dir, compactEvery: compactEveryCommits}
@@ -76,7 +76,7 @@ func NewOffsetStore(dir string, fl *log.FileLog) (*OffsetStore, error) {
 	if hw > 0 {
 		recs, err := s.inner.Fetch(0, int(hw))
 		if err != nil {
-			return nil, fmt.Errorf("slipway/groups: read offsets store: %w", err)
+			return nil, fmt.Errorf("firn/groups: read offsets store: %w", err)
 		}
 		for _, r := range recs {
 			v, err := decodeCommittedOffset(r.Value)
@@ -103,11 +103,11 @@ func encodeCommittedOffset(o CommittedOffset) []byte {
 
 func decodeCommittedOffset(b []byte) (CommittedOffset, error) {
 	if len(b) < 20 {
-		return CommittedOffset{}, fmt.Errorf("slipway/groups: committed offset record too short (%d bytes)", len(b))
+		return CommittedOffset{}, fmt.Errorf("firn/groups: committed offset record too short (%d bytes)", len(b))
 	}
 	leaderLen := int(binary.BigEndian.Uint32(b[16:20]))
 	if len(b) != 20+leaderLen {
-		return CommittedOffset{}, fmt.Errorf("slipway/groups: committed offset record length mismatch: header says %d, total %d", 20+leaderLen, len(b))
+		return CommittedOffset{}, fmt.Errorf("firn/groups: committed offset record length mismatch: header says %d, total %d", 20+leaderLen, len(b))
 	}
 	return CommittedOffset{
 		Offset:     int64(binary.BigEndian.Uint64(b[0:8])),
@@ -137,7 +137,7 @@ func (s *OffsetStore) Commit(key []byte, o CommittedOffset) error {
 		if s.dir != "" && s.commitsSinceCompact >= s.compactEvery {
 			if fl, ok := s.inner.(*log.FileLog); ok {
 				if err := fl.Compact(); err != nil {
-					return fmt.Errorf("slipway/groups: compact offsets store: %w", err)
+					return fmt.Errorf("firn/groups: compact offsets store: %w", err)
 				}
 				s.commitsSinceCompact = 0
 			}
@@ -150,7 +150,7 @@ func (s *OffsetStore) Commit(key []byte, o CommittedOffset) error {
 // Single-node callers may compact explicitly.
 func (s *OffsetStore) Compact() error {
 	if s.gate != nil && !s.gate.Allowed() {
-		return fmt.Errorf("slipway/groups: compact refused for replicated internal log __consumer_offsets")
+		return fmt.Errorf("firn/groups: compact refused for replicated internal log __consumer_offsets")
 	}
 	if fl, ok := s.inner.(*log.FileLog); ok {
 		if err := fl.Compact(); err != nil {
@@ -223,7 +223,7 @@ func fold(inner partitionLog) (map[string]CommittedOffset, error) {
 func (s *OffsetStore) Close() error {
 	if fl, ok := s.inner.(*log.FileLog); ok {
 		if err := fl.Compact(); err != nil {
-			return fmt.Errorf("slipway/groups: compact offsets store: %w", err)
+			return fmt.Errorf("firn/groups: compact offsets store: %w", err)
 		}
 		return fl.Close()
 	}

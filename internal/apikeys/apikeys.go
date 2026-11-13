@@ -17,8 +17,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rahulkj/slipway/internal/fence"
-	"github.com/rahulkj/slipway/internal/log"
+	"github.com/rahulkj/firn/internal/fence"
+	"github.com/rahulkj/firn/internal/log"
 )
 
 // Role is the access level for an API key.

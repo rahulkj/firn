@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rahulkj/slipway/internal/broker"
-	"github.com/rahulkj/slipway/internal/meta"
+	"github.com/rahulkj/firn/internal/broker"
+	"github.com/rahulkj/firn/internal/meta"
 )
 
 // BenchmarkFetch measures fetch throughput: prefetch 10k records into a

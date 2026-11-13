@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rahulkj/slipway/internal/meta"
+	"github.com/rahulkj/firn/internal/meta"
 )
 
 func newTestBroker(t *testing.T, topics map[string]int) *Broker {

@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rahulkj/slipway/internal/apikeys"
-	"github.com/rahulkj/slipway/internal/audit"
-	"github.com/rahulkj/slipway/internal/fence"
-	"github.com/rahulkj/slipway/internal/groups"
-	"github.com/rahulkj/slipway/internal/meta"
-	"github.com/rahulkj/slipway/internal/queue"
+	"github.com/rahulkj/firn/internal/apikeys"
+	"github.com/rahulkj/firn/internal/audit"
+	"github.com/rahulkj/firn/internal/fence"
+	"github.com/rahulkj/firn/internal/groups"
+	"github.com/rahulkj/firn/internal/meta"
+	"github.com/rahulkj/firn/internal/queue"
 )
 
 const maxTopicNameLen = 249 // generous bound; comfortably covers every real topic name
@@ -93,7 +93,7 @@ func NewAdminHandler(reg *meta.Registry, coord *groups.Coordinator, q *queue.Man
 				writeJSON(w, http.StatusServiceUnavailable, map[string]any{
 					"error":  "not the cluster leader; create the topic on the leader",
 					"leader": cfg.ca.LeaderAddr(),
-					"hint":   "slipway-cli create-topic works against any node: it finds the leader itself",
+					"hint":   "firn-cli create-topic works against any node: it finds the leader itself",
 				})
 				return
 			}

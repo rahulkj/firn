@@ -1,4 +1,4 @@
-# ADR-001: Scope — what slipway is and is not
+# ADR-001: Scope — what firn is and is not
 
 Status: accepted · 2026-11-13 · delivered (v0.1.0)
 
@@ -8,7 +8,7 @@ The goal: a Go broker providing both **streaming** (topics, partitions, replay, 
 
 ## Decision
 
-Slipway is a **single, unified log-based broker**:
+Firn is a **single, unified log-based broker**:
 
 - Streaming mode: topics with N partitions; records fetched by offset; consumer groups commit offsets.
 - Queue mode: the same log, consumed via `acknowledge()`; redelivery after a visibility timeout; DLQ after `maxDeliveries`.

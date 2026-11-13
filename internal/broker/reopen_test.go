@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/rahulkj/slipway/internal/meta"
+	"github.com/rahulkj/firn/internal/meta"
 )
 
 // TestBrokerWithDirSurvivesReopen is the slice-2 acceptance property for the

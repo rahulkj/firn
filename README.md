@@ -1,21 +1,21 @@
-# slipway
+# firn
 
 A from-scratch event broker in Go providing **streaming** (topics, partitions, offsets, consumer groups) and **queue** (ack, redelivery, DLQ) semantics over a shared append-only log.
 
-Status: **v0.2.0-preview — ADR-007 scaled deployment (behind `-node-id`/`-peers`), plus v0.1.0 MVP.** See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/adr/`](docs/adr/).
+Status: **v0.3.0-preview — Firn, the durable event broker.** See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/adr/`](docs/adr/). License: [MIT](LICENSE).
 
 ## Documentation
 
 - [`docs/install.md`](docs/install.md) — build, single-node quickstart, TLS + auth bootstrap, 3-node cluster, what persists where
 - [`docs/configuration.md`](docs/configuration.md) — every flag, environment variables, retention rules, startup/recovery order
-- [`docs/api.md`](docs/api.md) — HTTP admin + gRPC `SlipwayService` reference with request/response examples, error codes, CLI↔API map
+- [`docs/api.md`](docs/api.md) — HTTP admin + gRPC `FirnService` reference with request/response examples, error codes, CLI↔API map
 
 ## Quick start
 
 ```sh
 make build   # go build ./...
 make verify  # go vet ./... && go test ./...
-go run ./cmd/slipwayd   # HTTP admin/health on :9092, gRPC on :9093; data persisted in ./data
+go run ./cmd/firnd   # HTTP admin/health on :9092, gRPC on :9093; data persisted in ./data
 ```
 
 ```sh
@@ -25,7 +25,7 @@ curl -X POST localhost:9092/topics -d '{"name":"orders","partitions":3}'
 curl localhost:9092/topics
 ```
 
-**Status: v0.1.0 — MVP (slices 1–6).** See [`CHANGELOG.md`](CHANGELOG.md) for the release notes and the ADR-005 acceptance checklist. `/metrics` is served on the admin port; logs are JSON via `log/slog`; `slipway-cli` wraps the same APIs (`create-topic|create-queue|list|produce|fetch|groups|dlq|create-apikey|revoke-apikey|list-apikeys`).
+**Status: v0.1.0 — MVP (slices 1–6).** See [`CHANGELOG.md`](CHANGELOG.md) for the release notes and the ADR-005 acceptance checklist. `/metrics` is served on the admin port; logs are JSON via `log/slog`; `firn-cli` wraps the same APIs (`create-topic|create-queue|list|produce|fetch|groups|dlq|create-apikey|revoke-apikey|list-apikeys`).
 
 ## Queue mode (slice 5)
 
@@ -56,20 +56,20 @@ buf generate internal/api --template buf.gen.yaml   # needs buf + protoc-gen-go 
 
 ```sh
 # terminal 1
-go run ./cmd/slipwayd -node-id n1 -peers n1=127.0.0.1:9311,n2=127.0.0.1:9312,n3=127.0.0.1:9313 \
+go run ./cmd/firnd -node-id n1 -peers n1=127.0.0.1:9311,n2=127.0.0.1:9312,n3=127.0.0.1:9313 \
   -http-addr 127.0.0.1:9211 -grpc-addr 127.0.0.1:9311 -data-dir ./data-n1
 # terminal 2 / 3: same with n2/n3 and ports 9312/9313 + 9212/9213, -data-dir ./data-n2 / ./data-n3
 ```
 
 Topics and their blocks replicate via an embedded Raft quorum (no ZK/etcd). The client
-(`slipway-cli`) needs the node list:
+(`firn-cli`) needs the node list:
 
 ```sh
-slipway-cli -peers 127.0.0.1:9311,127.0.0.1:9312,127.0.0.1:9313 \
+firn-cli -peers 127.0.0.1:9311,127.0.0.1:9312,127.0.0.1:9313 \
   -http-peers 127.0.0.1:9211,127.0.0.1:9212,127.0.0.1:9213 \
   create-topic --name orders --partitions 3
-slipway-cli -peers ... produce --topic orders --key k --value hello
-slipway-cli -peers ... fetch --topic orders --partition 0
+firn-cli -peers ... produce --topic orders --key k --value hello
+firn-cli -peers ... fetch --topic orders --partition 0
 ```
 
 Design: [`docs/adr/007-scaled-deployment.md`](docs/adr/007-scaled-deployment.md) — block log, lease tails, embedded metadata quorum.
@@ -83,7 +83,7 @@ The broker enforces bearer-token auth on both surfaces once **any non-revoked AP
 ```sh
 # bootstrap: create the first (admin) key before serving traffic
 curl -X POST localhost:9092/apikeys -d '{"name":"root","role":"admin"}'
-slipway-cli -api-key 'ev-…' list
+firn-cli -api-key 'ev-…' list
 ```
 
 Details: [`docs/configuration.md`](docs/configuration.md) (flags, auth-enforcement model), [`docs/api.md`](docs/api.md) (key routes, roles, error codes), [`docs/plans/003-auth.md`](docs/plans/003-auth.md) (delivery notes).

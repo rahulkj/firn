@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rahulkj/slipway/internal/log"
+	"github.com/rahulkj/firn/internal/log"
 )
 
 func TestAPIKeysRoundTrip(t *testing.T) {

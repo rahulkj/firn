@@ -14,11 +14,11 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/rahulkj/slipway/internal/api"
-	"github.com/rahulkj/slipway/internal/api/slipwaypb"
-	"github.com/rahulkj/slipway/internal/broker"
-	"github.com/rahulkj/slipway/internal/meta"
-	"github.com/rahulkj/slipway/internal/quorum"
+	"github.com/rahulkj/firn/internal/api"
+	"github.com/rahulkj/firn/internal/api/firnpb"
+	"github.com/rahulkj/firn/internal/broker"
+	"github.com/rahulkj/firn/internal/meta"
+	"github.com/rahulkj/firn/internal/quorum"
 )
 
 // clusterNode bundles one broker + quorum voter + bufconn replica endpoint.
@@ -64,7 +64,7 @@ func newCluster(t *testing.T, n int, root string) []*clusterNode {
 		q.Start()
 
 		srv := grpc.NewServer(grpc.MaxRecvMsgSize(80 << 20))
-		slipwaypb.RegisterReplicaServiceServer(srv, api.NewReplicaServer(b))
+		firnpb.RegisterReplicaServiceServer(srv, api.NewReplicaServer(b))
 		go func() { _ = srv.Serve(l) }()
 		t.Cleanup(srv.Stop)
 

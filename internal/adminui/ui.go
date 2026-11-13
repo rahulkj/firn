@@ -6,7 +6,7 @@ import (
 	"html/template"
 	"net/http"
 
-	"github.com/rahulkj/slipway/internal/broker"
+	"github.com/rahulkj/firn/internal/broker"
 )
 
 // Handler wires the admin dashboard to the broker.
@@ -69,7 +69,7 @@ var pageTemplate = template.Must(template.New("page").Funcs(template.FuncMap{
 <html lang="en">
 <head>
 	<meta charset="utf-8">
-	<title>slipway admin</title>
+	<title>firn admin</title>
 	<style>
 		body{font-family:system-ui,sans-serif;margin:0;padding:2rem;background:#0f172a;color:#e2e8f0}
 		.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:1rem 1.5rem;margin-bottom:1rem}
@@ -81,7 +81,7 @@ var pageTemplate = template.Must(template.New("page").Funcs(template.FuncMap{
 	</style>
 </head>
 <body>
-	<h1>slipway admin <span class="sub">/ ui</span></h1>
+	<h1>firn admin <span class="sub">/ ui</span></h1>
 	<div class="card"><h2>Topics ({{len .Topics}})</h2>
 		<table>
 			<thead><tr><th>Name</th><th>Partitions</th><th>Mode</th></tr></thead>

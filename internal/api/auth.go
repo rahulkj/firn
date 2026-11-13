@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/rahulkj/slipway/internal/apikeys"
-	"github.com/rahulkj/slipway/internal/audit"
-	"github.com/rahulkj/slipway/internal/ratelimit"
+	"github.com/rahulkj/firn/internal/apikeys"
+	"github.com/rahulkj/firn/internal/audit"
+	"github.com/rahulkj/firn/internal/ratelimit"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -122,18 +122,18 @@ func (a *auth) Wrap(next http.Handler) http.Handler {
 
 // Commands under this map require the listed role; everything else is viewer+.
 var grpcRoles = map[string]apikeys.Role{
-	"/slipway.v1.SlipwayService/Produce":      apikeys.RoleOperator,
-	"/slipway.v1.SlipwayService/JoinGroup":    apikeys.RoleOperator,
-	"/slipway.v1.SlipwayService/Heartbeat":    apikeys.RoleOperator,
-	"/slipway.v1.SlipwayService/Pull":         apikeys.RoleOperator,
-	"/slipway.v1.SlipwayService/Ack":          apikeys.RoleOperator,
-	"/slipway.v1.SlipwayService/CommitOffset": apikeys.RoleOperator,
-	"/slipway.v1.ReplicaService/ReplicaPut":   apikeys.RoleOperator,
-	"/slipway.v1.ReplicaService/ReplicaFetch": apikeys.RoleViewer,
+	"/firn.v1.FirnService/Produce":         apikeys.RoleOperator,
+	"/firn.v1.FirnService/JoinGroup":       apikeys.RoleOperator,
+	"/firn.v1.FirnService/Heartbeat":       apikeys.RoleOperator,
+	"/firn.v1.FirnService/Pull":            apikeys.RoleOperator,
+	"/firn.v1.FirnService/Ack":             apikeys.RoleOperator,
+	"/firn.v1.FirnService/CommitOffset":    apikeys.RoleOperator,
+	"/firn.v1.ReplicaService/ReplicaPut":   apikeys.RoleOperator,
+	"/firn.v1.ReplicaService/ReplicaFetch": apikeys.RoleViewer,
 }
 
 // GRPCInterceptor enforces bearer authentication and rate limiting on every
-// unary RPC. ReplicaService and SlipwayService both use it.
+// unary RPC. ReplicaService and FirnService both use it.
 func (a *auth) GRPCInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		if a.store == nil || !a.store.HasAnyKey() {

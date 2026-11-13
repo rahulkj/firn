@@ -340,7 +340,7 @@ func (n *Node) appendEntryLocked(e Entry) Entry {
 		// Persisting failed; treat like a transport failure. Production would
 		// panic-adjacent; here we log and continue — the node cannot serve
 		// entries it cannot persist.
-		fmt.Printf("slipway/quorum: persist entry %d: %v\n", e.Index, err)
+		fmt.Printf("firn/quorum: persist entry %d: %v\n", e.Index, err)
 	}
 	return e
 }
@@ -423,7 +423,7 @@ func (n *Node) send(to string, msg Message) {
 // --- Propose & errors --------------------------------------------------------
 
 // ErrNotLeader is returned when a follower is asked to propose.
-var ErrNotLeader = errors.New("slipway/quorum: not leader")
+var ErrNotLeader = errors.New("firn/quorum: not leader")
 
 // ProposeNamed proposes one entry of the given type with the given payload.
 // Returns ErrNotLeader if this node isn't the leader, else the index/term.

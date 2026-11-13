@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/rahulkj/slipway/internal/fence"
+	"github.com/rahulkj/firn/internal/fence"
 )
 
 func TestFencedAttemptStoreFailsClosed(t *testing.T) {

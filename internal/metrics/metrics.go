@@ -1,10 +1,10 @@
-// Package metrics exposes slipway's Prometheus metrics (ADR-006):
+// Package metrics exposes firn's Prometheus metrics (ADR-006):
 //
-//	slipway_produce_total{topic}        counter
-//	slipway_fetch_total{topic}          counter
-//	slipway_fsync_seconds               histogram (FileLog fsync)
-//	slipway_group_rebalances_total      counter (groups coordinator)
-//	slipway_queue_depth                 gauge (pending + lease-expired messages)
+//	firn_produce_total{topic}        counter
+//	firn_fetch_total{topic}          counter
+//	firn_fsync_seconds               histogram (FileLog fsync)
+//	firn_group_rebalances_total      counter (groups coordinator)
+//	firn_queue_depth                 gauge (pending + lease-expired messages)
 //
 // The package registers the internal/log FsyncObserver hook and reads the
 // groups rebalance counter at scrape time. No dependencies escape this
@@ -18,9 +18,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	"github.com/rahulkj/slipway/internal/groups"
-	"github.com/rahulkj/slipway/internal/log"
-	"github.com/rahulkj/slipway/internal/queue"
+	"github.com/rahulkj/firn/internal/groups"
+	"github.com/rahulkj/firn/internal/log"
+	"github.com/rahulkj/firn/internal/queue"
 )
 
 // Metrics holds the registered collectors. Create once at process start.
@@ -39,22 +39,22 @@ type Metrics struct {
 func New(coord *groups.Coordinator, qm *queue.Manager) *Metrics {
 	m := &Metrics{
 		ProduceTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "slipway_produce_total",
+			Name: "firn_produce_total",
 			Help: "Total produced messages, by topic.",
 		}, []string{"topic"}),
 		FetchTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: "slipway_fetch_total",
+			Name: "firn_fetch_total",
 			Help: "Total fetch responses, by topic.",
 		}, []string{"topic"}),
 		FsyncSeconds: prometheus.NewHistogram(prometheus.HistogramOpts{
-			Name:    "slipway_fsync_seconds",
+			Name:    "firn_fsync_seconds",
 			Help:    "Duration of FileLog fsyncs (append path, segment roll, flush).",
 			Buckets: prometheus.DefBuckets,
 		}),
 		registry: prometheus.NewRegistry(),
 	}
 	m.GroupRebalances = prometheus.NewCounterFunc(prometheus.CounterOpts{
-		Name: "slipway_group_rebalances_total",
+		Name: "firn_group_rebalances_total",
 		Help: "Total group rebalances since process start.",
 	}, func() float64 {
 		if coord == nil {
@@ -63,7 +63,7 @@ func New(coord *groups.Coordinator, qm *queue.Manager) *Metrics {
 		return float64(coord.Rebalances())
 	})
 	m.QueueDepth = prometheus.NewGaugeFunc(prometheus.GaugeOpts{
-		Name: "slipway_queue_depth",
+		Name: "firn_queue_depth",
 		Help: "Unacked queue messages (pending + lease-expired redeliveries), across queues.",
 	}, func() float64 {
 		if qm == nil {

@@ -100,3 +100,25 @@ any dependency change.
 3. Re-run this audit whenever `go.mod` changes; add a license-check note to CI.
 4. Have counsel review this document and the repository before any public
    release beyond an internal or private preview.
+
+---
+
+## Addendum — 2026-11-13 (post-Slipway sweep): Firn selected
+
+The Slipway brand was **rejected** after the sweep in this memo was extended. Summary of the second-round trademark/conflict sweep (all in software, all active):
+
+- **Slipway** — Slipway Labs (SF, funded AI-onboarding agent, same space as this broker), slipwaypanel.com (self-hosted PaaS), slipwaysoftware.com (dev shop), Slipway for Sails.js. **Rejected.**
+- **Strata** — jsedlak/strata (event-sourcing library, MIT) + Strata Palimpsest app. **Rejected.**
+- **Outbox** — generic pattern keyword, no distinctiveness. **Rejected.**
+- **Palimpsest** — palimpsest-wal (Thousand Birds, MIT/Apache-2.0), WAL/event ingest. **Rejected.**
+- **Wick** — Wick streams meta-framework (WebAssembly components). **Rejected.**
+- **Gantry** — knacklabs/gantry (agent runtime with message streaming). **Rejected.**
+- **Talus** — Talus Nexus (decentralized AI brokers). **Rejected.**
+- **Ember** — Ember Journal (Deltix; 100k orders/s messaging journal + warehouses) + P2P Ember messaging research. **Rejected.**
+- **Basin** — Cloudflare Basin (serverless data-lake platform). **Rejected.**
+- **Waymark** — Waymark (AI real-estate software, Texas). **Rejected.**
+- **Fermata** — Fermata Tech (agtech AI, funded). **Rejected.**
+- **Firn** — no conflicts found in two rounds of sweeps. **Selected.** (Firn = snow compacted into layers over time — the compaction metaphor.)
+- **Meridian** — no conflicts found in two rounds of sweeps. **Runner-up** (more common word, weaker distinctiveness).
+
+Licensing since this memo was written: **MIT LICENSE added to the repo (2026-11-13)** — item 1 of "Gaps found" is resolved. Item 2 (trademark clearance) now applies to "Firn" instead of "Slipway" — registration searches at USPTO/EUIPO remain outstanding and are a prerequisite for any public promotion; "Firn" is an ordinary word (glacial geology) with no known software-class conflicts but a proper clearance is counsel's call. Discord/announce/social handles should be checked before unveiling.

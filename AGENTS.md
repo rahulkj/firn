@@ -1,6 +1,6 @@
-# AGENTS.md — slipway
+# AGENTS.md — firn
 
-Slipway is a from-scratch event broker in Go providing **streaming** (topics/partitions, replay, consumer groups) and **queue** (ack/redelivery) semantics over a shared append-only log. See `docs/adr/` for the decisions that matter.
+Firn is a from-scratch event broker in Go providing **streaming** (topics/partitions, replay, consumer groups) and **queue** (ack/redelivery) semantics over a shared append-only log. See `docs/adr/` for the decisions that matter.
 
 ## Commands
 
@@ -13,7 +13,7 @@ Slipway is a from-scratch event broker in Go providing **streaming** (topics/par
 
 ## Layout
 
-- `cmd/slipwayd` — broker daemon (serves `/healthz` for now)
+- `cmd/firnd` — broker daemon (serves `/healthz` for now)
 - `internal/log` — append-only log (storage invariants live here; sacred)
 - `internal/meta` — topic/partition metadata registry
 - `internal/broker` — produce/fetch orchestration, partition assignment

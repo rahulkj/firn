@@ -1,4 +1,4 @@
-module github.com/rahulkj/slipway
+module github.com/rahulkj/firn
 
 go 1.27
 

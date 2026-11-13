@@ -17,16 +17,16 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
-	"github.com/rahulkj/slipway/internal/api/slipwaypb"
-	"github.com/rahulkj/slipway/internal/broker"
-	"github.com/rahulkj/slipway/internal/meta"
-	"github.com/rahulkj/slipway/internal/queue"
+	"github.com/rahulkj/firn/internal/api/firnpb"
+	"github.com/rahulkj/firn/internal/broker"
+	"github.com/rahulkj/firn/internal/meta"
+	"github.com/rahulkj/firn/internal/queue"
 )
 
 // newTestCluster wires an in-memory broker behind a bufconn gRPC server and
-// an httptest HTTP admin server — the same wiring slipwayd uses, minus the
+// an httptest HTTP admin server — the same wiring firnd uses, minus the
 // network listeners.
-func newTestCluster(t *testing.T) (slipwaypb.SlipwayServiceClient, *httptest.Server, *meta.Registry) {
+func newTestCluster(t *testing.T) (firnpb.FirnServiceClient, *httptest.Server, *meta.Registry) {
 	t.Helper()
 
 	reg := meta.NewRegistry()
@@ -38,7 +38,7 @@ func newTestCluster(t *testing.T) (slipwaypb.SlipwayServiceClient, *httptest.Ser
 
 	lis := bufconn.Listen(1024 * 1024)
 	grpcServer := grpc.NewServer()
-	slipwaypb.RegisterSlipwayServiceServer(grpcServer, NewServer(b, q))
+	firnpb.RegisterFirnServiceServer(grpcServer, NewServer(b, q))
 	go func() {
 		_ = grpcServer.Serve(lis)
 	}()
@@ -56,7 +56,7 @@ func newTestCluster(t *testing.T) (slipwaypb.SlipwayServiceClient, *httptest.Ser
 	admin := httptest.NewServer(NewAdminHandler(reg, b.Groups(), q))
 	t.Cleanup(admin.Close)
 
-	return slipwaypb.NewSlipwayServiceClient(conn), admin, reg
+	return firnpb.NewFirnServiceClient(conn), admin, reg
 }
 
 func createTopic(t *testing.T, admin *httptest.Server, name string, partitions int) *http.Response {
@@ -90,7 +90,7 @@ func TestProduceFetchEndToEnd(t *testing.T) {
 	for i := 0; i < total; i++ {
 		key := fmt.Sprintf("key-%d", i%97) // ~97 distinct keys across partitions
 		value := bytes.Repeat([]byte{byte(i), byte(i >> 8)}, 8)
-		p, err := client.Produce(ctx, &slipwaypb.ProduceRequest{
+		p, err := client.Produce(ctx, &firnpb.ProduceRequest{
 			Topic: "events",
 			Key:   []byte(key),
 			Value: value,
@@ -107,7 +107,7 @@ func TestProduceFetchEndToEnd(t *testing.T) {
 	var fetched int64
 	for partition, count := range produced {
 		for offset := int64(0); offset < count; {
-			f, err := client.Fetch(ctx, &slipwaypb.FetchRequest{
+			f, err := client.Fetch(ctx, &firnpb.FetchRequest{
 				Topic:      "events",
 				Partition:  partition,
 				Offset:     offset,
@@ -145,7 +145,7 @@ func TestProduceKeyStickinessOverGRPC(t *testing.T) {
 
 	var first int32 = -1
 	for i := 0; i < 20; i++ {
-		p, err := client.Produce(ctx, &slipwaypb.ProduceRequest{
+		p, err := client.Produce(ctx, &firnpb.ProduceRequest{
 			Topic: "sticky",
 			Key:   []byte("same-key"),
 			Value: []byte(fmt.Sprintf("v%d", i)),
@@ -165,7 +165,7 @@ func TestProduceKeyStickinessOverGRPC(t *testing.T) {
 
 func TestProduceUnknownTopicReturnsNotFound(t *testing.T) {
 	client, _, _ := newTestCluster(t)
-	_, err := client.Produce(context.Background(), &slipwaypb.ProduceRequest{
+	_, err := client.Produce(context.Background(), &firnpb.ProduceRequest{
 		Topic: "nope",
 		Value: []byte("v"),
 	})
@@ -176,7 +176,7 @@ func TestProduceUnknownTopicReturnsNotFound(t *testing.T) {
 
 func TestFetchUnknownTopicReturnsNotFound(t *testing.T) {
 	client, _, _ := newTestCluster(t)
-	_, err := client.Fetch(context.Background(), &slipwaypb.FetchRequest{
+	_, err := client.Fetch(context.Background(), &firnpb.FetchRequest{
 		Topic:      "nope",
 		Partition:  0,
 		Offset:     0,
@@ -197,11 +197,11 @@ func TestFetchInvalidArgument(t *testing.T) {
 
 	for _, tc := range []struct {
 		name string
-		req  *slipwaypb.FetchRequest
+		req  *firnpb.FetchRequest
 	}{
-		{"zero max_records", &slipwaypb.FetchRequest{Topic: "events", Partition: 0, Offset: 0, MaxRecords: 0}},
-		{"negative offset", &slipwaypb.FetchRequest{Topic: "events", Partition: 0, Offset: -1, MaxRecords: 1}},
-		{"partition out of range", &slipwaypb.FetchRequest{Topic: "events", Partition: 1, Offset: 0, MaxRecords: 1}},
+		{"zero max_records", &firnpb.FetchRequest{Topic: "events", Partition: 0, Offset: 0, MaxRecords: 0}},
+		{"negative offset", &firnpb.FetchRequest{Topic: "events", Partition: 0, Offset: -1, MaxRecords: 1}},
+		{"partition out of range", &firnpb.FetchRequest{Topic: "events", Partition: 1, Offset: 0, MaxRecords: 1}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := client.Fetch(context.Background(), tc.req)
@@ -227,12 +227,12 @@ func TestPullAckOverGRPC(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if _, err := client.Produce(ctx, &slipwaypb.ProduceRequest{Topic: "jobs", Value: []byte(fmt.Sprintf("v%d", i))}); err != nil {
+		if _, err := client.Produce(ctx, &firnpb.ProduceRequest{Topic: "jobs", Value: []byte(fmt.Sprintf("v%d", i))}); err != nil {
 			t.Fatalf("produce: %v", err)
 		}
 	}
 
-	pull, err := client.Pull(ctx, &slipwaypb.PullRequest{Queue: "jobs", MaxMessages: 10, VisibilityTimeoutMs: 30000})
+	pull, err := client.Pull(ctx, &firnpb.PullRequest{Queue: "jobs", MaxMessages: 10, VisibilityTimeoutMs: 30000})
 	if err != nil {
 		t.Fatalf("pull: %v", err)
 	}
@@ -240,13 +240,13 @@ func TestPullAckOverGRPC(t *testing.T) {
 		t.Fatalf("pulled %d deliveries, want 3", len(pull.Deliveries))
 	}
 	for _, d := range pull.Deliveries {
-		if _, err := client.Ack(ctx, &slipwaypb.AckRequest{Queue: "jobs", DeliveryId: d.DeliveryId}); err != nil {
+		if _, err := client.Ack(ctx, &firnpb.AckRequest{Queue: "jobs", DeliveryId: d.DeliveryId}); err != nil {
 			t.Fatalf("ack: %v", err)
 		}
 	}
 
 	// All messages acked: a new pull returns empty.
-	pull, err = client.Pull(ctx, &slipwaypb.PullRequest{Queue: "jobs", MaxMessages: 10, VisibilityTimeoutMs: 30000})
+	pull, err = client.Pull(ctx, &firnpb.PullRequest{Queue: "jobs", MaxMessages: 10, VisibilityTimeoutMs: 30000})
 	if err != nil {
 		t.Fatalf("pull 2: %v", err)
 	}
@@ -255,7 +255,7 @@ func TestPullAckOverGRPC(t *testing.T) {
 	}
 
 	// Pull on a non-existent queue -> NotFound.
-	if _, err := client.Pull(ctx, &slipwaypb.PullRequest{Queue: "nope"}); status.Code(err) != codes.NotFound {
+	if _, err := client.Pull(ctx, &firnpb.PullRequest{Queue: "nope"}); status.Code(err) != codes.NotFound {
 		t.Fatalf("pull unknown queue: code = %v, want NotFound", status.Code(err))
 	}
 }
@@ -270,11 +270,11 @@ func TestGroupsEndToEndOverGRPC(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
-	m1, err := client.JoinGroup(ctx, &slipwaypb.JoinGroupRequest{GroupId: "g1", Topics: []string{"orders"}, Protocol: "range"})
+	m1, err := client.JoinGroup(ctx, &firnpb.JoinGroupRequest{GroupId: "g1", Topics: []string{"orders"}, Protocol: "range"})
 	if err != nil {
 		t.Fatalf("m1 join: %v", err)
 	}
-	m2, err := client.JoinGroup(ctx, &slipwaypb.JoinGroupRequest{GroupId: "g1", Topics: []string{"orders"}, Protocol: "range"})
+	m2, err := client.JoinGroup(ctx, &firnpb.JoinGroupRequest{GroupId: "g1", Topics: []string{"orders"}, Protocol: "range"})
 	if err != nil {
 		t.Fatalf("m2 join: %v", err)
 	}
@@ -284,11 +284,11 @@ func TestGroupsEndToEndOverGRPC(t *testing.T) {
 		t.Fatalf("expected generation to advance on join: m1=%d m2=%d", m1.GenerationId, m2.GenerationId)
 	}
 
-	s1, err := client.SyncGroup(ctx, &slipwaypb.SyncGroupRequest{GroupId: "g1", MemberId: m1.MemberId})
+	s1, err := client.SyncGroup(ctx, &firnpb.SyncGroupRequest{GroupId: "g1", MemberId: m1.MemberId})
 	if err != nil {
 		t.Fatalf("m1 sync: %v", err)
 	}
-	s2, err := client.SyncGroup(ctx, &slipwaypb.SyncGroupRequest{GroupId: "g1", MemberId: m2.MemberId})
+	s2, err := client.SyncGroup(ctx, &firnpb.SyncGroupRequest{GroupId: "g1", MemberId: m2.MemberId})
 	if err != nil {
 		t.Fatalf("m2 sync: %v", err)
 	}
@@ -308,10 +308,10 @@ func TestGroupsEndToEndOverGRPC(t *testing.T) {
 	}
 
 	// Commit and read back through the API.
-	if _, err := client.CommitOffset(ctx, &slipwaypb.CommitOffsetRequest{GroupId: "g1", Topic: "orders", Partition: 0, Offset: 42, GenerationId: m2.GenerationId}); err != nil {
+	if _, err := client.CommitOffset(ctx, &firnpb.CommitOffsetRequest{GroupId: "g1", Topic: "orders", Partition: 0, Offset: 42, GenerationId: m2.GenerationId}); err != nil {
 		t.Fatalf("commit: %v", err)
 	}
-	f, err := client.FetchOffset(ctx, &slipwaypb.FetchOffsetRequest{GroupId: "g1", Topic: "orders", Partition: 0})
+	f, err := client.FetchOffset(ctx, &firnpb.FetchOffsetRequest{GroupId: "g1", Topic: "orders", Partition: 0})
 	if err != nil {
 		t.Fatalf("fetch offset: %v", err)
 	}
@@ -320,7 +320,7 @@ func TestGroupsEndToEndOverGRPC(t *testing.T) {
 	}
 
 	// Stale generation must be rejected.
-	if _, err := client.CommitOffset(ctx, &slipwaypb.CommitOffsetRequest{GroupId: "g1", Topic: "orders", Partition: 1, Offset: 7, GenerationId: 1}); status.Code(err) != codes.FailedPrecondition {
+	if _, err := client.CommitOffset(ctx, &firnpb.CommitOffsetRequest{GroupId: "g1", Topic: "orders", Partition: 1, Offset: 7, GenerationId: 1}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("stale generation commit: code = %v, want FailedPrecondition", status.Code(err))
 	}
 
@@ -345,7 +345,7 @@ func TestGroupsEndToEndOverGRPC(t *testing.T) {
 	}
 
 	// Heartbeat with stale generation must be rejected.
-	if _, err := client.Heartbeat(ctx, &slipwaypb.HeartbeatRequest{GroupId: "g1", MemberId: m1.MemberId, GenerationId: 1}); status.Code(err) != codes.FailedPrecondition {
+	if _, err := client.Heartbeat(ctx, &firnpb.HeartbeatRequest{GroupId: "g1", MemberId: m1.MemberId, GenerationId: 1}); status.Code(err) != codes.FailedPrecondition {
 		t.Fatalf("stale heartbeat: code = %v, want FailedPrecondition", status.Code(err))
 	}
 }

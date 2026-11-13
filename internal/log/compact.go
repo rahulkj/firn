@@ -59,10 +59,10 @@ func (l *FileLog) Compact() error {
 		for pos < seg.writePos {
 			rec, raw, ok, err := readFrameAt(seg.file, pos)
 			if err != nil {
-				return fmt.Errorf("slipway/log: compact scan %s: %w", seg.path, err)
+				return fmt.Errorf("firn/log: compact scan %s: %w", seg.path, err)
 			}
 			if !ok {
-				return fmt.Errorf("slipway/log: compact scan %s at %d: corrupt frame", seg.path, pos)
+				return fmt.Errorf("firn/log: compact scan %s at %d: corrupt frame", seg.path, pos)
 			}
 			all = append(all, elem{offset: rec.Offset, ts: rec.Ts, key: rec.Key, value: rec.Value})
 			pos += int64(len(raw))
@@ -86,34 +86,34 @@ func (l *FileLog) Compact() error {
 
 	compactDir := l.dir + ".compact"
 	if err := os.RemoveAll(compactDir); err != nil {
-		return fmt.Errorf("slipway/log: remove stale %s: %w", compactDir, err)
+		return fmt.Errorf("firn/log: remove stale %s: %w", compactDir, err)
 	}
 	nf, err := Open(compactDir, WithSyncOnAppend(true), WithMaxSegmentBytes(l.maxSegmentBytes))
 	if err != nil {
-		return fmt.Errorf("slipway/log: create %s: %w", compactDir, err)
+		return fmt.Errorf("firn/log: create %s: %w", compactDir, err)
 	}
 	for _, k := range survivors {
 		nf.appendWithTimestamp(k.e.key, k.e.value, k.e.ts)
 	}
 	if err := nf.Close(); err != nil {
 		_ = os.RemoveAll(compactDir)
-		return fmt.Errorf("slipway/log: sync %s: %w", compactDir, err)
+		return fmt.Errorf("firn/log: sync %s: %w", compactDir, err)
 	}
 
 	// Swap directories: close current segments first so the rename never
 	// races open file handles on unusual filesystems.
 	for _, seg := range l.segments {
 		if err := seg.file.Sync(); err != nil {
-			return fmt.Errorf("slipway/log: sync before compact swap %s: %w", seg.path, err)
+			return fmt.Errorf("firn/log: sync before compact swap %s: %w", seg.path, err)
 		}
 		if err := seg.file.Close(); err != nil {
-			return fmt.Errorf("slipway/log: close before compact swap %s: %w", seg.path, err)
+			return fmt.Errorf("firn/log: close before compact swap %s: %w", seg.path, err)
 		}
 	}
 	oldDir := l.dir + ".old"
 	_ = os.RemoveAll(oldDir) // stale leftover from an earlier interrupted compact
 	if err := os.Rename(l.dir, oldDir); err != nil {
-		return fmt.Errorf("slipway/log: rename %s -> %s: %w", l.dir, oldDir, err)
+		return fmt.Errorf("firn/log: rename %s -> %s: %w", l.dir, oldDir, err)
 	}
 	if err := syncParent(l.dir); err != nil {
 		return err
@@ -121,19 +121,19 @@ func (l *FileLog) Compact() error {
 	if err := os.Rename(compactDir, l.dir); err != nil {
 		// Live dir is missing; restore from .old so we never lose data.
 		_ = os.Rename(oldDir, l.dir)
-		return fmt.Errorf("slipway/log: rename %s -> %s: %w", compactDir, l.dir, err)
+		return fmt.Errorf("firn/log: rename %s -> %s: %w", compactDir, l.dir, err)
 	}
 	if err := syncParent(l.dir); err != nil {
 		return err
 	}
 	if err := os.RemoveAll(oldDir); err != nil {
-		return fmt.Errorf("slipway/log: remove %s: %w", oldDir, err)
+		return fmt.Errorf("firn/log: remove %s: %w", oldDir, err)
 	}
 
 	// Reopen the rewritten log and adopt its state.
 	nl, err := Open(l.dir, WithSyncOnAppend(l.syncOnAppend), WithMaxSegmentBytes(l.maxSegmentBytes))
 	if err != nil {
-		return fmt.Errorf("slipway/log: reopen after compact %s: %w", l.dir, err)
+		return fmt.Errorf("firn/log: reopen after compact %s: %w", l.dir, err)
 	}
 	l.segments = nl.segments
 	l.hwm = nl.hwm
@@ -160,7 +160,7 @@ func resolveCompactDirs(dir string) error {
 	switch {
 	case dirMissing && compactOK:
 		if err := os.Rename(compact, dir); err != nil {
-			return fmt.Errorf("slipway/log: restore %s from .compact: %w", dir, err)
+			return fmt.Errorf("firn/log: restore %s from .compact: %w", dir, err)
 		}
 		if oldOK {
 			_ = os.RemoveAll(old) // superseded by the compact output
@@ -168,15 +168,15 @@ func resolveCompactDirs(dir string) error {
 		return syncParent(dir)
 	case dirMissing && !compactOK && oldOK:
 		if err := os.Rename(old, dir); err != nil {
-			return fmt.Errorf("slipway/log: restore %s from .old: %w", dir, err)
+			return fmt.Errorf("firn/log: restore %s from .old: %w", dir, err)
 		}
 		return syncParent(dir)
 	case !dirMissing && oldOK:
 		if err := os.RemoveAll(old); err != nil {
-			return fmt.Errorf("slipway/log: remove stale %s: %w", old, err)
+			return fmt.Errorf("firn/log: remove stale %s: %w", old, err)
 		}
 	case !dirMissing && compactOK:
-		return fmt.Errorf("slipway/log: interrupted compact left %s alongside live %s: refusing to delete it; inspect and remove manually", compact, dir)
+		return fmt.Errorf("firn/log: interrupted compact left %s alongside live %s: refusing to delete it; inspect and remove manually", compact, dir)
 	}
 	return nil
 }
@@ -185,12 +185,12 @@ func syncParent(path string) error {
 	parent := filepath.Dir(path)
 	d, err := os.Open(parent)
 	if err != nil {
-		return fmt.Errorf("slipway/log: open parent dir %s: %w", parent, err)
+		return fmt.Errorf("firn/log: open parent dir %s: %w", parent, err)
 	}
 	syncErr := d.Sync()
 	closeErr := d.Close()
 	if syncErr != nil {
-		return fmt.Errorf("slipway/log: fsync parent dir %s: %w", parent, syncErr)
+		return fmt.Errorf("firn/log: fsync parent dir %s: %w", parent, syncErr)
 	}
 	return closeErr
 }

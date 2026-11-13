@@ -1,13 +1,13 @@
 syntax = "proto3";
 
-// SlipwayService is the v1 hot path (docs/adr/002-api.md): clean API, not a
+// FirnService is the v1 hot path (docs/adr/002-api.md): clean API, not a
 // wire protocol compatible with any other broker. HTTP/JSON is used only
 // for admin (create list topics, health), not for produce/fetch.
-package slipway.v1;
+package firn.v1;
 
-option go_package = "github.com/rahulkj/slipway/internal/api/slipwaypb";
+option go_package = "github.com/rahulkj/firn/internal/api/firnpb";
 
-service SlipwayService {
+service FirnService {
   rpc Produce(ProduceRequest) returns (ProduceResponse);
   rpc Fetch(FetchRequest) returns (FetchResponse);
 

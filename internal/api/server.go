@@ -1,4 +1,4 @@
-// Package api exposes slipway over the network: gRPC + HTTP admin/health.
+// Package api exposes firn over the network: gRPC + HTTP admin/health.
 //
 // Design decision (docs/adr/002-api.md): a clean, minimal API first.
 // Wire compatibility with any other broker is a non-goal for v1; if it ever
@@ -15,19 +15,19 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/rahulkj/slipway/internal/api/slipwaypb"
-	"github.com/rahulkj/slipway/internal/broker"
-	"github.com/rahulkj/slipway/internal/fence"
-	"github.com/rahulkj/slipway/internal/groups"
-	slipwaylog "github.com/rahulkj/slipway/internal/log"
-	"github.com/rahulkj/slipway/internal/meta"
-	"github.com/rahulkj/slipway/internal/metrics"
-	"github.com/rahulkj/slipway/internal/queue"
+	"github.com/rahulkj/firn/internal/api/firnpb"
+	"github.com/rahulkj/firn/internal/broker"
+	"github.com/rahulkj/firn/internal/fence"
+	"github.com/rahulkj/firn/internal/groups"
+	firnlog "github.com/rahulkj/firn/internal/log"
+	"github.com/rahulkj/firn/internal/meta"
+	"github.com/rahulkj/firn/internal/metrics"
+	"github.com/rahulkj/firn/internal/queue"
 )
 
-// Server implements slipwaypb.SlipwayServiceServer.
+// Server implements firnpb.FirnServiceServer.
 type Server struct {
-	slipwaypb.UnimplementedSlipwayServiceServer
+	firnpb.UnimplementedFirnServiceServer
 	b   *broker.Broker
 	q   *queue.Manager
 	met *metrics.Metrics
@@ -46,7 +46,7 @@ func NewServer(b *broker.Broker, q *queue.Manager, met ...*metrics.Metrics) *Ser
 
 // Produce routes req to a partition (FNV(key) % partitions, or round-robin
 // for empty keys) and appends it to the partition log.
-func (s *Server) Produce(ctx context.Context, req *slipwaypb.ProduceRequest) (*slipwaypb.ProduceResponse, error) {
+func (s *Server) Produce(ctx context.Context, req *firnpb.ProduceRequest) (*firnpb.ProduceResponse, error) {
 	if req.Topic == "" {
 		return nil, status.Error(codes.InvalidArgument, "topic must not be empty")
 	}
@@ -57,12 +57,12 @@ func (s *Server) Produce(ctx context.Context, req *slipwaypb.ProduceRequest) (*s
 	if s.met != nil {
 		s.met.ProduceTotal.WithLabelValues(req.Topic).Inc()
 	}
-	return &slipwaypb.ProduceResponse{Partition: partition, Offset: offset}, nil
+	return &firnpb.ProduceResponse{Partition: partition, Offset: offset}, nil
 }
 
 // Fetch returns up to max_records records from (topic, partition) starting
 // at offset. A fetch at the high watermark returns an empty response.
-func (s *Server) Fetch(ctx context.Context, req *slipwaypb.FetchRequest) (*slipwaypb.FetchResponse, error) {
+func (s *Server) Fetch(ctx context.Context, req *firnpb.FetchRequest) (*firnpb.FetchResponse, error) {
 	if req.Topic == "" {
 		return nil, status.Error(codes.InvalidArgument, "topic must not be empty")
 	}
@@ -79,22 +79,22 @@ func (s *Server) Fetch(ctx context.Context, req *slipwaypb.FetchRequest) (*slipw
 	if err != nil {
 		return nil, toStatus(err)
 	}
-	out := &slipwaypb.FetchResponse{Records: make([]*slipwaypb.Record, 0, len(recs))}
+	out := &firnpb.FetchResponse{Records: make([]*firnpb.Record, 0, len(recs))}
 	for _, r := range recs {
-		out.Records = append(out.Records, &slipwaypb.Record{Offset: r.Offset, Key: r.Key, Value: r.Value})
+		out.Records = append(out.Records, &firnpb.Record{Offset: r.Offset, Key: r.Key, Value: r.Value})
 	}
 	return out, nil
 }
 
-func toAssignment(in map[string][]int32) []*slipwaypb.TopicAssignment {
+func toAssignment(in map[string][]int32) []*firnpb.TopicAssignment {
 	topicSet := make([]string, 0, len(in))
 	for topic := range in {
 		topicSet = append(topicSet, topic)
 	}
 	sort.Strings(topicSet)
-	out := make([]*slipwaypb.TopicAssignment, 0, len(topicSet))
+	out := make([]*firnpb.TopicAssignment, 0, len(topicSet))
 	for _, topic := range topicSet {
-		out = append(out, &slipwaypb.TopicAssignment{Topic: topic, Partitions: append([]int32(nil), in[topic]...)})
+		out = append(out, &firnpb.TopicAssignment{Topic: topic, Partitions: append([]int32(nil), in[topic]...)})
 	}
 	return out
 }
@@ -113,7 +113,7 @@ func groupToStatus(err error) error {
 }
 
 // JoinGroup adds the member to the group and returns its assignment.
-func (s *Server) JoinGroup(ctx context.Context, req *slipwaypb.JoinGroupRequest) (*slipwaypb.JoinGroupResponse, error) {
+func (s *Server) JoinGroup(ctx context.Context, req *firnpb.JoinGroupRequest) (*firnpb.JoinGroupResponse, error) {
 	if req.GroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "group_id must not be empty")
 	}
@@ -121,7 +121,7 @@ func (s *Server) JoinGroup(ctx context.Context, req *slipwaypb.JoinGroupRequest)
 	if err != nil {
 		return nil, groupToStatus(err)
 	}
-	return &slipwaypb.JoinGroupResponse{
+	return &firnpb.JoinGroupResponse{
 		MemberId:     res.MemberID,
 		GenerationId: res.Generation,
 		Leader:       res.Leader,
@@ -132,7 +132,7 @@ func (s *Server) JoinGroup(ctx context.Context, req *slipwaypb.JoinGroupRequest)
 }
 
 // SyncGroup returns the member's current assignment.
-func (s *Server) SyncGroup(ctx context.Context, req *slipwaypb.SyncGroupRequest) (*slipwaypb.SyncGroupResponse, error) {
+func (s *Server) SyncGroup(ctx context.Context, req *firnpb.SyncGroupRequest) (*firnpb.SyncGroupResponse, error) {
 	if req.GroupId == "" || req.MemberId == "" {
 		return nil, status.Error(codes.InvalidArgument, "group_id and member_id are required")
 	}
@@ -140,11 +140,11 @@ func (s *Server) SyncGroup(ctx context.Context, req *slipwaypb.SyncGroupRequest)
 	if err != nil {
 		return nil, groupToStatus(err)
 	}
-	return &slipwaypb.SyncGroupResponse{Assignment: toAssignment(assignment), GenerationId: generation}, nil
+	return &firnpb.SyncGroupResponse{Assignment: toAssignment(assignment), GenerationId: generation}, nil
 }
 
 // Heartbeat refreshes the member lease and reports stale generations.
-func (s *Server) Heartbeat(ctx context.Context, req *slipwaypb.HeartbeatRequest) (*slipwaypb.HeartbeatResponse, error) {
+func (s *Server) Heartbeat(ctx context.Context, req *firnpb.HeartbeatRequest) (*firnpb.HeartbeatResponse, error) {
 	if req.GroupId == "" || req.MemberId == "" {
 		return nil, status.Error(codes.InvalidArgument, "group_id and member_id are required")
 	}
@@ -152,22 +152,22 @@ func (s *Server) Heartbeat(ctx context.Context, req *slipwaypb.HeartbeatRequest)
 	if err != nil {
 		return nil, groupToStatus(err)
 	}
-	return &slipwaypb.HeartbeatResponse{GenerationId: generation, RebalanceRequired: rebalance}, nil
+	return &firnpb.HeartbeatResponse{GenerationId: generation, RebalanceRequired: rebalance}, nil
 }
 
 // LeaveGroup removes the member and rebalances.
-func (s *Server) LeaveGroup(ctx context.Context, req *slipwaypb.LeaveGroupRequest) (*slipwaypb.LeaveGroupResponse, error) {
+func (s *Server) LeaveGroup(ctx context.Context, req *firnpb.LeaveGroupRequest) (*firnpb.LeaveGroupResponse, error) {
 	if req.GroupId == "" || req.MemberId == "" {
 		return nil, status.Error(codes.InvalidArgument, "group_id and member_id are required")
 	}
 	if err := s.b.Groups().LeaveGroup(req.GroupId, req.MemberId); err != nil {
 		return nil, groupToStatus(err)
 	}
-	return &slipwaypb.LeaveGroupResponse{}, nil
+	return &firnpb.LeaveGroupResponse{}, nil
 }
 
 // CommitOffset commits an offset for (group, topic, partition).
-func (s *Server) CommitOffset(ctx context.Context, req *slipwaypb.CommitOffsetRequest) (*slipwaypb.CommitOffsetResponse, error) {
+func (s *Server) CommitOffset(ctx context.Context, req *firnpb.CommitOffsetRequest) (*firnpb.CommitOffsetResponse, error) {
 	if req.GroupId == "" || req.Topic == "" {
 		return nil, status.Error(codes.InvalidArgument, "group_id and topic are required")
 	}
@@ -177,11 +177,11 @@ func (s *Server) CommitOffset(ctx context.Context, req *slipwaypb.CommitOffsetRe
 	if err := s.b.Groups().CommitOffset(req.GroupId, req.Topic, req.Partition, req.Offset, req.GenerationId, req.AllowReset); err != nil {
 		return nil, groupToStatus(err)
 	}
-	return &slipwaypb.CommitOffsetResponse{}, nil
+	return &firnpb.CommitOffsetResponse{}, nil
 }
 
 // FetchOffset returns the folded committed offset for a partition.
-func (s *Server) FetchOffset(ctx context.Context, req *slipwaypb.FetchOffsetRequest) (*slipwaypb.FetchOffsetResponse, error) {
+func (s *Server) FetchOffset(ctx context.Context, req *firnpb.FetchOffsetRequest) (*firnpb.FetchOffsetResponse, error) {
 	if req.GroupId == "" || req.Topic == "" || req.Partition < 0 {
 		return nil, status.Error(codes.InvalidArgument, "group_id, topic, and partition >= 0 are required")
 	}
@@ -189,11 +189,11 @@ func (s *Server) FetchOffset(ctx context.Context, req *slipwaypb.FetchOffsetRequ
 	if err != nil {
 		return nil, groupToStatus(err)
 	}
-	return &slipwaypb.FetchOffsetResponse{Offset: v.Offset, Found: found, GenerationId: v.Generation, Leader: v.Leader}, nil
+	return &firnpb.FetchOffsetResponse{Offset: v.Offset, Found: found, GenerationId: v.Generation, Leader: v.Leader}, nil
 }
 
 // FetchGroupOffsets lists the folded committed offsets for a group.
-func (s *Server) FetchGroupOffsets(ctx context.Context, req *slipwaypb.FetchGroupOffsetsRequest) (*slipwaypb.FetchGroupOffsetsResponse, error) {
+func (s *Server) FetchGroupOffsets(ctx context.Context, req *firnpb.FetchGroupOffsetsRequest) (*firnpb.FetchGroupOffsetsResponse, error) {
 	if req.GroupId == "" {
 		return nil, status.Error(codes.InvalidArgument, "group_id must not be empty")
 	}
@@ -201,9 +201,9 @@ func (s *Server) FetchGroupOffsets(ctx context.Context, req *slipwaypb.FetchGrou
 	if err != nil {
 		return nil, groupToStatus(err)
 	}
-	out := &slipwaypb.FetchGroupOffsetsResponse{Offsets: make([]*slipwaypb.OffsetEntry, 0, len(entries))}
+	out := &firnpb.FetchGroupOffsetsResponse{Offsets: make([]*firnpb.OffsetEntry, 0, len(entries))}
 	for _, e := range entries {
-		out.Offsets = append(out.Offsets, &slipwaypb.OffsetEntry{Topic: e.Topic, Partition: e.Partition, Offset: e.Offset, GenerationId: e.Generation, Leader: e.Leader})
+		out.Offsets = append(out.Offsets, &firnpb.OffsetEntry{Topic: e.Topic, Partition: e.Partition, Offset: e.Offset, GenerationId: e.Generation, Leader: e.Leader})
 	}
 	return out, nil
 }
@@ -222,7 +222,7 @@ func queueToStatus(err error) error {
 }
 
 // Pull claims up to max_messages unacked messages from a queue.
-func (s *Server) Pull(ctx context.Context, req *slipwaypb.PullRequest) (*slipwaypb.PullResponse, error) {
+func (s *Server) Pull(ctx context.Context, req *firnpb.PullRequest) (*firnpb.PullResponse, error) {
 	if s.q == nil {
 		return nil, status.Error(codes.Unimplemented, "queue manager not configured")
 	}
@@ -233,9 +233,9 @@ func (s *Server) Pull(ctx context.Context, req *slipwaypb.PullRequest) (*slipway
 	if err != nil {
 		return nil, queueToStatus(err)
 	}
-	out := &slipwaypb.PullResponse{Deliveries: make([]*slipwaypb.QueueDelivery, 0, len(ds))}
+	out := &firnpb.PullResponse{Deliveries: make([]*firnpb.QueueDelivery, 0, len(ds))}
 	for _, d := range ds {
-		out.Deliveries = append(out.Deliveries, &slipwaypb.QueueDelivery{
+		out.Deliveries = append(out.Deliveries, &firnpb.QueueDelivery{
 			DeliveryId: d.DeliveryID,
 			Queue:      d.Queue,
 			Partition:  d.Partition,
@@ -250,7 +250,7 @@ func (s *Server) Pull(ctx context.Context, req *slipwaypb.PullRequest) (*slipway
 }
 
 // Ack marks a delivered message as consumed.
-func (s *Server) Ack(ctx context.Context, req *slipwaypb.AckRequest) (*slipwaypb.AckResponse, error) {
+func (s *Server) Ack(ctx context.Context, req *firnpb.AckRequest) (*firnpb.AckResponse, error) {
 	if s.q == nil {
 		return nil, status.Error(codes.Unimplemented, "queue manager not configured")
 	}
@@ -260,17 +260,17 @@ func (s *Server) Ack(ctx context.Context, req *slipwaypb.AckRequest) (*slipwaypb
 	if err := s.q.Ack(ctx, req.Queue, req.DeliveryId); err != nil {
 		return nil, queueToStatus(err)
 	}
-	return &slipwaypb.AckResponse{}, nil
+	return &firnpb.AckResponse{}, nil
 }
 
 // GetMetadata returns topic/partition metadata and the advertised node
 // list. In cluster mode it also reports each partition's lease holder.
-func (s *Server) GetMetadata(ctx context.Context, req *slipwaypb.GetMetadataRequest) (*slipwaypb.GetMetadataResponse, error) {
-	out := &slipwaypb.GetMetadataResponse{}
+func (s *Server) GetMetadata(ctx context.Context, req *firnpb.GetMetadataRequest) (*firnpb.GetMetadataResponse, error) {
+	out := &firnpb.GetMetadataResponse{}
 
 	view := s.b.ClusterView()
 	if view == nil {
-		out.Brokers = []*slipwaypb.BrokerMetadata{{Id: "single", Addr: "localhost:9093", IsLeader: true}}
+		out.Brokers = []*firnpb.BrokerMetadata{{Id: "single", Addr: "localhost:9093", IsLeader: true}}
 	} else {
 		leader := view.Leader()
 		for _, id := range view.AllNodes() {
@@ -278,7 +278,7 @@ func (s *Server) GetMetadata(ctx context.Context, req *slipwaypb.GetMetadataRequ
 			if !ok {
 				addr = ""
 			}
-			out.Brokers = append(out.Brokers, &slipwaypb.BrokerMetadata{Id: id, Addr: addr, IsLeader: id == leader})
+			out.Brokers = append(out.Brokers, &firnpb.BrokerMetadata{Id: id, Addr: addr, IsLeader: id == leader})
 		}
 	}
 
@@ -297,7 +297,7 @@ func (s *Server) GetMetadata(ctx context.Context, req *slipwaypb.GetMetadataRequ
 		if err != nil {
 			continue // topic may be absent; skip silently
 		}
-		m := &slipwaypb.TopicMetadata{Name: topic.Name, Partitions: int32(topic.Partitions), Mode: topic.Mode}
+		m := &firnpb.TopicMetadata{Name: topic.Name, Partitions: int32(topic.Partitions), Mode: topic.Mode}
 		for p := 0; p < topic.Partitions; p++ {
 			var holderID, holderAddr string
 			if a := s.b.Advisor(); a != nil {
@@ -308,7 +308,7 @@ func (s *Server) GetMetadata(ctx context.Context, req *slipwaypb.GetMetadataRequ
 					holderAddr = addr
 				}
 			}
-			m.PartitionsMeta = append(m.PartitionsMeta, &slipwaypb.PartitionMetadata{
+			m.PartitionsMeta = append(m.PartitionsMeta, &firnpb.PartitionMetadata{
 				PartitionId: int32(p),
 				Leader:      holderID,
 				LeaderAddr:  holderAddr,
@@ -325,10 +325,10 @@ func toStatus(err error) error {
 		return status.Error(codes.NotFound, err.Error())
 	case errors.Is(err, broker.ErrPartitionOutOfRange), errors.Is(err, broker.ErrInvalidRequest):
 		return status.Error(codes.InvalidArgument, err.Error())
-	case errors.Is(err, slipwaylog.ErrOffsetOutOfRange), errors.Is(err, fence.ErrFenced):
+	case errors.Is(err, firnlog.ErrOffsetOutOfRange), errors.Is(err, fence.ErrFenced):
 		return status.Error(codes.FailedPrecondition, err.Error())
 	default:
-		log.Printf("slipway/api: internal error: %v", err)
+		log.Printf("firn/api: internal error: %v", err)
 		return status.Error(codes.Internal, "internal error")
 	}
 }

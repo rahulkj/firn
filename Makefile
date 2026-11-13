@@ -17,7 +17,7 @@ bench:
 	go test -bench=. -benchmem ./bench/...
 
 run: build
-	go run ./cmd/slipwayd
+	go run ./cmd/firnd
 
 verify: vet test
 	@echo "verify OK"

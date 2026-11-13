@@ -19,7 +19,7 @@ func (l *FileLog) ReadRange(firstOffset, lastOffset int64) ([]byte, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if firstOffset < 0 || lastOffset < firstOffset {
-		return nil, fmt.Errorf("slipway/log: invalid range [%d, %d]", firstOffset, lastOffset)
+		return nil, fmt.Errorf("firn/log: invalid range [%d, %d]", firstOffset, lastOffset)
 	}
 	if lastOffset >= l.hwm {
 		lastOffset = l.hwm - 1
@@ -47,10 +47,10 @@ func (l *FileLog) ReadRange(firstOffset, lastOffset int64) ([]byte, error) {
 		for segPos < seg.writePos {
 			rec, raw, ok, err := readFrameAt(seg.file, segPos)
 			if err != nil {
-				return nil, fmt.Errorf("slipway/log: read %s: %w", seg.path, err)
+				return nil, fmt.Errorf("firn/log: read %s: %w", seg.path, err)
 			}
 			if !ok {
-				return nil, fmt.Errorf("slipway/log: corrupt frame in %s at %d", seg.path, segPos)
+				return nil, fmt.Errorf("firn/log: corrupt frame in %s at %d", seg.path, segPos)
 			}
 			if rec.Offset >= firstOffset {
 				out = append(out, raw...)
@@ -83,7 +83,7 @@ func (l *FileLog) Timestamp(offset int64) (int64, error) {
 		return 0, ErrOffsetOutOfRange
 	}
 	if offset >= l.hwm {
-		return 0, errors.New("slipway/log: offset beyond end of log")
+		return 0, errors.New("firn/log: offset beyond end of log")
 	}
 	segIdx := l.segmentIndexFor(offset)
 	seg := l.segments[segIdx]
@@ -91,17 +91,17 @@ func (l *FileLog) Timestamp(offset int64) (int64, error) {
 	for pos < seg.writePos {
 		rec, raw, ok, err := readFrameAt(seg.file, pos)
 		if err != nil {
-			return 0, fmt.Errorf("slipway/log: read %s: %w", seg.path, err)
+			return 0, fmt.Errorf("firn/log: read %s: %w", seg.path, err)
 		}
 		if !ok {
-			return 0, fmt.Errorf("slipway/log: corrupt frame in %s at %d", seg.path, pos)
+			return 0, fmt.Errorf("firn/log: corrupt frame in %s at %d", seg.path, pos)
 		}
 		if rec.Offset == offset {
 			return rec.Ts, nil
 		}
 		pos += int64(len(raw))
 	}
-	return 0, errors.New("slipway/log: offset not found")
+	return 0, errors.New("firn/log: offset not found")
 }
 
 // segmentIndexFor reports the segment index holding offset (or the last

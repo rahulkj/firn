@@ -12,8 +12,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rahulkj/slipway/internal/fence"
-	"github.com/rahulkj/slipway/internal/log"
+	"github.com/rahulkj/firn/internal/fence"
+	"github.com/rahulkj/firn/internal/log"
 )
 
 // Record is one audit entry.
@@ -60,6 +60,6 @@ func (s *Store) Append(who, action, target, result string) error {
 // MustAppend is like Append but panics on I/O failure (used by tests).
 func (s *Store) MustAppend(who, action, target, result string) {
 	if err := s.Append(who, action, target, result); err != nil {
-		panic(fmt.Sprintf("slipway/audit: %v", err))
+		panic(fmt.Sprintf("firn/audit: %v", err))
 	}
 }

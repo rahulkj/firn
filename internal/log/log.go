@@ -1,4 +1,4 @@
-// Package log implements slipway's append-only log.
+// Package log implements firn's append-only log.
 //
 // Roadmap (see docs/plans/001-mvp-single-node.md):
 //
@@ -39,10 +39,10 @@ func (l *MemLog) Append(key, value []byte) int64 {
 // if offset is negative or beyond the end of the log.
 func (l *MemLog) Fetch(offset int64, max int) ([]Record, error) {
 	if offset < 0 {
-		return nil, errors.New("slipway/log: negative offset")
+		return nil, errors.New("firn/log: negative offset")
 	}
 	if offset >= int64(len(l.records)) {
-		return nil, errors.New("slipway/log: offset beyond end of log")
+		return nil, errors.New("firn/log: offset beyond end of log")
 	}
 	end := offset + int64(max)
 	if end > int64(len(l.records)) {

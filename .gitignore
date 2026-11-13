@@ -1,6 +1,6 @@
 # Binaries
-/slipwayd
-/slipway-cli
+/firnd
+/firn-cli
 *.exe
 *.test
 *.out

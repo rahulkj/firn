@@ -17,8 +17,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/rahulkj/slipway/internal/fence"
-	"github.com/rahulkj/slipway/internal/log"
+	"github.com/rahulkj/firn/internal/fence"
+	"github.com/rahulkj/firn/internal/log"
 )
 
 type attemptLog interface {
@@ -53,7 +53,7 @@ func NewAttemptStore(dir string, fl *log.FileLog) (*AttemptStore, error) {
 			var err error
 			fl, err = log.Open(filepath.Join(dir, "__queue_attempts-0"))
 			if err != nil {
-				return nil, fmt.Errorf("slipway/queue: open attempts store: %w", err)
+				return nil, fmt.Errorf("firn/queue: open attempts store: %w", err)
 			}
 		}
 		s.inner = fl
@@ -63,7 +63,7 @@ func NewAttemptStore(dir string, fl *log.FileLog) (*AttemptStore, error) {
 	hw := s.inner.HighWatermark()
 	if hw > 0 {
 		if err := s.fold(); err != nil {
-			return nil, fmt.Errorf("slipway/queue: read attempts store: %w", err)
+			return nil, fmt.Errorf("firn/queue: read attempts store: %w", err)
 		}
 	}
 	return s, nil
@@ -81,7 +81,7 @@ func (s *AttemptStore) fold() error {
 		}
 		for _, r := range recs {
 			if len(r.Value) != 4 {
-				return fmt.Errorf("slipway/queue: corrupt attempts record (%d bytes)", len(r.Value))
+				return fmt.Errorf("firn/queue: corrupt attempts record (%d bytes)", len(r.Value))
 			}
 			out[string(r.Key)] = binary.BigEndian.Uint32(r.Value)
 		}
@@ -125,7 +125,7 @@ func (s *AttemptStore) Put(queue string, partition int32, offset int64, attempts
 		if s.dir != "" && s.commitsSinceCompact >= compactEveryCommits {
 			if fl, ok := s.inner.(*log.FileLog); ok {
 				if err := fl.Compact(); err != nil {
-					return fmt.Errorf("slipway/queue: compact attempts store: %w", err)
+					return fmt.Errorf("firn/queue: compact attempts store: %w", err)
 				}
 				s.commitsSinceCompact = 0
 				s.foldedHWM = s.inner.HighWatermark()
@@ -138,7 +138,7 @@ func (s *AttemptStore) Put(queue string, partition int32, offset int64, attempts
 // Compact refuses when the store is fenced (replicated internal log).
 func (s *AttemptStore) Compact() error {
 	if s.gate != nil && !s.gate.Allowed() {
-		return fmt.Errorf("slipway/queue: compact refused for replicated internal log __queue_attempts")
+		return fmt.Errorf("firn/queue: compact refused for replicated internal log __queue_attempts")
 	}
 	if fl, ok := s.inner.(*log.FileLog); ok {
 		return fl.Compact()
@@ -156,7 +156,7 @@ func (s *AttemptStore) Close() error {
 	}
 	if fl, ok := s.inner.(*log.FileLog); ok {
 		if err := fl.Compact(); err != nil {
-			return fmt.Errorf("slipway/queue: compact attempts store: %w", err)
+			return fmt.Errorf("firn/queue: compact attempts store: %w", err)
 		}
 		return fl.Close()
 	}

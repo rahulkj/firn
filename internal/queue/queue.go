@@ -1,4 +1,4 @@
-// Package queue implements work-queue semantics on top of slipway's
+// Package queue implements work-queue semantics on top of firn's
 // topics: competing consumers, pull-with-visibility-timeout, ack, and a
 // dead-letter queue after maxDeliveries failed deliveries.
 //
@@ -30,8 +30,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/rahulkj/slipway/internal/broker"
-	"github.com/rahulkj/slipway/internal/meta"
+	"github.com/rahulkj/firn/internal/broker"
+	"github.com/rahulkj/firn/internal/meta"
 )
 
 const (
@@ -44,14 +44,14 @@ const (
 )
 
 // ErrUnknownDelivery is returned when Ack references an unknown/expired id.
-var ErrUnknownDelivery = errors.New("slipway/queue: unknown delivery id")
+var ErrUnknownDelivery = errors.New("firn/queue: unknown delivery id")
 
 // ErrQueueNotFound / ErrInvalidQueue complement the meta errors with
 // queue-specific context. Map to codes.NotFound / codes.InvalidArgument.
 var (
-	ErrQueueNotFound  = errors.New("slipway/queue: queue not found")
-	ErrNotAQueue      = errors.New("slipway/queue: topic is not a queue")
-	ErrInvalidRequest = errors.New("slipway/queue: invalid request")
+	ErrQueueNotFound  = errors.New("firn/queue: queue not found")
+	ErrNotAQueue      = errors.New("firn/queue: topic is not a queue")
+	ErrInvalidRequest = errors.New("firn/queue: invalid request")
 )
 
 // Delivery is one claimed message returned by Pull.
@@ -109,7 +109,7 @@ type Manager struct {
 // partition cursors from the committed offsets of the internal queue groups.
 func NewManager(reg *meta.Registry, b *broker.Broker, dataDir string) (*Manager, error) {
 	if reg == nil || b == nil {
-		return nil, fmt.Errorf("slipway/queue: registry and broker are required")
+		return nil, fmt.Errorf("firn/queue: registry and broker are required")
 	}
 	var attempts *AttemptStore
 	if dataDir == "" {
@@ -121,7 +121,7 @@ func NewManager(reg *meta.Registry, b *broker.Broker, dataDir string) (*Manager,
 	} else {
 		fl, ok := b.InternalLog("__queue_attempts")
 		if !ok {
-			return nil, fmt.Errorf("slipway/queue: internal log not opened by broker")
+			return nil, fmt.Errorf("firn/queue: internal log not opened by broker")
 		}
 		var err error
 		attempts, err = NewAttemptStore(dataDir, fl)
@@ -173,7 +173,7 @@ func (m *Manager) initQueueLocked(t meta.Topic) error {
 	for p := int32(0); p < int32(t.Partitions); p++ {
 		v, found, err := m.broker.Groups().FetchOffset("queue-"+t.Name, t.Name, p)
 		if err != nil {
-			return fmt.Errorf("slipway/queue: load committed offset for %q partition %d: %w", t.Name, p, err)
+			return fmt.Errorf("firn/queue: load committed offset for %q partition %d: %w", t.Name, p, err)
 		}
 		if found {
 			q.committed[p] = v.Offset
@@ -339,7 +339,7 @@ func (m *Manager) divertToDLQ(queue string, partition int32, offset int64, key, 
 	// consumed to avoid an infinite redelivery loop on a poisoned DLQ. The
 	// failure is observable via the log and admin /topics.
 	if _, _, err := m.broker.Produce(context.Background(), dlq, key, dlqValue); err != nil {
-		fmt.Printf("slipway/queue: divert to DLQ %q failed for %q partition %d offset %d: %v\n", dlq, queue, partition, offset, err)
+		fmt.Printf("firn/queue: divert to DLQ %q failed for %q partition %d offset %d: %v\n", dlq, queue, partition, offset, err)
 	}
 }
 

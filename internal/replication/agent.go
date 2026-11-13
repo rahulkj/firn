@@ -1,6 +1,6 @@
 // Package replication implements ADR-007's data plane: sealed-block
 // replication to replica nodes and write-lease management. The agent runs
-// in cluster mode (slipwayd with -node-id/-peers) and keeps every node's
+// in cluster mode (firnd with -node-id/-peers) and keeps every node's
 // partition replicas byte-identical to the lease holder's (block IDs are
 // content-addressed, so equality is checkable).
 //
@@ -33,11 +33,11 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
-	"github.com/rahulkj/slipway/internal/api/slipwaypb"
-	"github.com/rahulkj/slipway/internal/broker"
-	"github.com/rahulkj/slipway/internal/log"
-	"github.com/rahulkj/slipway/internal/meta"
-	"github.com/rahulkj/slipway/internal/quorum"
+	"github.com/rahulkj/firn/internal/api/firnpb"
+	"github.com/rahulkj/firn/internal/broker"
+	"github.com/rahulkj/firn/internal/log"
+	"github.com/rahulkj/firn/internal/meta"
+	"github.com/rahulkj/firn/internal/quorum"
 )
 
 const (
@@ -182,10 +182,10 @@ func (c *Config) pullBlockFromInternal(ctx context.Context, peer, name string, b
 		return err
 	}
 	defer func() { _ = conn.Close() }()
-	client := slipwaypb.NewReplicaServiceClient(conn)
+	client := firnpb.NewReplicaServiceClient(conn)
 	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	fr, err := client.ReplicaFetch(ctx2, &slipwaypb.ReplicaFetchRequest{
+	fr, err := client.ReplicaFetch(ctx2, &firnpb.ReplicaFetchRequest{
 		Topic:       name,
 		Partition:   0,
 		FirstOffset: blk.FirstOffset,
@@ -259,9 +259,9 @@ func (c *Config) pullFromInternalPeers(ctx context.Context, name string) {
 		if err != nil {
 			continue
 		}
-		client := slipwaypb.NewReplicaServiceClient(conn)
+		client := firnpb.NewReplicaServiceClient(conn)
 		ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
-		fr, err := client.ReplicaFetch(ctx2, &slipwaypb.ReplicaFetchRequest{
+		fr, err := client.ReplicaFetch(ctx2, &firnpb.ReplicaFetchRequest{
 			Topic:       name,
 			Partition:   0,
 			FirstOffset: localHWM,
@@ -460,9 +460,9 @@ func (c *Config) pullFromPeers(ctx context.Context, topic string, partition int3
 		if err != nil {
 			continue
 		}
-		client := slipwaypb.NewReplicaServiceClient(conn)
+		client := firnpb.NewReplicaServiceClient(conn)
 		ctx2, cancel := context.WithTimeout(ctx, 5*time.Second)
-		fr, err := client.ReplicaFetch(ctx2, &slipwaypb.ReplicaFetchRequest{
+		fr, err := client.ReplicaFetch(ctx2, &firnpb.ReplicaFetchRequest{
 			Topic:       topic,
 			Partition:   partition,
 			FirstOffset: localHWM,
@@ -570,10 +570,10 @@ func (c *Config) pushBlock(ctx context.Context, peer, topic string, partition in
 		return err
 	}
 	defer func() { _ = conn.Close() }()
-	client := slipwaypb.NewReplicaServiceClient(conn)
+	client := firnpb.NewReplicaServiceClient(conn)
 	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	_, err = client.ReplicaPut(ctx2, &slipwaypb.ReplicaPutRequest{
+	_, err = client.ReplicaPut(ctx2, &firnpb.ReplicaPutRequest{
 		Topic:      topic,
 		Partition:  partition,
 		Frames:     raw,
@@ -588,10 +588,10 @@ func (c *Config) pullBlock(ctx context.Context, peer, topic string, partition in
 		return err
 	}
 	defer func() { _ = conn.Close() }()
-	client := slipwaypb.NewReplicaServiceClient(conn)
+	client := firnpb.NewReplicaServiceClient(conn)
 	ctx2, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	fr, err := client.ReplicaFetch(ctx2, &slipwaypb.ReplicaFetchRequest{
+	fr, err := client.ReplicaFetch(ctx2, &firnpb.ReplicaFetchRequest{
 		Topic:       topic,
 		Partition:   partition,
 		FirstOffset: blk.FirstOffset,

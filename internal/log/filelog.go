@@ -149,7 +149,7 @@ func parseSegmentFileName(name string) (int64, bool) {
 
 // ErrOffsetOutOfRange is returned by Fetch when the requested offset is
 // below the retention horizon (the oldest records were deleted by retention).
-var ErrOffsetOutOfRange = errors.New("slipway/log: offset below retention horizon")
+var ErrOffsetOutOfRange = errors.New("firn/log: offset below retention horizon")
 
 // namedSegment pairs a parsed segment base offset with its file name.
 type namedSegment struct {
@@ -168,12 +168,12 @@ func Open(dir string, opts ...Option) (*FileLog, error) {
 		return nil, err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("slipway/log: mkdir %s: %w", dir, err)
+		return nil, fmt.Errorf("firn/log: mkdir %s: %w", dir, err)
 	}
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return nil, fmt.Errorf("slipway/log: readdir %s: %w", dir, err)
+		return nil, fmt.Errorf("firn/log: readdir %s: %w", dir, err)
 	}
 	var segs []namedSegment
 	for _, e := range entries {
@@ -216,7 +216,7 @@ func (l *FileLog) recoverSegments(segs []namedSegment) (*FileLog, error) {
 		}
 		if seg.baseOffset != hwm {
 			_ = seg.file.Close()
-			return nil, fmt.Errorf("slipway/log: segment %s has base offset %d, want %d", seg.path, seg.baseOffset, hwm)
+			return nil, fmt.Errorf("firn/log: segment %s has base offset %d, want %d", seg.path, seg.baseOffset, hwm)
 		}
 
 		pos := int64(0)
@@ -226,14 +226,14 @@ func (l *FileLog) recoverSegments(segs []namedSegment) (*FileLog, error) {
 			rec, raw, ok, err := readFrameAt(seg.file, pos)
 			if err != nil {
 				_ = seg.file.Close()
-				return nil, fmt.Errorf("slipway/log: scan %s: %w", seg.path, err)
+				return nil, fmt.Errorf("firn/log: scan %s: %w", seg.path, err)
 			}
 			if !ok {
 				break // clean or torn tail: stop here
 			}
 			if rec.Offset != hwm {
 				_ = seg.file.Close()
-				return nil, fmt.Errorf("slipway/log: offset gap in %s at %d: frame has offset %d, want %d", seg.path, pos, rec.Offset, hwm)
+				return nil, fmt.Errorf("firn/log: offset gap in %s at %d: frame has offset %d, want %d", seg.path, pos, rec.Offset, hwm)
 			}
 			if rec.Ts > seg.maxTs {
 				seg.maxTs = rec.Ts
@@ -251,22 +251,22 @@ func (l *FileLog) recoverSegments(segs []namedSegment) (*FileLog, error) {
 		st, err := seg.file.Stat()
 		if err != nil {
 			_ = seg.file.Close()
-			return nil, fmt.Errorf("slipway/log: stat %s: %w", seg.path, err)
+			return nil, fmt.Errorf("firn/log: stat %s: %w", seg.path, err)
 		}
 		switch {
 		case st.Size() > pos:
 			if !last {
 				_ = seg.file.Close()
-				return nil, fmt.Errorf("slipway/log: corrupt segment %s at %d (of %d bytes): refusing to truncate a non-final segment", seg.path, pos, st.Size())
+				return nil, fmt.Errorf("firn/log: corrupt segment %s at %d (of %d bytes): refusing to truncate a non-final segment", seg.path, pos, st.Size())
 			}
 			// Torn tail in the final segment: truncate.
 			if err := seg.file.Truncate(pos); err != nil {
 				_ = seg.file.Close()
-				return nil, fmt.Errorf("slipway/log: truncate torn tail %s: %w", seg.path, err)
+				return nil, fmt.Errorf("firn/log: truncate torn tail %s: %w", seg.path, err)
 			}
 			if err := seg.file.Sync(); err != nil {
 				_ = seg.file.Close()
-				return nil, fmt.Errorf("slipway/log: sync %s after truncation: %w", seg.path, err)
+				return nil, fmt.Errorf("firn/log: sync %s after truncation: %w", seg.path, err)
 			}
 		}
 		seg.writePos = pos
@@ -291,12 +291,12 @@ func (l *FileLog) SealIfOlderThan(d time.Duration) (bool, error) {
 		return false, nil
 	}
 	if err := active.file.Sync(); err != nil {
-		return false, fmt.Errorf("slipway/log: seal sync: %w", err)
+		return false, fmt.Errorf("firn/log: seal sync: %w", err)
 	}
 	active.sealed = true
 	seg, err := l.createSegment(l.hwm)
 	if err != nil {
-		return false, fmt.Errorf("slipway/log: seal create segment: %w", err)
+		return false, fmt.Errorf("firn/log: seal create segment: %w", err)
 	}
 	l.segments = append(l.segments, seg)
 	return true, nil
@@ -321,13 +321,13 @@ func (l *FileLog) appendWithTimestamp(key, value []byte, ts int64) int64 {
 	if active.writePos > 0 && (active.writePos+frameLen > l.maxSegmentBytes || sealDue) {
 		fsyncStart := time.Now()
 		if err := active.file.Sync(); err != nil {
-			panic(fmt.Sprintf("slipway/log: sync on segment roll: %v", err))
+			panic(fmt.Sprintf("firn/log: sync on segment roll: %v", err))
 		}
 		observeFsync(fsyncStart)
 		active.sealed = true // no more appends to this block; descriptor is stable
 		seg, err := l.createSegment(off)
 		if err != nil {
-			panic(fmt.Sprintf("slipway/log: create segment: %v", err))
+			panic(fmt.Sprintf("firn/log: create segment: %v", err))
 		}
 		l.segments = append(l.segments, seg)
 		active = seg
@@ -335,7 +335,7 @@ func (l *FileLog) appendWithTimestamp(key, value []byte, ts int64) int64 {
 
 	n, err := active.file.WriteAt(frame, active.writePos)
 	if err != nil || n != len(frame) {
-		panic(fmt.Sprintf("slipway/log: write %s: %v (%d/%d bytes)", active.path, err, n, len(frame)))
+		panic(fmt.Sprintf("firn/log: write %s: %v (%d/%d bytes)", active.path, err, n, len(frame)))
 	}
 	feedSegmentDigest(active, frame, frameRecord{Offset: off, Ts: ts, Key: key, Value: value})
 	if ts > active.maxTs {
@@ -350,7 +350,7 @@ func (l *FileLog) appendWithTimestamp(key, value []byte, ts int64) int64 {
 	if l.syncOnAppend {
 		fsyncStart := time.Now()
 		if err := active.file.Sync(); err != nil {
-			panic(fmt.Sprintf("slipway/log: sync append: %v", err))
+			panic(fmt.Sprintf("firn/log: sync append: %v", err))
 		}
 		observeFsync(fsyncStart)
 	}
@@ -364,16 +364,16 @@ func (l *FileLog) Fetch(offset int64, max int) ([]Record, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if offset < 0 {
-		return nil, errors.New("slipway/log: negative offset")
+		return nil, errors.New("firn/log: negative offset")
 	}
 	if offset < l.retentionHorizonLocked() {
 		return nil, ErrOffsetOutOfRange
 	}
 	if offset >= l.hwm {
-		return nil, errors.New("slipway/log: offset beyond end of log")
+		return nil, errors.New("firn/log: offset beyond end of log")
 	}
 	if max < 1 {
-		return nil, errors.New("slipway/log: max must be >= 1")
+		return nil, errors.New("firn/log: max must be >= 1")
 	}
 
 	segIdx := sort.Search(len(l.segments), func(i int) bool {
@@ -392,10 +392,10 @@ func (l *FileLog) Fetch(offset int64, max int) ([]Record, error) {
 		for pos < seg.writePos && len(out) < max {
 			rec, raw, ok, err := readFrameAt(seg.file, pos)
 			if err != nil {
-				return nil, fmt.Errorf("slipway/log: read %s: %w", seg.path, err)
+				return nil, fmt.Errorf("firn/log: read %s: %w", seg.path, err)
 			}
 			if !ok {
-				return nil, fmt.Errorf("slipway/log: corrupt frame in %s at %d during fetch", seg.path, pos)
+				return nil, fmt.Errorf("firn/log: corrupt frame in %s at %d during fetch", seg.path, pos)
 			}
 			if rec.Offset >= offset {
 				out = append(out, copyRecord(rec))
@@ -421,7 +421,7 @@ func (l *FileLog) Flush() error {
 	active := l.segments[len(l.segments)-1]
 	fsyncStart := time.Now()
 	if err := active.file.Sync(); err != nil {
-		return fmt.Errorf("slipway/log: flush: %w", err)
+		return fmt.Errorf("firn/log: flush: %w", err)
 	}
 	observeFsync(fsyncStart)
 	return nil
@@ -434,10 +434,10 @@ func (l *FileLog) Close() error {
 	var firstErr error
 	for _, seg := range l.segments {
 		if err := seg.file.Sync(); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("slipway/log: close sync %s: %w", seg.path, err)
+			firstErr = fmt.Errorf("firn/log: close sync %s: %w", seg.path, err)
 		}
 		if err := seg.file.Close(); err != nil && firstErr == nil {
-			firstErr = fmt.Errorf("slipway/log: close %s: %w", seg.path, err)
+			firstErr = fmt.Errorf("firn/log: close %s: %w", seg.path, err)
 		}
 	}
 	return firstErr
@@ -521,29 +521,29 @@ func (l *FileLog) RetainOverBytes(maxBytes int64) (int, error) {
 // Callers must hold l.mu.
 func (l *FileLog) deleteSegments(n int) error {
 	if n >= len(l.segments) {
-		return fmt.Errorf("slipway/log: refusing to delete %d of %d segments (active segment is never deleted)", n, len(l.segments))
+		return fmt.Errorf("firn/log: refusing to delete %d of %d segments (active segment is never deleted)", n, len(l.segments))
 	}
 	for i := 0; i < n; i++ {
 		s := l.segments[i]
 		if err := s.file.Close(); err != nil {
-			return fmt.Errorf("slipway/log: close segment before delete %s: %w", s.path, err)
+			return fmt.Errorf("firn/log: close segment before delete %s: %w", s.path, err)
 		}
 		if err := os.Remove(s.path); err != nil {
-			return fmt.Errorf("slipway/log: delete segment %s: %w", s.path, err)
+			return fmt.Errorf("firn/log: delete segment %s: %w", s.path, err)
 		}
 	}
 	l.segments = l.segments[n:]
 	d, err := os.Open(l.dir)
 	if err != nil {
-		return fmt.Errorf("slipway/log: open dir for fsync %s: %w", l.dir, err)
+		return fmt.Errorf("firn/log: open dir for fsync %s: %w", l.dir, err)
 	}
 	syncErr := d.Sync()
 	closeErr := d.Close()
 	if syncErr != nil {
-		return fmt.Errorf("slipway/log: fsync dir %s: %w", l.dir, syncErr)
+		return fmt.Errorf("firn/log: fsync dir %s: %w", l.dir, syncErr)
 	}
 	if closeErr != nil {
-		return fmt.Errorf("slipway/log: close dir %s: %w", l.dir, closeErr)
+		return fmt.Errorf("firn/log: close dir %s: %w", l.dir, closeErr)
 	}
 	return nil
 }
@@ -552,7 +552,7 @@ func (l *FileLog) deleteSegments(n int) error {
 func segmentSize(s *segment) (int64, error) {
 	st, err := s.file.Stat()
 	if err != nil {
-		return 0, fmt.Errorf("slipway/log: stat %s: %w", s.path, err)
+		return 0, fmt.Errorf("firn/log: stat %s: %w", s.path, err)
 	}
 	return st.Size(), nil
 }
@@ -563,7 +563,7 @@ func (l *FileLog) createSegment(base int64) (*segment, error) {
 	path := filepath.Join(l.dir, segmentFileName(base))
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("slipway/log: create segment %s: %w", path, err)
+		return nil, fmt.Errorf("firn/log: create segment %s: %w", path, err)
 	}
 	return newSegment(base, path, f, time.Now()), nil
 }
@@ -573,7 +573,7 @@ func (l *FileLog) createSegment(base int64) (*segment, error) {
 func (l *FileLog) openSegment(base int64, path string) (*segment, error) {
 	f, err := os.OpenFile(path, os.O_RDWR, 0o644)
 	if err != nil {
-		return nil, fmt.Errorf("slipway/log: open segment %s: %w", path, err)
+		return nil, fmt.Errorf("firn/log: open segment %s: %w", path, err)
 	}
 	return newSegment(base, path, f, time.Now()), nil
 }

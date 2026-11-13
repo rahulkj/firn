@@ -103,7 +103,7 @@ No record ever waits on consensus. No consensus path reads records. Queue mode r
 Unchanged in shape, simplified by symmetry:
 
 - Every broker enforces **mTLS** internally and **TLS** for clients; API-key authN (opaque keys, hashed in the metadata log, revocable within the refresh interval) enforced per request at the broker edge — there is no leader to add to auth checks, which makes authorization uniform and cacheable.
-- Roles → permission set; permissions resource-scoped (`topic:read`, `topic:write`, `queue:ack`, `dlq:manage`, `group:reset`, `admin:cluster`); group/topic tools in `slipway-cli` and the UI carry the same permissions.
+- Roles → permission set; permissions resource-scoped (`topic:read`, `topic:write`, `queue:ack`, `dlq:manage`, `group:reset`, `admin:cluster`); group/topic tools in `firn-cli` and the UI carry the same permissions.
 - **Admin UI** ships in the broker binary; server-rendered HTML (stdlib `html/template`) hitting the same JSON admin API the CLI uses. Roles: `viewer`, `operator`, `admin`. Capabilities: cluster/blocks overview (HWM, seal rate, lease state), topic browser, consumer groups (lag, offsets), queue/DLQ inspector + redrive, key lifecycle, audit log. No new dependencies.
 - Audit: append-only internal `__audit` block-logged topic, replicated, ≥ 90-day retention default.
 - Rate limiting per API key at the edge; circuit breaker to protect data plane.

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rahulkj/slipway/internal/meta"
+	"github.com/rahulkj/firn/internal/meta"
 )
 
 // TestInternalTopicReplicates ensures entries written to __consumer_offsets
