@@ -1043,7 +1043,7 @@ func cmdFetch(args []string) error {
 		for _, r := range resp.Records {
 			out = append(out, map[string]any{"offset": r.Offset, "key": string(r.Key), "value": string(r.Value)})
 		}
-		return printJSON(map[string]any{"records": out})
+		return printJSON(map[string]any{"records": out, "federation_hwm": resp.GetFederationHwm()})
 	}
 	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "OFFSET\tKEY\tVALUE")

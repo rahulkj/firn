@@ -5,6 +5,7 @@
 //	firn_fsync_seconds               histogram (FileLog fsync)
 //	firn_group_rebalances_total      counter (groups coordinator)
 //	firn_queue_depth                 gauge (pending + lease-expired messages)
+//	firn_federation_cursor_lag_seconds{peer,topic,partition}  gauge (ADR-010)
 //
 // The package registers the internal/log FsyncObserver hook and reads the
 // groups rebalance counter at scrape time. No dependencies escape this
@@ -25,11 +26,12 @@ import (
 
 // Metrics holds the registered collectors. Create once at process start.
 type Metrics struct {
-	ProduceTotal    *prometheus.CounterVec
-	FetchTotal      *prometheus.CounterVec
-	FsyncSeconds    prometheus.Histogram
-	GroupRebalances prometheus.CounterFunc
-	QueueDepth      prometheus.GaugeFunc
+	ProduceTotal               *prometheus.CounterVec
+	FetchTotal                 *prometheus.CounterVec
+	FsyncSeconds               prometheus.Histogram
+	GroupRebalances            prometheus.CounterFunc
+	QueueDepth                 prometheus.GaugeFunc
+	FederationCursorLagSeconds *prometheus.GaugeVec
 
 	registry *prometheus.Registry
 }
@@ -75,11 +77,15 @@ func New(coord *groups.Coordinator, qm *queue.Manager) *Metrics {
 		}
 		return float64(depth)
 	})
+	m.FederationCursorLagSeconds = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "firn_federation_cursor_lag_seconds",
+		Help: "Seconds since the sink was last fully caught up with this source partition; 0 = caught up now. Rises while a peer is unreachable. Inter-cluster passive replication (ADR-010).",
+	}, []string{"peer", "topic", "partition"})
 
 	// Wire the FileLog fsync observer (ADR-006).
 	log.FsyncObserver = func(d time.Duration) { m.FsyncSeconds.Observe(d.Seconds()) }
 
-	m.registry.MustRegister(m.ProduceTotal, m.FetchTotal, m.FsyncSeconds, m.GroupRebalances, m.QueueDepth)
+	m.registry.MustRegister(m.ProduceTotal, m.FetchTotal, m.FsyncSeconds, m.GroupRebalances, m.QueueDepth, m.FederationCursorLagSeconds)
 	return m
 }
 

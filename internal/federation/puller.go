@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc"
@@ -28,21 +29,31 @@ import (
 // attempts/acks/DLQ state ride along with the queue's records).
 const QueueAttemptsTopic = "__queue_attempts"
 
+// LagFunc reports the per-partition federation cursor lag in seconds.
+// wired to firn_federation_cursor_lag_seconds in firnd; nil disables the
+// metric (tests).
+type LagFunc func(peer, topic string, partition int32, lagSeconds float64)
+
 // PullerConfig wires a federation puller into this (destination) cluster.
 type PullerConfig struct {
-	Broker   *broker.Broker // destination
-	Store    *Store         // control-plane store (peers + cursors)
-	Interval time.Duration  // poll cadence (default 500ms, -federation-interval)
-	Batch    int            // max frames per fetch window (default 1024, -federation-batch)
-	MaxRange int64          // max bytes fetched per poll (default 1 MiB, -federation-max-range)
-	Dial     func(ctx context.Context, peer Peer) (*grpc.ClientConn, error)
-	Logger   *slog.Logger
+	Broker     *broker.Broker // destination
+	Store      *Store         // control-plane store (peers + cursors)
+	Interval   time.Duration  // poll cadence (default 500ms, -federation-interval)
+	Batch      int            // max frames per fetch window (default 1024, -federation-batch)
+	MaxRange   int64          // max bytes fetched per poll (default 1 MiB, -federation-max-range)
+	Dial       func(ctx context.Context, peer Peer) (*grpc.ClientConn, error)
+	Logger     *slog.Logger
+	LagSeconds LagFunc
 }
 
 type Puller struct {
 	cfg    PullerConfig
 	logger *slog.Logger
 	stop   chan struct{}
+
+	started time.Time
+	lagMu   sync.Mutex
+	lag     map[string]time.Time // peer|topic|partition -> last caught-up time
 }
 
 func NewPuller(cfg PullerConfig) *Puller {
@@ -61,7 +72,7 @@ func NewPuller(cfg PullerConfig) *Puller {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	return &Puller{cfg: cfg, logger: cfg.Logger, stop: make(chan struct{})}
+	return &Puller{cfg: cfg, logger: cfg.Logger, stop: make(chan struct{}), started: time.Now(), lag: map[string]time.Time{}}
 }
 
 // Run polls until ctx is cancelled or Stop is called.
@@ -171,6 +182,7 @@ func (p *Puller) pullPartition(ctx context.Context, peer Peer, topic string, par
 
 	conn, err := p.cfg.Dial(ctx, peer)
 	if err != nil {
+		p.observeLag(peer.Name, topic, partition, false)
 		p.logger.Warn("federation: dial peer failed", "peer", peer.Name, "err", err)
 		return
 	}
@@ -185,24 +197,29 @@ func (p *Puller) pullPartition(ctx context.Context, peer Peer, topic string, par
 		LastOffset:  -1, // clamp to source high watermark
 	})
 	if err != nil {
+		p.observeLag(peer.Name, topic, partition, false)
 		p.logger.Warn("federation: fetch failed", "peer", peer.Name, "topic", topic, "partition", partition, "err", err)
 		return
 	}
 
 	if len(fr.Frames) == 0 {
 		// Fully caught up — do not rewrite the cursor on every tick.
+		p.observeLag(peer.Name, topic, partition, true)
 		return
 	}
 
 	frames, err := log.ParseFrames(fr.Frames)
 	if err != nil {
+		p.observeLag(peer.Name, topic, partition, false)
 		p.logger.Error("federation: CRC/parse failure; dropping range, cursor untouched", "peer", peer.Name, "topic", topic, "partition", partition, "err", err)
 		return
 	}
 	if _, err := p.cfg.Broker.AppendReplicatedFrames(topic, partition, frames); err != nil {
+		p.observeLag(peer.Name, topic, partition, false)
 		p.logger.Error("federation: apply failed; cursor untouched", "peer", peer.Name, "topic", topic, "partition", partition, "err", err)
 		return
 	}
+	p.observeLag(peer.Name, topic, partition, true)
 
 	lastSource := frames[len(frames)-1].Offset
 	localHWM, err := p.cfg.Broker.PartitionHighWatermark(ctx, topic, partition)
@@ -242,6 +259,7 @@ func (p *Puller) importQueueAttempts(ctx context.Context, peer Peer) {
 
 	conn, err := p.cfg.Dial(ctx, peer)
 	if err != nil {
+		p.observeLag(peer.Name, QueueAttemptsTopic, 0, false)
 		p.logger.Warn("federation: dial peer failed", "peer", peer.Name, "err", err)
 		return
 	}
@@ -256,22 +274,27 @@ func (p *Puller) importQueueAttempts(ctx context.Context, peer Peer) {
 		LastOffset:  -1,
 	})
 	if err != nil {
+		p.observeLag(peer.Name, QueueAttemptsTopic, 0, false)
 		p.logger.Warn("federation: attempts fetch failed", "peer", peer.Name, "err", err)
 		return
 	}
 	if len(fr.Frames) == 0 {
+		p.observeLag(peer.Name, QueueAttemptsTopic, 0, true)
 		return // caught up
 	}
 
 	frames, err := log.ParseFrames(fr.Frames)
 	if err != nil {
+		p.observeLag(peer.Name, QueueAttemptsTopic, 0, false)
 		p.logger.Error("federation: attempts CRC failure; cursor untouched", "peer", peer.Name, "err", err)
 		return
 	}
 	if _, err := applyFramesToReplicatedLog(fl, frames); err != nil {
+		p.observeLag(peer.Name, QueueAttemptsTopic, 0, false)
 		p.logger.Error("federation: attempts apply failed; reconcile the sink reseed before cutover", "peer", peer.Name, "err", err)
 		return
 	}
+	p.observeLag(peer.Name, QueueAttemptsTopic, 0, true)
 	lastSource := frames[len(frames)-1].Offset
 	_ = p.cfg.Store.SetCursor(Cursor{
 		Peer:             peer.Name,
@@ -322,3 +345,26 @@ func (p *Puller) cursorValue(peer, topic string, partition int32) (Cursor, bool)
 }
 
 var _ = binary.BigEndian // reserved: queue-attempt value decode lands in slice 5
+
+// observeLag records whether (peer, topic, partition) is caught up and
+// reports time since it last was. On a fetch failure the timestamp is left
+// alone, so consecutive failures grow the reported lag.
+func (p *Puller) observeLag(peer, topic string, partition int32, caughtUp bool) {
+	if p.cfg.LagSeconds == nil {
+		return
+	}
+	key := fmt.Sprintf("%s|%s|%d", peer, topic, partition)
+	p.lagMu.Lock()
+	since, ok := p.lag[key]
+	if !ok {
+		since = p.started
+		p.lag[key] = since
+	}
+	if caughtUp {
+		since = time.Now()
+		p.lag[key] = since
+	}
+	lag := time.Since(since).Seconds()
+	p.lagMu.Unlock()
+	p.cfg.LagSeconds(peer, topic, partition, lag)
+}

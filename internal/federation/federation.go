@@ -312,6 +312,39 @@ func (s *Store) ListPeersCached(maxAge time.Duration) []Peer {
 	return sortedPeers(s.peerCache)
 }
 
+// ListCursorsCached mirrors ListPeersCached for the cursors log.
+func (s *Store) ListCursorsCached(maxAge time.Duration) []Cursor {
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cacheFresh && now.Sub(s.cacheAt) < maxAge {
+		return sortedCursors(s.curCache)
+	}
+	if err := s.loadLocked(); err != nil {
+		return sortedCursors(s.curCache)
+	}
+	s.cacheFresh = true
+	s.cacheAt = now
+	return sortedCursors(s.curCache)
+}
+
+func sortedCursors(cache map[string]Cursor) []Cursor {
+	out := make([]Cursor, 0, len(cache))
+	for _, c := range cache {
+		out = append(out, c)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Peer != out[j].Peer {
+			return out[i].Peer < out[j].Peer
+		}
+		if out[i].Topic != out[j].Topic {
+			return out[i].Topic < out[j].Topic
+		}
+		return out[i].Partition < out[j].Partition
+	})
+	return out
+}
+
 func sortedPeers(cache map[string]Peer) []Peer {
 	out := make([]Peer, 0, len(cache))
 	for _, p := range cache {

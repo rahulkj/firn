@@ -79,7 +79,7 @@ func (s *Server) Fetch(ctx context.Context, req *firnpb.FetchRequest) (*firnpb.F
 	if err != nil {
 		return nil, toStatus(err)
 	}
-	out := &firnpb.FetchResponse{Records: make([]*firnpb.Record, 0, len(recs))}
+	out := &firnpb.FetchResponse{Records: make([]*firnpb.Record, 0, len(recs)), FederationHwm: s.b.FederationHWM(req.Topic, req.Partition)}
 	for _, r := range recs {
 		out.Records = append(out.Records, &firnpb.Record{Offset: r.Offset, Key: r.Key, Value: r.Value})
 	}

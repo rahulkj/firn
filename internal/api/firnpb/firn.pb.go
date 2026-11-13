@@ -209,8 +209,13 @@ func (x *FetchRequest) GetMaxRecords() int32 {
 }
 
 type FetchResponse struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Records       []*Record              `protobuf:"bytes,1,rep,name=records,proto3" json:"records,omitempty"`
+	state   protoimpl.MessageState `protogen:"open.v1"`
+	Records []*Record              `protobuf:"bytes,1,rep,name=records,proto3" json:"records,omitempty"`
+	// Advisory (ADR-010): the contiguous offset applied from every configured
+	// federation peer for this partition — the minimum across passive peers.
+	// 0 means "unknown / no passive federation for this partition". Hint only;
+	// never a correctness input to cross-cluster decisions.
+	FederationHwm int64 `protobuf:"varint,2,opt,name=federation_hwm,json=federationHwm,proto3" json:"federation_hwm,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -250,6 +255,13 @@ func (x *FetchResponse) GetRecords() []*Record {
 		return x.Records
 	}
 	return nil
+}
+
+func (x *FetchResponse) GetFederationHwm() int64 {
+	if x != nil {
+		return x.FederationHwm
+	}
+	return 0
 }
 
 type Record struct {
@@ -2370,9 +2382,10 @@ const file_firn_proto_rawDesc = "" +
 	"\tpartition\x18\x02 \x01(\x05R\tpartition\x12\x16\n" +
 	"\x06offset\x18\x03 \x01(\x03R\x06offset\x12\x1f\n" +
 	"\vmax_records\x18\x04 \x01(\x05R\n" +
-	"maxRecords\":\n" +
+	"maxRecords\"a\n" +
 	"\rFetchResponse\x12)\n" +
-	"\arecords\x18\x01 \x03(\v2\x0f.firn.v1.RecordR\arecords\"H\n" +
+	"\arecords\x18\x01 \x03(\v2\x0f.firn.v1.RecordR\arecords\x12%\n" +
+	"\x0efederation_hwm\x18\x02 \x01(\x03R\rfederationHwm\"H\n" +
 	"\x06Record\x12\x16\n" +
 	"\x06offset\x18\x01 \x01(\x03R\x06offset\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\fR\x03key\x12\x14\n" +

@@ -205,6 +205,10 @@ firn-cli -api-key "$KEY" produce --topic orders --key k1 --value hello
 # produced to orders partition=1 offset=0
 ```
 
+### Fetch (federation watermark hint)
+
+`FetchResponse.federation_hwm` (since v0.4.0): advisory minimum — the lowest `LastLocalOffset` applied from any passive federation peer covering (topic, partition); `0` when unknown or not federated. Hint only; never a correctness input cross-cluster. `firn-cli fetch --json` includes it.
+
 ### Fetch
 
 ```proto

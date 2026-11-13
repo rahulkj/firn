@@ -184,3 +184,22 @@ func TestProduceFetchRoundTripPreservesBytes(t *testing.T) {
 		}
 	}
 }
+
+func TestFederationHWMDefaultZeroAndSettable(t *testing.T) {
+	b := newTestBroker(t, map[string]int{"orders": 1})
+	if got := b.FederationHWM("orders", 0); got != 0 {
+		t.Fatalf("unhooked FederationHWM = %d, want 0", got)
+	}
+	b.SetFederationHWM(func(topic string, partition int32) int64 {
+		if topic == "orders" && partition == 0 {
+			return 41
+		}
+		return 0
+	})
+	if got := b.FederationHWM("orders", 0); got != 41 {
+		t.Fatalf("hooked FederationHWM = %d, want 41", got)
+	}
+	if got := b.FederationHWM("orders", 1); got != 0 {
+		t.Fatalf("uncovered partition FederationHWM = %d, want 0", got)
+	}
+}

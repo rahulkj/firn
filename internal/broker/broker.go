@@ -84,6 +84,8 @@ type Broker struct {
 	// Late-bound by the daemon after the quorum starts (cluster mode).
 	gateBox *fence.GateBox
 
+	federationHWM FederationHWM
+
 	// federationFence is the passive-federation write fence (ADR-010):
 	// topics selected by an inbound passive peer are read-only on this
 	// broker until an operator cuts over. Late-bound by the daemon.
@@ -136,6 +138,12 @@ func WithBlockSealing(d time.Duration) Option {
 	return func(b *Broker) { b.sealAge = d }
 }
 
+// FederationHWM computes the advisory federation watermark for
+// (topic, partition): the contiguous offset applied from every configured
+// passive peer — the minimum across them. 0 = no passive federation (or no
+// cursor yet). Advisory only (ADR-010); never consulted for write decisions.
+type FederationHWM func(topic string, partition int32) int64
+
 // FederationFence reports whether (topic, partition) is federated in passive
 // mode on this cluster. True means the local broker is a sink for the
 // partition and must refuse local appends. Default: nil (no fence).
@@ -146,6 +154,24 @@ func (b *Broker) SetFederationFence(f FederationFence) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.federationFence = f
+}
+
+// SetFederationHWM binds the advisory federation watermark hook.
+func (b *Broker) SetFederationHWM(f FederationHWM) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.federationHWM = f
+}
+
+// FederationHWM returns the advisory watermark for (topic, partition),
+// or 0 when no hook is bound or nothing is federated.
+func (b *Broker) FederationHWM(topic string, partition int32) int64 {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.federationHWM == nil {
+		return 0
+	}
+	return b.federationHWM(topic, partition)
 }
 
 // SetAdvisor wires the cluster write-lease check. Only firnd in cluster

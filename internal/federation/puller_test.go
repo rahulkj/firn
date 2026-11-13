@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"sync"
 	"testing"
 	"time"
 
@@ -288,4 +289,51 @@ func waitFor(t *testing.T, d time.Duration, ok func() bool) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	t.Fatal("condition not met within timeout")
+}
+
+func TestPullerLagGrowsWhenPeerUnreachable(t *testing.T) {
+	srcReg := newRegistry(t, "orders")
+	src := newFileBroker(t, t.TempDir(), srcReg)
+	defer func() { _ = src.Close() }()
+	dst := newFileBroker(t, t.TempDir(), newRegistry(t, "orders"))
+
+	store := federation.OpenInMemory()
+	if err := store.AddPeer(federation.Peer{
+		Name: "src", Addr: "bufnet", Direction: federation.DirectionIn,
+		Mode: federation.ModePassive, Key: "k",
+		Selectors: []federation.Selector{{Topics: []string{"orders"}}},
+	}); err != nil {
+		t.Fatalf("register peer: %v", err)
+	}
+
+	var mu sync.Mutex
+	observed := map[string]float64{}
+	puller := federation.NewPuller(federation.PullerConfig{
+		Broker:   dst,
+		Store:    store,
+		Interval: time.Millisecond,
+		Dial: func(ctx context.Context, peer federation.Peer) (*grpc.ClientConn, error) {
+			return nil, fmt.Errorf("no route to peer") // unreachable
+		},
+		LagSeconds: func(peer, topic string, partition int32, lag float64) {
+			mu.Lock()
+			observed[fmt.Sprintf("%s/%s", peer, topic)] = lag
+			mu.Unlock()
+		},
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	go puller.Run(ctx)
+	time.Sleep(150 * time.Millisecond)
+	cancel()
+	puller.Stop()
+
+	mu.Lock()
+	defer mu.Unlock()
+	lag, ok := observed["src/orders"]
+	if !ok {
+		t.Fatal("no lag observation recorded for unreachable peer")
+	}
+	if lag <= 0 {
+		t.Fatalf("lag must grow while the peer is unreachable, got %v", lag)
+	}
 }

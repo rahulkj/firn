@@ -479,6 +479,9 @@ func main() {
 		b.SetClusterView(&replication.SingleNodeView{NodeID: "single", Addr: advertisedAddr(*grpcAddr)})
 	}
 
+	// Metrics (slice 6, ADR-006): created before federation so the puller can feed its lag gauge.
+	met := metrics.New(b.Groups(), qm)
+
 	// Federation control-plane (ADR-010, slice 2): open the internal
 	// shared logs and expose them to the admin handler in read/write mode.
 	// Imports from any passive-mode peer start on the pull cadence.
@@ -494,40 +497,81 @@ func main() {
 			federationStore.SetCursorsLog(fl)
 		}
 	}
-	// Build the passive-write fence once and share it between the produce
-	// path (broker) and the queue delivery path (qm): topics/queues selected
-	// by passive inbound peers are read-only on this broker until an
-	// operator cuts over. ListPeersCached folds at most once per second,
-	// so the hot append path never re-folds on every write.
-	federatedPassive := func(name string, _ int32) bool {
-		for _, peer := range federationStore.ListPeersCached(time.Second) {
-			if peer.Mode != federation.ModePassive {
-				continue
+	// Shared passive-peer predicate used by the produce fence (broker),
+	// the queue delivery fence (qm), and the advisory federation watermark.
+	// ListPeersCached folds at most once per second, so the hot append path
+	// never re-folds on every write.
+	passivePeer := func(peer federation.Peer) bool {
+		if peer.Mode != federation.ModePassive {
+			return false
+		}
+		return peer.Direction == federation.DirectionIn || peer.Direction == federation.DirectionBoth
+	}
+	coversTopic := func(peer federation.Peer, name string) bool {
+		for _, sel := range peer.Selectors {
+			// An empty selector means "everything everywhere" (ADR-010).
+			if len(sel.Topics) == 0 && len(sel.Queues) == 0 {
+				return true
 			}
-			if peer.Direction != federation.DirectionIn && peer.Direction != federation.DirectionBoth {
-				continue
+			for _, t := range sel.Topics {
+				if t == name {
+					return true
+				}
 			}
-			for _, sel := range peer.Selectors {
-				for _, t := range sel.Topics {
-					if t == name {
-						return true // passively federated here: sink, not writer
-					}
-				}
-				for _, q := range sel.Queues {
-					if q == name {
-						return true // passively federated here: delivery engine stays idle
-					}
-				}
-				// An empty selector means "everything everywhere".
-				if len(sel.Topics) == 0 && len(sel.Queues) == 0 {
+			for _, q := range sel.Queues {
+				if q == name {
 					return true
 				}
 			}
 		}
 		return false
 	}
+	federatedPassive := func(name string, _ int32) bool {
+		for _, peer := range federationStore.ListPeersCached(time.Second) {
+			if !passivePeer(peer) {
+				continue
+			}
+			if coversTopic(peer, name) {
+				return true // passively federated here: sink, not writer
+			}
+		}
+		return false
+	}
 	b.SetFederationFence(federatedPassive)
 	qm.SetFederationFence(func(queue string) bool { return federatedPassive(queue, 0) })
+
+	// Advisory federation watermark (ADR-010): FetchResponse.federation_hwm
+	// is the minimum LastLocalOffset across passive peers covering the
+	// topic/queue partition — 0 when unknown or unmet. A covering peer
+	// without a cursor reads as 0 (min wins), matching the ADR's
+	// "unknown until first import" semantics.
+	b.SetFederationHWM(func(topic string, partition int32) int64 {
+		minHWM := int64(-1)
+		peers := federationStore.ListPeersCached(time.Second)
+		cursors := federationStore.ListCursorsCached(time.Second)
+		for _, peer := range peers {
+			if !passivePeer(peer) || !coversTopic(peer, topic) {
+				continue
+			}
+			found := false
+			for _, c := range cursors {
+				if c.Peer == peer.Name && c.Topic == topic && c.Partition == partition {
+					if minHWM == -1 || c.LastLocalOffset < minHWM {
+						minHWM = c.LastLocalOffset
+					}
+					found = true
+					break
+				}
+			}
+			if !found {
+				return 0
+			}
+		}
+		if minHWM == -1 {
+			return 0
+		}
+		return minHWM
+	})
 
 	// Federation puller: no-ops until a passive peer is registered; then
 	// imports selected topics/partitions (and __queue_attempts) on the
@@ -541,15 +585,15 @@ func main() {
 		Interval: *federationInterval,
 		Batch:    *federationBatch,
 		MaxRange: *federationMaxRange,
+		LagSeconds: func(peer, topic string, partition int32, lag float64) {
+			met.FederationCursorLagSeconds.WithLabelValues(peer, topic, strconv.Itoa(int(partition))).Set(lag)
+		},
 		Dial: func(ctx context.Context, peer federation.Peer) (*grpc.ClientConn, error) {
 			_ = ctx // grpc.NewClient is lazy; no deadline to honour at dial time
 			return dialFederationPeer(meshBundle, peer)
 		},
 	})
 	go puller.Run(pullerCtx)
-
-	// Metrics (slice 6, ADR-006).
-	met := metrics.New(b.Groups(), qm)
 
 	// Optional TLS on both listeners (ADR-008).
 	var tlsCfg *tls.Config
@@ -605,7 +649,7 @@ func main() {
 		mux.Handle("/metrics", met.Handler()) // scrape without key (-metrics-auth=false)
 	}
 	if *adminHTML {
-		mux.Handle("/ui/", authorizer.Wrap(http.StripPrefix("/ui", adminui.Handler(b))))
+		mux.Handle("/ui/", authorizer.Wrap(http.StripPrefix("/ui", adminui.Handler(b, federationStore))))
 	}
 	mux.Handle("/", authorizer.Wrap(api.NewAdminHandler(registry, b.Groups(), qm, api.WithClusterAdmin(ca), api.WithAPIKeys(keysStore), api.WithAudit(auditStore), api.WithFederation(api.NewFederationSink(federationStore, api.FederationModeReadWrite)))))
 	httpSrv := &http.Server{Addr: *httpAddr, Handler: api.LoggingMiddleware(api.HardeningMiddleware(mux)), ReadHeaderTimeout: 5 * time.Second}

@@ -48,6 +48,11 @@ message FetchRequest {
 
 message FetchResponse {
   repeated Record records = 1;
+  // Advisory (ADR-010): the contiguous offset applied from every configured
+  // federation peer for this partition — the minimum across passive peers.
+  // 0 means "unknown / no passive federation for this partition". Hint only;
+  // never a correctness input to cross-cluster decisions.
+  int64 federation_hwm = 2;
 }
 
 message Record {
