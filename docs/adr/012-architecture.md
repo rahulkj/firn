@@ -247,6 +247,173 @@ sequenceDiagram
     Note over A,B: consumer on either cluster sees all records; global order undefined
 ```
 
+## Security architecture
+
+Security in firn is **fail-closed by default** and layered: transport encryption → authentication → authorization → rate limiting → audit. This section diagrams every path from a CLI/browser to a byte in the log, and the two-cluster federation case, which is the only scenario where anything leaves the cluster.
+
+### The threat model in one paragraph
+
+Attackers: (a) anonymous network probers — they get `/healthz` and 401s, nothing else, with a tight per-IP sliding-window cap; (b) key holders with limited roles — viewers read, operators produce/consume, federation peers call only federation RPCs; (c) a compromised cluster node — mesh mTLS means its flat network peer cannot reach internal RPCs without a cert, and role-scoping means even an impostor's keys are not admin; (d) OS-root insiders — out of scope by design (`__audit` is append-only for external callers, not tamper-evident against root). Explicitly not defended: at-rest encryption (files are `0600` under a `0700` dir; the log format has no encryption driver), FIPS-validated crypto, HSM-backed keys (ADR-011 non-goals).
+
+### Layer 1 — transport encryption
+
+**Client surface (HTTP admin, gRPC `FirnService`): plain TLS, per-node, optional.**
+
+```sh
+firnd -tls-cert cert.pem -tls-key key.pem
+```
+
+Both listeners share one cert (its SANs must cover every host/IP clients dial), minimum TLS 1.2. No client certificates — clients authenticate with API keys (below). Leaving both flags empty = plaintext for development; `docs/install.md` leads with the TLS+mTLS path precisely because plaintext is a test-mode failure mode, not a deployment.
+
+**Mesh surface (`ReplicaService`, `QuorumService`, `FederationService`): mutual TLS (mTLS), mandatory.**
+
+```mermaid
+flowchart LR
+    subgraph cluster[One cluster]
+        direction LR
+        ca["Cluster CA<br/>primed once via<br/>firn mesh-ca init<br/>(or -mesh-ca-bundle)"]
+        n1["node 1<br/>node cert issued<br/>at first start"]
+        n2["node 2"]
+        n3["node 3"]
+        ca --> n1
+        ca --> n2
+        ca --> n3
+        n1 <-- mTLS --> n2
+        n2 <-- mTLS --> n3
+        n1 <-- mTLS --> n3
+    end
+    ca -. never on the wire .- ca
+```
+
+- A **dedicated mesh listener**, separate from client ports — internal RPCs never ride the public port, so they cannot be reached without the CA at all.
+- The mesh is **strictly mutual**: the server requires and verifies client certs signed by the cluster CA; each node's identity (CN/DNS SAN = node ID) is verified against the `ServerName` you expect.
+- Node certs are issued by the CA at first start from a locally generated key; `node.crt`/`node.key` are written to `<data-dir>/mesh-ca/` with `0600`.
+- Single-node installs auto-provision the CA with zero operator action; multi-node clusters pre-share one CA (generated once with `firn mesh-ca init`, copied into each node's `mesh-ca/` with `0600`) — or are handed `-mesh-ca-bundle`/`-mesh-ca-key` for full pre-provisioning.
+- Client surface TLS and mesh mTLS are **independent** — disabling one never disables the other, and there is no flag that does so.
+
+### Layer 2 — authentication & authorization
+
+API keys are bearer tokens. They are shown **exactly once** at mint (`POST /apikeys` or `POST /federation/keys`), stored SHA-256-hashed in the replicated `__api_keys` internal log, revocable at any time. Roles (cumulative):
+
+| Role | May call |
+|---|---|
+| `viewer` | read-only RPCs & GETs (fetch, offsets, groups, topic list, metrics, `/ui/`) |
+| `operator` | produce, queue `Pull`/`Ack`, group membership verbs, offset commits |
+| `admin` | everything — key lifecycle, admin mutations, all operator verbs |
+| `federation` | **only** `FederationService` RPCs — never produce/fetch/ack/admin |
+
+Enforced at both edges, fail-closed:
+
+| Surface | What runs before any handler | Refused caller sees |
+|---|---|---|
+| HTTP admin | `HardeningMiddleware` (CSP `default-src 'self'`, `frame-ancestors 'none'`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, `Cache-Control: no-store`) → `authorizer.Wrap` (bearer verify, role, rate limit, IP allowlist) | `401` (unauthenticated) or `403` (valid key, wrong role/IP) |
+| gRPC | `GRPCInterceptor` — logging → bearer verify → per-RPC role check (`grpcRoles` table) → rate limit → CIDR allowlist | `UNAUTHENTICATED`, `PERMISSION_DENIED`, `RESOURCE_EXHAUSTED` |
+| Mesh | the transport itself — client cert signed by the CA; no bearer needed for internal RPCs (federation RPC is the exception: federation key required **and** it buys nothing else) | TLS handshake error |
+| `/healthz` | nothing | always `200 {"status":"ok"}` (public by design) |
+
+A federation key can never satisfy a non-federation RPC (`grpcRoles` denies any FD that is not `RoleFederation`); an admin key *cannot* call `FederationService` either — only federation keys open it.
+
+### Layer 3 — rate limiting, IP allowlists, audit
+
+- **Per-key token bucket** (`-rate`, default 100 ops/s) enforced at HTTP and gRPC — uniform cost model across both edges.
+- **Per-IP sliding window** (`-anon-rate`, default 20/min) on anonymous traffic — covers `/healthz` probes and unauthenticated refusals alike, so a port scan can't fan out.
+- **Per-key CIDR allowlists** (`allowed_ips` at mint) — refused with 403/`PERMISSION_DENIED`; recorded as `authz-refused:ip-not-allowed` in `__audit`.
+- **`-dir-mode-check`** refuses startup if any file under `-data-dir` is group/world-accessible (`0700`/`0600` required) — no key leakage via disk perms.
+- **Audit**: every admin mutation and every authz refusal, in **every** auth mode, is appended to `__audit` (bounded by `-audit-max-bytes`, default 64 MiB; past budget → writes refused with 503 until an operator rotates).
+- **Metrics (`:`/ui/`)**: viewer-key-gated by default (`/ui/` and `/metrics` return 403 without one; `-metrics-auth=false` opts out deliberately).
+
+### Layer 4 — bootstrap & secret handling
+
+```mermaid
+sequenceDiagram
+    participant Op as Operator
+    participant F as firnd (first boot)
+    Op->>F: firnd (fresh, zero keys)
+    F-->>Op: stderr: BOOTSTRAP TOKEN: <hex>  (printed once)
+    Op->>F: POST /apikeys Bearer <token> {"name":"root","role":"admin"}
+    F-->>Op: 201 + plaintext key (shown once; never stored)
+    Note over Op: token is void from this request on
+    Op->>F: POST /apikeys (later requests) — requires a real key
+```
+
+- Federation keys are created **out-of-band on the serving cluster**, pasted into the peer's registration — material never crosses the wire and never persists anywhere a leaky port could reach.
+- Node certs are generated per node from a CA that never leaves operator custody; only `ca.crt` is distributed, never the CA private key.
+- `firn-cli` reads keys from `-api-key`/`FIRN_API_KEY` only — never from config files, never echoed in output.
+
+### The client path, end to end
+
+```mermaid
+sequenceDiagram
+    participant C as Client (CLI or gRPC)
+    participant TLS as TLS layer (CA pin or -ca-cert)
+    participant Auth as authn middleware
+    participant B as Broker
+    participant L as FileLog
+
+    C->>TLS: secp256r1 handshake (min TLS 1.2)
+    alt -tls-cert set
+        TLS-->>C: server cert — verified against -ca-cert or system roots
+    else plaintext (dev only)
+        TLS-->>C: no TLS — development only
+    end
+    C->>TLS: gRPC Produce(topic, key, value) — Bearer <key> in metadata
+    TLS->>Auth: bytes in
+    Auth->>Auth: rate limit, verify bearer (SHA-256), role ≥ operator, CIDR allowlist
+    alt denied
+        Auth-->>C: 401 / 403 / 429
+    else
+        Auth->>B: Produce(...)
+        B->>B: federation fence / lease advisor
+        B->>L: append (offset = HWM), fsync
+        L-->>B: offset
+        B-->>Auth: ProduceResponse
+        Auth-->>C: OK (partition, offset)
+    end
+```
+
+Cluster mode: the same path with one extra check — produces only land on the lease holder; non-holders return `FailedPrecondition` and route clients fetch fresh routing from `GetMetadata`.
+
+### Two clusters federated — the full security picture
+
+```mermaid
+flowchart LR
+    subgraph E[Cluster East (production)]
+        ec["client surface<br/>TLS-or-plaintext + bearer"]
+        emesh["mesh gRPC :9471<br/>(mTLS mandatory)<br/>ReplicaService · QuorumService · FederationService"]
+        elog["internal logs<br/>(intra-cluster replicated)"]
+    end
+    subgraph W[Cluster West (DR)]
+        wc["client surface"]
+        wmesh["mesh gRPC :9471<br/>(mTLS mandatory)"]
+        wlog["internal logs"]
+    end
+
+    prod["producers East"] --> ec
+    ec --> elog
+    app["producers West"] --> wc
+    wc --> wlog
+
+    emesh -- "FederationFetch / FederationReport<br/>mTLS (cluster CA) + federation-scoped key<br/>pull-only: West dials East" --> emesh
+
+    emesh -."refused from any<br/>non-federation RPC".- emesh
+    wmesh -."refused from any<br/>non-federation RPC".- wmesh
+    note["Client ports carry only client RPCs.<br/>Mesh ports carry only internal/federation RPCs.<br/>Federation RPCs reachable only with a cert chained to the cluster CA<br/>plus a federation-role bearer.<br/>Mesh requests from East never authenticate to West as a client."]
+    note -.- emesh
+    note -.- wmesh
+```
+
+- Both directions dial out over mTLS with the shared mesh CA (or a pinned per-peer CA registered with `ca_crt_pem`); neither side opens a listener for the other.
+- A federation key minted on East opens exactly two RPCs on East's mesh (`FederationFetch`, `FederationReport`); it cannot produce, fetch user topics, ack queues, or call admin endpoints, and East will not serve `__audit`, `__api_keys`, `__consumer_offsets`, or `__federation_*` — the only internal topic served is `__queue_attempts` (re-keyed for active-active).
+- The `requesting_peer` hint (`-federation-self`) and each side's foreign-applied ranges are what prevents A→B→A echoes — East never sees the frames it donated to West (they are filtered at the serving edge).
+- Audit on both clusters records every federation key minted and every registration change; `firn federation status` shows exactly what moves and with which cursor.
+
+### What is intentionally absent
+
+- No SSO, no LDAP/OIDC integration — firn is an infrastructure broker; operators own identity.
+- No per-topic ACLs (only coarse viewer/operator/admin roles) — ADR-011 non-goals.
+- No encryption at rest or FIPS — files are `0600`/`0700`; a KMS integration would be its own ADR.
+- No remote attestation or service mesh — mesh is firn's own mTLS, not Istio/Linkerd.
+
 ## Internal topics
 
 Six shared, single-partition internal logs in every deployment. In clusters they replicate like user topics (byte-identical, lease-gated writes for non-holders, all readable everywhere). They are **never** federated.

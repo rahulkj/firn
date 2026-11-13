@@ -184,7 +184,7 @@ For **passive (one-way DR)**: boot the sink with the same CA and `-federation-se
 | Path | Contents |
 |---|---|
 | `topics.json` | Topic registry (name, partitions, mode, created-at). Atomically renamed + fsynced. |
-| `<topic>-<partition>/` | Segmented append-only log for one partition: `00000000000000000000.log`, `.index` sidecar per segment. CRC-framed records. |
+| `<topic>-<partition>/` | Segmented append-only log for one partition: `00000000000000000000.log`. CRC-framed records; sparse index in memory, rebuilt by scanning on open (no persisted `.index` files yet). |
 | `__consumer_offsets-0/` | Committed consumer-group offsets (queue cursors ride the same log). |
 | `__queue_attempts-0/` | Per-message queue attempt counters (redelivery + DLQ bookkeeping). |
 | `__audit-0/` | Audit records (topic create/revoke, key create/revoke, authz refusals). |

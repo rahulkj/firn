@@ -90,3 +90,7 @@ Mixed old/new clusters are **unsupported**: rolling upgrade is not safe for the 
 ## When this plan changes
 
 Moving any item out of scope of this ADR requires a new ADR and never a silent weakening in a release. D-011 explicitly cannot be "snuck in" later without its own review.
+
+## Implementation notes (2026-11-13): rotation model shipped differently
+
+D-007 shipped with one divergence, deliberate: the sketched **automatic** rotation of `__audit-N` (N = 1..9) was rejected in implementation because bounded-by-budget enforcement is the property that matters operationally, and automatic rotation of a **replicated** internal log renumbers bytes that must stay identical on every node. What ships: `-audit-max-bytes` (default 64 MiB) bounds the replicated `__audit` topic per process; past-budget appends fail closed (HTTP 503 / gRPC Unavailable); **rotation is operator-driven and documented** (stop-the-world snapshot of the segment, start fresh, or accept the budget). Audit stays append-only and always-on; refusals are audited in every mode.

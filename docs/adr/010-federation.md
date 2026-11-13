@@ -137,3 +137,7 @@ What shipped differs from the original text in the following ways (ADR-010 stays
 ## When this plan changes
 
 Scope creep of federation beyond this ADR (push mode, cross-cluster group-sync, exactly-once) requires a new ADR and never a silent expansion of a release.
+
+## Implementation note (2026-11-13): plaintext never shipped
+
+The "TLS on the federation channel is mandatory … a peer with `tls: false` is allowed only with an explicit `allow_plaintext: true` CLI flag" paragraph is historical sketch text: no plaintext path was ever implemented (the dialer always builds mTLS; `-federation-self` / CA pinning are the only knobs), and ADR-011 withdraws the `allow_plaintext` idea unconditionally. Topology assumptions: shared mesh CA by default; per-peer `ca_crt_pem` pinning supported; `server_name` override exists for certs whose SANs don't match the dial host.

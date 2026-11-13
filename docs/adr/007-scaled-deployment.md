@@ -123,3 +123,11 @@ Unchanged in shape, simplified by symmetry:
 - Loses the familiar "partition log" mental model for operators — needs good docs and a `blocks` admin view (comes free with the UI).
 - This ADR unblocks: plan `002-ha` (block engine + lease + metadata quorum), plan `003-auth`, plan `004-audit`, in that order. Implementation is phased: `002-ha` starts with single-node block-mode FileLog (blocks sealed locally, no cluster yet) — a strict subset with identical client semantics — then the quorum, then replication/failover fault-injection.
 - v1 is untouched until that plan lands.
+
+## Implementation notes (2026-11-13): shipped defaults vs sketch
+
+The decision record sketched some values as defaults; what shipped differs:
+- Seal timer default sketched at "250 ms"; shipped `-block-seal-interval` defaults to **0 (size-only sealing, 64 MiB)** — no timer sealing by default; operators opt in per node.
+- Roles shipped as coarse grants (`viewer` < `operator` < `admin`, plus a `federation` peer role) — not the resource-scoped permission strings (`topic:read`, `queue:ack`, `dlq:manage`, `group:reset`, …) sketched in the Security section. No per-resource ACLs exist; the admin UI is read-only.
+- The implicit "thin Go SDK" reference was never built (see ADR-002/SDK notes); clients hand-roll gRPC or use `firn-cli`.
+- Security shipped on top as ADR-011 (fail-closed boot, mesh mTLS, keyed metrics/UI, anon rate limit, per-key allowlists, dir-mode check, bounded audit) — this ADR's security sketch predates it and is the historical vision, not the mechanism.

@@ -34,3 +34,9 @@ Maintenance rule: any change to flags, routes, or RPCs updates these docs in the
 - New contributors and evaluators can stand the broker up and produce traffic without reading Go code.
 - Documentation is now part of "done" for every feature change; stale docs are treated as bugs, not cosmetic issues.
 - No new runtime dependencies; docs ship in-repo only.
+
+## Implementation notes (2026-11-13): SDK still absent, ports updated
+
+Two notes vs this record:
+- "Go SDK lands with ADR-007 phase D-adjacent work" — phase D shipped (v0.2.0) without an SDK; nothing shipped since. `firn-cli` remains the reference client.
+- Listener defaults moved from `:9092`/`:9093` to **`:9460`/`:9461`** (v0.4.0 BREAKING change); all cited examples in docs were switched to the new defaults; single-node `GetMetadata` now advertises unknown ("") instead of a hardcoded `localhost:9093`.

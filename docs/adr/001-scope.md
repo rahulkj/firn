@@ -25,3 +25,7 @@ Replication beyond one cluster; exactly-once semantics/transactions; wire compat
 - Client compatibility comes from SDKs we write, not wire compatibility.
 - "Streaming AND queue" in v1 means *semantics* parity within one deployment, not two brokers in a trench coat.
 - Replication remains a non-goal for the MVP (v0.1.0). It is explicitly scoped for the v-next milestone by [ADR-007](007-scaled-deployment.md); that ADR defines HA, cross-node replication, election, security, and admin UI.
+
+## Implementation notes (2026-11-13): client SDKs
+
+ADR-001 says client compatibility comes from SDKs we write, not wire compatibility. No client SDK has shipped — `firn-cli` remains the reference client (and is not a library). SDK extraction is unscheduled as of this date. Consumers hand-roll gRPC calls or use `firn-cli` for ops paths; a Go SDK (proto wrapper + connection pooling + auth helpers) remains a valid future milestone and was scoped here but never built.

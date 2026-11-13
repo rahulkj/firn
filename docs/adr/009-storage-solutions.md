@@ -66,3 +66,12 @@ Legend: ✅ implemented & verified · 🟡 implemented but partial/unsafe at sca
 - Operators get a truthful map of what holds their bytes on disk and what cannot.
 - S3 stays a roadmap item with a known shape (block archive behind the broker) rather than a vague promise.
 - Retention is presented honestly: correct, tested, but not yet tunable on the daemon.
+
+## Implementation notes (2026-11-13): shipped divergences
+
+Consequences and the S3 section contradicted reality in three ways; shipped divergences recorded:
+- "Retention ... not yet tunable on the daemon" (Consequences) is stale since the same-day gap fix — `-segment-bytes`, `-block-seal-interval`, `-retention-ttl/max-bytes/interval` are all shipped and verified live.
+- "Cross-cluster replication — ❌ Out of scope for v1" is stale: ADR-010 delivered federation (passive byte-identical + active-active re-origin + queue attempts mirror, preview). Single-cluster replication was delivered as ADR-007 phase C/F.
+- "Encryption at rest and at the wire are outside v1" is half-shipped: wire TLS is not out of v1 anymore — TLS 1.2+ on both listeners (`-tls-cert`/`-tls-key`) and mandatory mesh mTLS (ADR-011) both ship; encryption at rest remains OS/FS-level only (`-dir-mode-check` adds hygiene, no KMS).
+- Audit rotation shipped **operator-driven**, not automatic (`-audit-max-bytes` refuses writes past budget; rotation is a manual step; see ADR-011 implementation notes).
+- `install.md`'s mention of "`.index` sidecar" was inaccurate — indexes are in-memory, rebuilt on open; no persisted index exists.
