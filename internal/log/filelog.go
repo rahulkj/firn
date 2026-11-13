@@ -167,7 +167,7 @@ func Open(dir string, opts ...Option) (*FileLog, error) {
 	if err := resolveCompactDirs(dir); err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("firn/log: mkdir %s: %w", dir, err)
 	}
 
@@ -561,7 +561,7 @@ func segmentSize(s *segment) (int64, error) {
 // running inside Open (pre-publication).
 func (l *FileLog) createSegment(base int64) (*segment, error) {
 	path := filepath.Join(l.dir, segmentFileName(base))
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o644)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("firn/log: create segment %s: %w", path, err)
 	}
@@ -571,7 +571,7 @@ func (l *FileLog) createSegment(base int64) (*segment, error) {
 // openSegment opens an existing segment. Caller must hold l.mu, or be
 // running inside Open (pre-publication).
 func (l *FileLog) openSegment(base int64, path string) (*segment, error) {
-	f, err := os.OpenFile(path, os.O_RDWR, 0o644)
+	f, err := os.OpenFile(path, os.O_RDWR, 0o600)
 	if err != nil {
 		return nil, fmt.Errorf("firn/log: open segment %s: %w", path, err)
 	}

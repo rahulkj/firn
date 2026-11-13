@@ -14,7 +14,7 @@ Non-negotiables: storage/quorum diffs always human-reviewed; plan changes land h
 | 2 (**delivered 2026-11-13**) | **Mesh mTLS**: separate mesh gRPC listener; shared cluster CA required in cluster mode (provisioned once via `firn-cli mesh-ca init`, copied to each node), auto-provision single-node only; ReplicaService/QuorumService served only on the mesh port behind mTLS; public listener never exposes them | **mandatory (quorum transport + storage-adjacent)** — storage review pending |
 | 3 (**delivered 2026-11-13**) | **Classification tightening**: `/metrics` now requires viewer key by default; `-metrics-auth=false` escape hatch; HTTP hardening headers on admin/UI responses (CSP, XFO, Referrer-Policy, no-store); `/ui/` unchanged behavior (already keyed) | API review |
 | 4 (**delivered 2026-11-13**) | **Rate limiting everywhere**: `-anon-rate` global per-IP sliding window on unauth endpoints; per-key `allowed_ips` CIDR allowlist persisted in `__api_keys`; refusals audit-recorded in **all** modes | API review |
-| 5 | **Storage private**: data dir `0700`/files `0600` enforced at open (warn+continue only under `-dir-mode-check=false`); `-audit-max-bytes` rotation; audit always wired; `authz-refused` always recorded | **mandatory (storage-adjacent)** |
+| 5 (**delivered 2026-11-13 — pending storage review**) | **Storage private**: data dir `0700`/files `0600` enforced at open (warn+continue only under `-dir-mode-check=false`); `-audit-max-bytes` rotation; audit always wired; `authz-refused` always recorded | **mandatory (storage-adjacent)** |
 | 6 | **Distribution hardening**: SBOM (`syft`), cosign-signature of release tarballs, `grype` fail-on-critical CI gate; release notes; install/config docs updated; migration guide v0.3→v0.4 | docs review |
 
 ## Slice details
@@ -50,7 +50,7 @@ Non-negotiables: storage/quorum diffs always human-reviewed; plan changes land h
 ### Slice 5 — storage private
 
 - `FileLog`/`OpenRegistry` create parent dirs `0700`, files `0600`; refuse to start on mode mismatch unless `-dir-mode-check=false` (CI/heterogeneous filesystems); `topics.json` same.
-- `-audit-max-bytes` (default 64 MiB): rotate `__audit` → `__audit-1..N`; writes fail closed (503) past budget; reads unaffected; operator reclaims disk.
+- `-audit-max-bytes` (default 64 MiB): writes fail closed (HTTP 503 / gRPC Unavailable) once the budget is exhausted; reads unaffected. Rotation is **operator-driven**: stop the broker, rename `<data-dir>/__audit-0/00000000000000000000.log*` to `…00000000000000000000.log.1`, restart; or restart with `-audit-max-bytes=0`. Automatic rotation of a replicated internal topic is out of scope for this slice (renaming the shared FileLog diverges replicas). Operator runs via the documented command, not automatically.
 - Audit always wired: `cmd/firnd` wires audit before serving in both open and enforced mode; repro tests for `authz-refused` under open mode.
 - Gate: storage review for open/compact paths (these are storage-adjacent).
 

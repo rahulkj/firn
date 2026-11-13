@@ -78,6 +78,43 @@ func meshPeerAddr(addr string) string {
 // slogEnv is slog.Info with the environment's message format.
 func slogEnv(msg string, args ...any) { slog.Info(msg, args...) }
 
+// enforceStoragePermissions walks the data dir and refuses to start unless
+// every directory is 0700 (or stricter) and every regular file is 0600. A
+// false flag logs an INSECURE warning and returns nil.
+func enforceStoragePermissions(dir string, strict bool) error {
+	if dir == "" {
+		return nil
+	}
+	if !strict {
+		slog.Warn("INSECURE: dir-mode-check disabled; any file under -data-dir may be world-readable")
+		return nil
+	}
+	return filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			m := info.Mode().Perm()
+			if m&0o077 != 0 {
+				return fmt.Errorf("dir %s has mode %o (want 700 or stricter); refusal hint: chmod -R g-rwx,o-rwx %s", path, m, dir)
+			}
+			// Force dir to 0700 in case it was created before enforcing (e.g. old broker).
+			if m != 0o700 {
+				_ = os.Chmod(path, 0o700)
+			}
+			return nil
+		}
+		m := info.Mode().Perm()
+		if m&0o077 != 0 {
+			return fmt.Errorf("file %s has mode %o (want 600 or stricter)", path, m)
+		}
+		if m != 0o600 {
+			_ = os.Chmod(path, 0o600)
+		}
+		return nil
+	})
+}
+
 // hexToken returns a cryptographically random hex string for bootstrap use.
 func hexToken(nbytes int) string {
 	buf := make([]byte, nbytes)
@@ -145,6 +182,7 @@ func main() {
 	httpAddr := flag.String("http-addr", ":9092", "HTTP admin/health listen address")
 	grpcAddr := flag.String("grpc-addr", ":9093", "gRPC listen address")
 	dataDir := flag.String("data-dir", "./data", "partition log data directory (\"\" = in-memory)")
+	dirModeCheck := flag.Bool("dir-mode-check", true, "refuse to start if any file under -data-dir is not 0600/dirs not 0700 (set false for exotic filesystems; logs a loud warning)")
 	retentionTTL := flag.Duration("retention-ttl", 0, "delete whole segments whose newest record is older than this (0 = disabled)")
 	retentionMaxBytes := flag.Int64("retention-max-bytes", 0, "max on-disk bytes per partition log; oldest whole segments deleted first (0 = disabled)")
 	retentionInterval := flag.Duration("retention-interval", time.Minute, "how often the retention sweeper runs")
@@ -159,6 +197,7 @@ func main() {
 	dev := flag.Bool("dev", false, "DEVELOPMENT ONLY: serve without any keys (alias for -allow-open-bootstrap). WARNING: broker is open to anyone who can reach the port.")
 	allowOpen := flag.Bool("allow-open-bootstrap", false, "DEVELOPMENT ONLY: serve without any keys (alias for -dev). WARNING: broker is open to anyone who can reach the port.")
 	tokenBucketRate := flag.Float64("rate", 100, "per-key rate limit in operations per second")
+	auditBudgetBytes := flag.Int64("audit-max-bytes", 64<<20, "max on-disk bytes for the __audit topic across this process; refuses writes past budget (fail-closed; set 0 for unlimited). Operators must rotate logs with -routation-retention or mount a fresh --data-dir.")
 	adminHTML := flag.Bool("admin-ui", true, "serve the read-only admin UI at / on the HTTP listener")
 	metricsAuth := flag.Bool("metrics-auth", true, "require a viewer key on /metrics (set false for Prometheus scrape without credentials; not recommended)")
 	anonRate := flag.Int("anon-rate", 20, "max anonymous ops per -anon-window per source IP on unauthenticated endpoints (healthz, refusal attempts). 0 = unlimited.")
@@ -205,6 +244,9 @@ func main() {
 	if *dataDir == "" {
 		registry = meta.NewRegistry()
 		b = broker.New(registry, brokerOpts...)
+		// In-memory broker: wire an in-memory audit store so refusals
+		// never go silent — operators see them in stderr via audit fields.
+		auditStore = audit.NewMemStore(*auditBudgetBytes)
 	} else {
 		var err error
 		registry, err = meta.OpenRegistry(filepath.Join(*dataDir, "topics.json"))
@@ -222,9 +264,17 @@ func main() {
 			keysStore.SetGate(b.InternalGateBox())
 		}
 		if fl, ok := b.InternalLog("__audit"); ok {
-			auditStore = audit.NewStore(fl)
+			auditStore = audit.NewStore(fl, *auditBudgetBytes)
 			auditStore.SetGate(b.InternalGateBox())
+			if *auditBudgetBytes > 0 {
+				slog.Info("audit budget enabled", "bytes", *auditBudgetBytes)
+			}
 		}
+	}
+
+	if err := enforceStoragePermissions(*dataDir, *dirModeCheck); err != nil {
+		slog.Error("storage permissions check failed", "dir", *dataDir, "err", err, "hint", "chmod -R go-rwx "+*dataDir+", or restart with -dir-mode-check=false (logs a loud warning)")
+		os.Exit(1)
 	}
 
 	// Queue manager (slice 5): builds state for queue-mode topics and the

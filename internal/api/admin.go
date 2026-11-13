@@ -338,7 +338,23 @@ func NewAdminHandler(reg *meta.Registry, coord *groups.Coordinator, q *queue.Man
 		writeJSON(w, http.StatusOK, map[string]any{"group": name, "offsets": out})
 	})
 
+	if cfg.audit != nil {
+		return auditBudgetGuard(mux, cfg.audit)
+	}
 	return mux
+}
+
+// auditBudgetGuard short-circuits write operations with 503 when the
+// audit byte budget is exhausted. Read operations (GET) are allowed
+// through unconditionally.
+func auditBudgetGuard(next http.Handler, s *audit.Store) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet && s != nil && s.BudgetExceeded() {
+			writeError(w, http.StatusServiceUnavailable, "audit budget exceeded; increase -audit-max-bytes or restart with a fresh -data-dir")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {

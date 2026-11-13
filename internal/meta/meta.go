@@ -144,6 +144,12 @@ func persistTopics(path string, topics map[string]Topic) error {
 	if err != nil {
 		return err
 	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return fmt.Errorf("firn/meta: create dir %s: %w", filepath.Dir(path), err)
+	}
 	tmp, err := os.CreateTemp(filepath.Dir(path), ".topics-*.json.tmp")
 	if err != nil {
 		return err
