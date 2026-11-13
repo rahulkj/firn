@@ -28,7 +28,7 @@ flowchart TB
         http[HTTP admin / curl]
     end
 
-    subgraph firnd[firnd — one process]
+    subgraph firnd["firnd — one process"]
         httpapi["HTTP admin :9460<br/>(/healthz, /metrics, /ui/, /topics, /groups, /queues, /federation)"]
         grpcapi["FirnService gRPC :9461<br/>(produce, fetch, groups, queue, metadata)"]
         mesh["Mesh gRPC :9461+10<br/>(ReplicaService, QuorumService, FederationService)<br/>mTLS + bearer only"]
@@ -46,7 +46,7 @@ flowchart TB
         fence["internal/fence<br/>write gates for internal topics"]
     end
 
-    subgraph disk[Local disk — <data-dir>]
+    subgraph disk["Local disk — <data-dir>"]
         filelog["FileLog segments<br/>(user + internal topics)<br/>__consumer_offsets __queue_attempts __audit __api_keys<br/>__federation_peers __federation_cursors"]
     end
 
@@ -221,12 +221,12 @@ Followers: agent notices committed block descriptors; missing blocks are pulled 
 ```mermaid
 sequenceDiagram
     participant APP as Operator
-    participant SINK as Firnd (sink)
-    participant SRC as Firnd (source) mesh listener
+    participant SINK as Sink
+    participant SRC as Source
     APP->>SINK: POST /federation/peers {direction:"in", mode:"passive", topics:[...]}
     Note over SINK: sink is fenced — produce/pull/ack → 409/FailedPrecondition
     SINK->>SRC: FederationFetch(topic, partition, first=cursor+1) — mTLS + federation key
-    SRC-->>SINK: raw CRC-checked frames [first, HWM)
+    SRC-->>SINK: raw CRC-checked frames (first to HWM)
     SINK->>SINK: ParseFrames → AppendReplicatedFrames (byte-identical)
     SINK->>SINK: upsert __federation_cursors cursor
     Note over SINK: clients read mirrored data immediately; writes rejected until cutover
@@ -269,7 +269,7 @@ Both listeners share one cert (its SANs must cover every host/IP clients dial), 
 
 ```mermaid
 flowchart LR
-    subgraph cluster[One cluster]
+    subgraph cluster["One cluster"]
         direction LR
         ca["Cluster CA<br/>primed once via<br/>firn mesh-ca init<br/>(or -mesh-ca-bundle)"]
         n1["node 1<br/>node cert issued<br/>at first start"]
@@ -278,11 +278,10 @@ flowchart LR
         ca --> n1
         ca --> n2
         ca --> n3
-        n1 <-- mTLS --> n2
-        n2 <-- mTLS --> n3
-        n1 <-- mTLS --> n3
+        n1 ---|mTLS| n2
+        n2 ---|mTLS| n3
+        n1 ---|mTLS| n3
     end
-    ca -. never on the wire .- ca
 ```
 
 - A **dedicated mesh listener**, separate from client ports — internal RPCs never ride the public port, so they cannot be reached without the CA at all.
@@ -377,12 +376,12 @@ Cluster mode: the same path with one extra check — produces only land on the l
 
 ```mermaid
 flowchart LR
-    subgraph E[Cluster East (production)]
+    subgraph E["Cluster East (production)"]
         ec["client surface<br/>TLS-or-plaintext + bearer"]
         emesh["mesh gRPC :9471<br/>(mTLS mandatory)<br/>ReplicaService · QuorumService · FederationService"]
         elog["internal logs<br/>(intra-cluster replicated)"]
     end
-    subgraph W[Cluster West (DR)]
+    subgraph W["Cluster West (DR)"]
         wc["client surface"]
         wmesh["mesh gRPC :9471<br/>(mTLS mandatory)"]
         wlog["internal logs"]
@@ -435,7 +434,7 @@ Six shared, single-partition internal logs in every deployment. In clusters they
 flowchart TB
     client["gRPC clients / firn-cli"] --> node
     admin["HTTP admin / UI"] --> node
-    subgraph node[firnd :9460 / :9461 / :9461+10]
+    subgraph node["firnd :9460 / :9461 / :9461+10"]
         direction LR
         subgraph internals[embedded]
             flog["FileLog → local disk<br/>(<data-dir>)"]
@@ -461,25 +460,25 @@ flowchart TB
     client --> n2
     client --> n3
     subgraph cluster["firn cluster — one metadata quorum"]
-        subgraph n1[firnd n1]
+        subgraph n1["firnd n1"]
             q1["Raft node n1<br/>(voter)"]
             a1["Produce path<br/>+ advisor check"]
             l1["FileLog replica<br/>(+ internal topics)"]
         end
-        subgraph n2[firnd n2]
+        subgraph n2["firnd n2"]
             q2["Raft node n2<br/>(voter)"]
             a2["Produce path"]
             l2["FileLog replica"]
         end
-        subgraph n3[firnd n3]
+        subgraph n3["firnd n3"]
             q3["Raft node n3<br/>(voter)"]
             a3["Produce path"]
             l3["FileLog replica"]
         end
         mesh["mesh gRPC (mTLS):<br/>quorum messages, ReplicaFetch/Put<br/>internal topics replicate the same way"]
-        n1 <-- mesh --- n2
-        n2 <-- mesh --- n3
-        n1 <-- mesh --- n3
+        n1 ---|mesh| n2
+        n2 ---|mesh| n3
+        n1 ---|mesh| n3
     end
 ```
 
@@ -537,12 +536,8 @@ flowchart LR
     end
     papp["producers East"] --> a
     papp2["producers West"] --> b
-    a -- "FederationFetch via mesh" --> b
-    b -- "FederationFetch via mesh" --> a
-    a -- "re-origin import<br/>fresh local offsets" --> b
-    b -- "re-origin import" --> a
-    a -. "echo filter: A-origin omitted<br/>from A's requests" .- a
-    b -. "echo filter: B-origin omitted" .- b
+    a -- "FederationFetch via mesh (echo filter on)" --> b
+    b -- "FederationFetch via mesh (echo filter on)" --> a
 ```
 
 **Use when:** two regions both need write availability (edge + cloud, active-active DR with zero RPO tolerance for write loss, independent failure domains).
