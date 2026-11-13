@@ -60,9 +60,9 @@ Manual-run caveats: (1) a clean-VM run was not available to the agent; all check
 - **Compaction refused on replicated internal logs**: `FileLog.Compact()` renumbers records, which would silently diverge byte-identical replicas; fenced stores refuse `Compact()` and skip auto-compact. Single-node compaction unchanged. `__consumer_offsets`/`__queue_attempts` growth in cluster mode is now bounded by commit rate, not by compaction — capacity planning note for the release checklist.
 - **`-race` fix in `FileLog`** (see Data race fix) — also required the package contract change.
 
-## Unreleased — Firn rebrand (BREAKING; next release v0.3.0)
+## v0.3.0 — 2026-11-13 (BREAKING) — Firn is the durable event broker
 
-**Eventing is now Firn.** The rename covers every user-facing identifier; the next release is breaking by design. Note the naming history, kept honest: the project was first renamed to **Slipway**, then rejected after conflict sweeps found four live software companies under that name (incl. a funded SF AI-onboarding startup in the same space); **Firn** (compacted snow layers — the compaction/retention metaphor) swept clean in two independent searches.
+**Eventing is now Firn** (module rename, no functional change). The rename covers every user-facing identifier; the next release is breaking by design. Note the naming history, kept honest: the project was first renamed to **Slipway**, then rejected after conflict sweeps found four live software companies under that name (incl. a funded SF AI-onboarding startup in the same space); **Firn** (compacted snow layers — the compaction/retention metaphor) swept clean in two independent searches.
 
 MIT **License added** (2026-11-13).
 
