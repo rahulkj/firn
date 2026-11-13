@@ -12,10 +12,27 @@ import (
 	"github.com/rahulkj/firn/internal/federation"
 )
 
+var css = `body{font-family:system-ui,sans-serif;margin:0;padding:2rem;background:#0f172a;color:#e2e8f0}
+.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:1rem 1.5rem;margin-bottom:1rem}
+h1{margin:0 0 1rem;font-size:1.5rem}
+h2{font-size:1.1rem}
+.sub{color:#94a3b8;font-size:.9rem}
+table{width:100%;border-collapse:collapse;margin-top:.5rem}
+th,td{border-bottom:1px solid #334155;padding:.4rem .6rem;text-align:left;font-size:.9rem}
+th{color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
+a{color:#7dd3fc}
+`
+
 // Handler wires the admin dashboard to the broker. fs may be nil (federation
 // unavailable); the /federation page then renders an empty state.
 func Handler(b *broker.Broker, fs *federation.Store) http.Handler {
 	mux := http.NewServeMux()
+
+	// Styled with an external stylesheet so the CSP (default-src 'self') allows it.
+	mux.HandleFunc("/style.css", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/css; charset=utf-8")
+		_, _ = w.Write([]byte(css))
+	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {
@@ -159,17 +176,7 @@ var federationTemplate = template.Must(template.New("federation").Parse(`<!docty
 <head>
 	<meta charset="utf-8">
 	<title>firn admin · federation</title>
-	<style>
-		body{font-family:system-ui,sans-serif;margin:0;padding:2rem;background:#0f172a;color:#e2e8f0}
-		.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:1rem 1.5rem;margin-bottom:1rem}
-		h1{margin:0 0 1rem;font-size:1.5rem}
-		h2{font-size:1.1rem}
-		.sub{color:#94a3b8;font-size:.9rem}
-		table{width:100%;border-collapse:collapse;margin-top:.5rem}
-		th,td{border-bottom:1px solid #334155;padding:.4rem .6rem;text-align:left;font-size:.9rem}
-		th{color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
-		a{color:#7dd3fc}
-	</style>
+	<link rel="stylesheet" href="/ui/style.css">
 </head>
 <body>
 	<h1>firn admin <span class="sub">/ ui / federation</span></h1>
@@ -211,16 +218,7 @@ var pageTemplate = template.Must(template.New("page").Funcs(template.FuncMap{
 <head>
 	<meta charset="utf-8">
 	<title>firn admin</title>
-	<style>
-		body{font-family:system-ui,sans-serif;margin:0;padding:2rem;background:#0f172a;color:#e2e8f0}
-		.card{background:#1e293b;border:1px solid #334155;border-radius:12px;padding:1rem 1.5rem;margin-bottom:1rem}
-		h1{margin:0 0 1rem;font-size:1.5rem}
-		.sub{color:#94a3b8;font-size:.9rem}
-		table{width:100%;border-collapse:collapse;margin-top:.5rem}
-		th,td{border-bottom:1px solid #334155;padding:.4rem .6rem;text-align:left;font-size:.9rem}
-		th{color:#94a3b8;text-transform:uppercase;letter-spacing:.05em}
-		a{color:#7dd3fc}
-	</style>
+	<link rel="stylesheet" href="/ui/style.css">
 </head>
 <body>
 	<h1>firn admin <span class="sub">/ ui</span></h1>

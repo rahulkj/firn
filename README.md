@@ -9,6 +9,10 @@ Status: **v0.4.0 — Firn, the durable event broker (secure by default, MIT).** 
 - [`docs/install.md`](docs/install.md) — build, single-node quickstart, TLS + auth bootstrap, 3-node cluster, what persists where
 - [`docs/configuration.md`](docs/configuration.md) — every flag, environment variables, retention rules, startup/recovery order
 - [`docs/api.md`](docs/api.md) — HTTP admin + gRPC `FirnService` reference with request/response examples, error codes, CLI↔API map
+- [`docs/operator.md`](docs/operator.md) — platform operator guide: install, network, sizing, storage integrations, all `firn-cli` commands, UI screens, runbooks
+- [`docs/developer.md`](docs/developer.md) — client guide: publish/consume from apps (Go, Python, Java, .NET samples), auth, best practices, troubleshooting
+- [`docs/sre.md`](docs/sre.md) — observability: metrics catalog, Prometheus scrape, alerting rules, logs, dashboards, on-call workflows
+- [`docs/personas.md`](docs/personas.md) — who does what: operator, SRE, developer, security auditor, incident commander, release manager
 
 ## Quick start
 
