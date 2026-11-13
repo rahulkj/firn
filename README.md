@@ -101,3 +101,7 @@ Details: [`docs/configuration.md`](docs/configuration.md) (flags, auth-enforceme
 9. [ADR-009 Storage solutions validation](docs/adr/009-storage-solutions.md)
 
 Working with coding agents on this repo: read [`AGENTS.md`](AGENTS.md) — storage invariants are mandatory context, and storage diffs always need human review.
+
+## License
+
+[MIT](LICENSE) — Copyright (c) 2026 rahulkj and contributors.
