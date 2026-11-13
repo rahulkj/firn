@@ -1,9 +1,13 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/rahulkj/firn/internal/apikeys"
 	"github.com/rahulkj/firn/internal/audit"
@@ -29,12 +33,36 @@ type auth struct {
 	store   *apikeys.Store
 	limiter *ratelimit.Bucket
 	audit   *audit.Store
+
+	// Security-by-default (ADR-011 slice 1): an unopened broker refuses
+	// every request. Opening requires either a key to exist, or the
+	// operator to pass -dev / -allow-open-bootstrap, or a bootstrap
+	// token printed on stderr at first start.
+	allowOpen      bool
+	bootstrapToken string
+	bootstrapMu    sync.Mutex
+	bootstrapUsed  bool
 }
 
-// NewAuthorizer returns an authenticator wired to these dependencies. All are
-// optional: nil store => open (no authentication required).
-func NewAuthorizer(store *apikeys.Store, limiter *ratelimit.Bucket, audit *audit.Store) *auth {
-	return &auth{store: store, limiter: limiter, audit: audit}
+// AuthOption tunes the authenticator. Default (no options) is secure-by-default:
+// nothing opens until a key exists or the operator asks for open bootstrap.
+type AuthOption func(*auth)
+
+// WithOpenBootstrap allows the broker to serve with no keys (development).
+func WithOpenBootstrap(on bool) AuthOption { return func(a *auth) { a.allowOpen = on } }
+
+// WithBootstrapToken enables one-time-bootstrap mode: the daemon prints the
+// token on stderr; POST /apikeys with that bearer creates the first key.
+func WithBootstrapToken(token string) AuthOption { return func(a *auth) { a.bootstrapToken = token } }
+
+// NewAuthorizer returns an authenticator wired to these dependencies.
+// Default (no options) fails closed.
+func NewAuthorizer(store *apikeys.Store, limiter *ratelimit.Bucket, audit *audit.Store, opts ...AuthOption) *auth {
+	a := &auth{store: store, limiter: limiter, audit: audit}
+	for _, o := range opts {
+		o(a)
+	}
+	return a
 }
 
 // needsAuth reports whether a request must be authenticated.
@@ -44,7 +72,7 @@ type routeRole struct {
 }
 
 var routeTable = routeRole{
-	public: []string{"/healthz", "/metrics"},
+	public: []string{"/healthz"},
 	roles: map[string]apikeys.Role{
 		"POST /topics":     apikeys.RoleOperator,
 		"POST /queues/":    apikeys.RoleOperator, // pull/ack/pull/ack... matched by prefix at runtime
@@ -77,18 +105,26 @@ func roleFor(method, path string) (apikeys.Role, bool) {
 	return apikeys.RoleViewer, true
 }
 
-// Wrap applies authentication and per-key rate limiting to next. If the
-// store is nil, requests pass through with an anonymous viewer identity.
+// Wrap applies authentication and per-key rate limiting to next.
+// Default is fail-closed (see WithOpenBootstrap).
 func (a *auth) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if token == r.Header.Get("Authorization") {
-			token = "" // no Bearer prefix
-		}
-		if isPublic(r.URL.Path) || !a.enforced() {
+		switch {
+		case isPublic(r.URL.Path):
 			openCtx := context.WithValue(r.Context(), authKeyContextKey{}, apikeys.Key{Name: "anonymous", Role: "admin"})
 			next.ServeHTTP(w, r.WithContext(openCtx))
 			return
+		case a.allowOpen || (a.store == nil && !a.bootstrap()):
+			openCtx := context.WithValue(r.Context(), authKeyContextKey{}, apikeys.Key{Name: "anonymous", Role: "admin"})
+			next.ServeHTTP(w, r.WithContext(openCtx))
+			return
+		case a.bootstrap():
+			a.bootstrapGate(w, r, next)
+			return
+		}
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		if token == r.Header.Get("Authorization") {
+			token = "" // no Bearer prefix
 		}
 		if token == "" {
 			a.auditRefused(r, "missing token")
@@ -136,8 +172,13 @@ var grpcRoles = map[string]apikeys.Role{
 // unary RPC. ReplicaService and FirnService both use it.
 func (a *auth) GRPCInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
-		if a.store == nil || !a.store.HasAnyKey() {
-			return handler(ctx, req) // no auth configured or not yet enforced
+		// No auth configured: either explicitly open (dev), or a misconfigured
+		// daemon with no key store at all. Fail closed unless -dev/-allow-open-bootstrap.
+		if a.allowOpen || (a.store == nil && a.bootstrapToken == "") {
+			return handler(ctx, req)
+		}
+		if a.bootstrap() {
+			return nil, status.Error(codes.Unauthenticated, "bootstrap mode: no keys exist; create one via HTTP POST /apikeys with the one-time bootstrap token (see firnd stderr), or restart with -dev")
 		}
 		md, ok := metadata.FromIncomingContext(ctx)
 		var tok string
@@ -171,6 +212,63 @@ func (a *auth) GRPCInterceptor() grpc.UnaryServerInterceptor {
 	}
 }
 
+// bootstrapGate handles one-time-bootstrap mode: only POST /apikeys with the
+// one-time token passes; the token mints exactly one admin key and is then
+// void. Everything else is 401 with an actionable message.
+func (a *auth) bootstrapGate(w http.ResponseWriter, r *http.Request, next http.Handler) {
+	if r.Method != http.MethodPost || r.URL.Path != "/apikeys" {
+		a.auditRefused(r, "bootstrap mode: only POST /apikeys is reachable until first key exists")
+		writeError(w, http.StatusUnauthorized, "bootstrap mode: no keys exist yet; POST /apikeys with the one-time bootstrap token (see firnd stderr), or restart with -dev/-allow-open-bootstrap")
+		return
+	}
+	a.bootstrapMu.Lock()
+	defer a.bootstrapMu.Unlock()
+	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if token == r.Header.Get("Authorization") {
+		token = "" // no Bearer prefix
+	}
+	if a.bootstrapUsed || token == "" || token != a.bootstrapToken {
+		a.auditRefused(r, "bootstrap token rejected")
+		writeError(w, http.StatusUnauthorized, "invalid bootstrap token")
+		return
+	}
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	var req map[string]any
+	if err := json.Unmarshal(body, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	// Bootstrap minting is always an admin key; never let role drop it.
+	req["role"] = "admin"
+	reqBytes, _ := json.Marshal(req)
+	r2 := r.Clone(r.Context())
+	r2.Body = io.NopCloser(bytes.NewReader(reqBytes))
+	r2.ContentLength = int64(len(reqBytes))
+	ctx := context.WithValue(r2.Context(), authKeyContextKey{}, apikeys.Key{Name: "bootstrap", Role: "admin"})
+	rec := &statusRecorder{ResponseWriter: w, httpCode: http.StatusOK}
+	next.ServeHTTP(rec, r2.WithContext(ctx))
+	if rec.httpCode == http.StatusCreated {
+		a.bootstrapUsed = true
+		if a.audit != nil {
+			_ = a.audit.Append("bootstrap", "bootstrap-token-consumed", "apikey-created", "first admin key minted")
+		}
+	}
+}
+
+type statusRecorder struct {
+	http.ResponseWriter
+	httpCode int
+}
+
+func (w *statusRecorder) WriteHeader(code int) {
+	w.httpCode = code
+	w.ResponseWriter.WriteHeader(code)
+}
+
 // whoFromCtx returns a readable identity for audit logs.
 func whoFromCtx(ctx context.Context) string {
 	k, ok := ctx.Value(authKeyContextKey{}).(apikeys.Key)
@@ -180,9 +278,12 @@ func whoFromCtx(ctx context.Context) string {
 	return k.Name
 }
 
-// enforced reports whether the authenticator requires keys for non-public
-// paths. Open mode = no keys configured (single-node dev default).
-func (a *auth) enforced() bool { return a.store != nil && a.store.HasAnyKey() }
+// bootstrap reports whether the broker is in one-time bootstrap mode: no keys,
+// no open flag, a printed bootstrap token pending. All requests 401 except the
+// bootstrap POST /apikeys itself.
+func (a *auth) bootstrap() bool {
+	return !a.allowOpen && a.store != nil && !a.store.HasAnyKey() && a.bootstrapToken != "" && !a.bootstrapUsed
+}
 
 func isPublic(path string) bool {
 	for _, p := range routeTable.public {

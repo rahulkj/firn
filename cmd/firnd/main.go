@@ -9,7 +9,13 @@
 //
 // Surfaces:
 //
-//	HTTP  :9092  /healthz, /topics, /groups, /metrics (admin) — override with -http-addr
+//	HTTP  :9092  /healthz, /topics, /groups, /metrics — override with -http-addr
+//
+// Security (ADR-011): the broker fails closed. If no API keys exist it
+// prints a one-time BOOTSTRAP TOKEN on stderr; POST /apikeys with that
+// token mints exactly one admin key, then auth is enforced. -dev disables
+// it (development only). /metrics is keyed by default.
+//
 //	gRPC  :9093  FirnService                              — override with -grpc-addr
 //
 // Logging is JSON via log/slog on stderr.
@@ -17,7 +23,9 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -49,6 +57,15 @@ import (
 	"github.com/rahulkj/firn/internal/ratelimit"
 	"github.com/rahulkj/firn/internal/replication"
 )
+
+// hexToken returns a cryptographically random hex string for bootstrap use.
+func hexToken(nbytes int) string {
+	buf := make([]byte, nbytes)
+	if _, err := rand.Read(buf); err != nil {
+		panic(fmt.Sprintf("eventing/firnd: crypto/rand failed: %v", err))
+	}
+	return hex.EncodeToString(buf)
+}
 
 // advertisedAddr makes a listener address usable for client dialing:
 // wildcard or empty hosts are replaced with localhost so single-node
@@ -119,6 +136,8 @@ func main() {
 	leaseTTL := flag.Duration("lease-ttl", 3*time.Second, "cluster mode: write lease TTL per partition")
 	tlsCert := flag.String("tls-cert", "", "TLS certificate PEM for both HTTP and gRPC listeners (empty = plaintext)")
 	tlsKey := flag.String("tls-key", "", "TLS private key PEM for both HTTP and gRPC listeners")
+	dev := flag.Bool("dev", false, "DEVELOPMENT ONLY: serve without any keys (alias for -allow-open-bootstrap). WARNING: broker is open to anyone who can reach the port.")
+	allowOpen := flag.Bool("allow-open-bootstrap", false, "DEVELOPMENT ONLY: serve without any keys (alias for -dev). WARNING: broker is open to anyone who can reach the port.")
 	tokenBucketRate := flag.Float64("rate", 100, "per-key rate limit in operations per second")
 	adminHTML := flag.Bool("admin-ui", true, "serve the read-only admin UI at / on the HTTP listener")
 	flag.Parse()
@@ -290,9 +309,31 @@ func main() {
 		tlsCfg = &tls.Config{Certificates: []tls.Certificate{cert}, MinVersion: tls.VersionTLS12}
 	}
 
-	// Auth (ADR-008): open when no keys are configured; otherwise bearer
-	// token required, rate-limited per key, role-gated at the boundary.
-	authorizer := api.NewAuthorizer(keysStore, ratelimit.New(*tokenBucketRate, *tokenBucketRate), auditStore)
+	// ADR-011 secure-by-default: with zero keys the broker is not serveable
+	// until the operator mints one via the printed bootstrap token (or
+	// explicitly opts into an open broker with -dev/-allow-open-bootstrap).
+	if *dev || *allowOpen {
+		slog.Warn("INSECURE BOOTSTRAP ENABLED: authentication DISABLED (set -dev=false / -allow-open-bootstrap=false to re-enable)")
+	}
+	var bootstrapToken string
+	switch {
+	case *dev || *allowOpen:
+		// open mode chosen deliberately; no token needed
+	case keysStore == nil:
+		// no key store at all → bootstrap required anyway
+		bootstrapToken = hexToken(32)
+	case !keysStore.HasAnyKey():
+		bootstrapToken = hexToken(32)
+	}
+	if bootstrapToken != "" {
+		slog.Warn("BOOTSTRAP MODE: broker is locked down until the first API key exists; create one with the printed BOOTSTRAP TOKEN")
+		fmt.Fprintf(os.Stderr, "BOOTSTRAP TOKEN: %s\n", bootstrapToken)
+	} else if !*dev && !*allowOpen {
+		slog.Info("security: bearer auth enforced on all endpoints except /healthz")
+	}
+	authorizer := api.NewAuthorizer(keysStore, ratelimit.New(*tokenBucketRate, *tokenBucketRate), auditStore,
+		api.WithOpenBootstrap(*dev || *allowOpen),
+		api.WithBootstrapToken(bootstrapToken))
 
 	// HTTP admin + health + metrics + admin UI.
 	mux := http.NewServeMux()
@@ -300,7 +341,7 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": version})
 	})
-	mux.Handle("/metrics", met.Handler())
+	mux.Handle("/metrics", authorizer.Wrap(met.Handler()))
 	if *adminHTML {
 		mux.Handle("/ui/", authorizer.Wrap(http.StripPrefix("/ui", adminui.Handler(b))))
 	}

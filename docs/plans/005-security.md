@@ -10,7 +10,7 @@ Non-negotiables: storage/quorum diffs always human-reviewed; plan changes land h
 
 | Slice | Delivers | Review gate |
 |---|---|---|
-| 1 | **Secure-by-default + bootstrap token**: fail startup without a key (or `-allow-open-bootstrap`/`-dev`); one-time bootstrap token on stderr; `POST /apikeys` with that token creates the first key then token is void; `/healthz` only anonymous endpoint | API review (bootstrap path) |
+| 1 (**delivered 2026-11-13**, review pending) | **Secure-by-default + bootstrap token**: fail startup without a key (or `-allow-open-bootstrap`/`-dev`); one-time bootstrap token on stderr; `POST /apikeys` with that token creates the first key then token is void; `/healthz` only anonymous endpoint | API review (bootstrap path) — [GO/NO-GO smoke evidence below](#slice-1-evidence) |
 | 2 | **Mesh mTLS**: CA distribution (cluster CA under data dir or provided), peer identity check via gRPC client-cert path, internal RPCs (`ReplicaService`, `QuorumService`) gated on mesh identity not API keys; mesh interceptor separate from public interceptor | **mandatory (quorum transport + storage-adjacent)** |
 | 3 | **Classification tightening**: `/metrics` now requires viewer key by default; `-metrics-auth=false` escape hatch; HTTP hardening headers on admin/UI responses (CSP, XFO, Referrer-Policy, no-store); `/ui/` unchanged behavior (already keyed) | API review |
 | 4 | **Rate limiting everywhere**: `-anon-rate` global per-IP sliding window on unauth endpoints; per-key `allowed_ips` CIDR allowlist persisted in `__api_keys`; refusals audit-recorded in **all** modes | API review |
