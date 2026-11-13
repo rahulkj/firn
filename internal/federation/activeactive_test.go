@@ -143,7 +143,10 @@ func TestActiveActiveConvergenceBothWays(t *testing.T) {
 			t.Fatalf("produce on B: %v", err)
 		}
 	}
-	waitFor(t, 15*time.Second, func() bool {
+	// Convergence barrier under full-suite -race CPU starvation: not a
+	// correctness bound — a starved pair of pullers can take arbitrary time
+	// to converge; 30s is generous scheduling headroom for CI.
+	waitFor(t, 30*time.Second, func() bool {
 		aHWM, err := a.broker.PartitionHighWatermark(ctx, "shared", 0)
 		bHWM, err2 := b.broker.PartitionHighWatermark(ctx, "shared", 0)
 		return err == nil && err2 == nil && aHWM == 5 && bHWM == 5
