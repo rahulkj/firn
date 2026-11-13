@@ -103,6 +103,9 @@ Details: [`docs/configuration.md`](docs/configuration.md) (flags, auth-enforceme
 7. [ADR-007 Scaled-out deployment (proposed→in progress)](docs/adr/007-scaled-deployment.md)
 8. [ADR-008 Documentation](docs/adr/008-documentation.md)
 9. [ADR-009 Storage solutions validation](docs/adr/009-storage-solutions.md)
+10. [ADR-010 Federation (multi-cluster replication)](docs/adr/010-federation.md)
+11. [ADR-011 Secure-by-default mode](docs/adr/011-secure-mode.md)
+12. **[ADR-012 Architecture — components & deployment topologies](docs/adr/012-architecture.md)** — start here for the system map (standalone, HA cluster, active/passive and active/active federation)
 
 Working with coding agents on this repo: read [`AGENTS.md`](AGENTS.md) — storage invariants are mandatory context, and storage diffs always need human review.
 

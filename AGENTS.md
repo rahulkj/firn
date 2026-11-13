@@ -19,7 +19,7 @@ Firn is a from-scratch event broker in Go providing **streaming** (topics/partit
 - `internal/broker` — produce/fetch orchestration, partition assignment
 - `internal/queue` — ack/redelivery/DLQ on the same log
 - `internal/api` — gRPC/HTTP surface (clean API, **not** wire-compatible with any other broker)
-- `docs/adr` — architecture decision records (read 003 before touching storage)
+- `docs/adr` — architecture decision records (read 003 before touching storage; read 012 for the component/topology map)
 - `docs/plans` — implementation plans; work proceeds slice by slice
 
 ## Conventions
