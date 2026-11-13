@@ -37,9 +37,14 @@ firnd \
 | `-anon-window` | `1m` | duration | Window for `-anon-rate`. |
 | `-rate` | `100` | float ops/s | Per-key token-bucket rate limit, enforced at the HTTP and gRPC interceptors. Applies once auth is enforced (any key exists); limits are per key, not per IP. |
 | `-admin-ui` | `true` | bool | Serve the read-only admin UI at `/ui/`. Cheap; safe to leave on behind TLS+auth. |
-| `-mesh-addr` | derived | host:port | Mesh (internal) gRPC listener address — defaults to `-grpc-addr` port+10 (crash if colliding). Serves only `ReplicaService`/`QuorumService` behind mesh mTLS. |
+| `-mesh-addr` | derived | host:port | Mesh (internal) gRPC listener address — defaults to `-grpc-addr` port+10 (crash if colliding). Serves `ReplicaService`/`QuorumService`/`FederationService` behind mesh mTLS. Never reachable from client ports. |
 | `-mesh-ca-bundle` | `""` | PEM path | Pre-provisioned mesh cluster CA certificate PEM (paired with `-mesh-ca-key`). REQUIRED for non-dev, non-single-node clusters. |
 | `-mesh-ca-key` | `""` | PEM path | Pre-provisioned mesh cluster CA private key PEM. |
+| `-federation-interval` | `500ms` | duration | Passive federation pull cadence (ADR-010). Data only moves when a passive peer is registered; the loop otherwise no-ops. |
+| `-federation-batch` | `1024` | int | Max frames per federation pull window. |
+| `-federation-max-range` | `1048576` | bytes | Max bytes per federation pull window. |
+
+Federation is a **preview** (ADR-010): one-way `passive` mode replicates byte-identical blocks from a source cluster to a sink; the sink stays read-fenced until cutover. Peers authenticate with **federation-scoped keys** over mTLS; both clusters must share a mesh CA (or the sink can pin the peer's CA with a peer-specific `ca_crt_pem`). Internal topics `__federation_peers`/`__federation_cursors` are cluster-local. `__queue_attempts` is mirrored byte-identically when a queue is in scope. See `docs/plans/004-federation.md`; active-active (full) mode lands in slice 4.
 
 Startup sequence (single node): open registry → open every partition log + internal topics (`__consumer_offsets`, `__queue_attempts`, `__audit`, `__api_keys`) → fold committed offsets → serve. Crash recovery order per log: scan segments, CRC-validate frames, truncate any torn tail (`internal/log/filelog.go`), then mark blocks sealed. Cluster adds: start Raft node → wait to observe a leader (or elect itself) → replay `topics.json` state via apply hook → replication agent starts pushing/pulling blocks + granting leases.
 

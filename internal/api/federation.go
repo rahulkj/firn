@@ -8,8 +8,11 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"strings"
+
 	"github.com/rahulkj/firn/internal/apikeys"
 	"github.com/rahulkj/firn/internal/audit"
+	"github.com/rahulkj/firn/internal/broker"
 	"github.com/rahulkj/firn/internal/federation"
 	"github.com/rahulkj/firn/internal/meta"
 
@@ -66,14 +69,17 @@ func MarshalPeerToHTTP(p federation.Peer) map[string]any {
 		selTopics = append(selTopics, s.Topics...)
 		selQueues = append(selQueues, s.Queues...)
 	}
+	// keySet is reported, the key itself never is (write-only, like API keys).
 	return map[string]any{
 		"name":        p.Name,
 		fieldPeerAddr: p.Addr,
+		"server_name": p.ServerName,
 		"direction":   p.Direction.String(),
 		"mode":        p.Mode.String(),
 		"topics":      selTopics,
 		"queues":      selQueues,
 		"caSet":       len(p.CACrtPEM) > 0,
+		"keySet":      p.Key != "",
 		"createdAt":   p.CreatedUnix,
 		"updatedAt":   p.UpdatedUnix,
 	}
@@ -108,13 +114,15 @@ func adminRegisterFederationRoutes(mux *http.ServeMux, cfg *adminConfig) {
 
 	mux.HandleFunc("POST /federation/peers", func(w http.ResponseWriter, r *http.Request) {
 		var req struct {
-			Name      string   `json:"name"`
-			Addr      string   `json:"addr"`
-			Direction string   `json:"direction"`
-			Mode      string   `json:"mode"`
-			Topics    []string `json:"topics"`
-			Queues    []string `json:"queues"`
-			CACrtPEM  string   `json:"ca_crt_pem,omitempty"` // base64-encoded pem body
+			Name       string   `json:"name"`
+			Addr       string   `json:"addr"`
+			Direction  string   `json:"direction"`
+			Mode       string   `json:"mode"`
+			Topics     []string `json:"topics"`
+			Queues     []string `json:"queues"`
+			CACrtPEM   string   `json:"ca_crt_pem,omitempty"` // base64-encoded pem body
+			ServerName string   `json:"server_name,omitempty"`
+			Key        string   `json:"key,omitempty"` // bearer key issued by the peer (write-only; never echoed)
 		}
 		if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 			writeError(w, http.StatusBadRequest, "invalid JSON body")
@@ -138,11 +146,13 @@ func adminRegisterFederationRoutes(mux *http.ServeMux, cfg *adminConfig) {
 			sel.Queues = req.Queues
 		}
 		peer := federation.Peer{
-			Name:      req.Name,
-			Addr:      req.Addr,
-			Direction: d,
-			Mode:      m,
-			Selectors: []federation.Selector{sel},
+			Name:       req.Name,
+			Addr:       req.Addr,
+			ServerName: strings.TrimSpace(req.ServerName),
+			Key:        strings.TrimSpace(req.Key),
+			Direction:  d,
+			Mode:       m,
+			Selectors:  []federation.Selector{sel},
 		}
 		if req.CACrtPEM != "" {
 			crt, err := base64.StdEncoding.DecodeString(req.CACrtPEM)
@@ -240,17 +250,96 @@ var _ = audit.ErrBudgetExhausted // reserved for later slices
 var _ = apikeys.RoleAdmin        // reserved for later slices
 
 // FederationServer implements firnpb.FederationServiceServer.
-// Slice 1: registration only — both RPCs return Unimplemented.
+// Slice 1: registration only; slice 2: real FederationFetch over the local
+// broker's partition log, returning raw byte-identical replicated frames.
+// Passive-mode peers read [first..last] exactly as sealed; the local HWM
+// is the authoritative boundary (never returns frames beyond it).
 type FederationServer struct {
 	firnpb.UnimplementedFederationServiceServer
+
+	b *broker.Broker
 }
 
-func NewFederationServer() *FederationServer { return &FederationServer{} }
+func NewFederationServer(b *broker.Broker) *FederationServer { return &FederationServer{b: b} }
 
 func (s *FederationServer) FederationFetch(ctx context.Context, req *firnpb.FederationFetchRequest) (*firnpb.FederationFetchResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "federation fetch ships in slice 4; see plan 004")
+	if s == nil || s.b == nil {
+		return nil, status.Error(codes.Unavailable, "federation: no broker attached")
+	}
+	if req.Topic == "" || req.Partition < 0 {
+		return nil, status.Error(codes.InvalidArgument, "federation: topic and partition are required")
+	}
+	topic := strings.TrimSpace(req.Topic)
+	if strings.HasPrefix(topic, "__") {
+		// Internal topics are cluster-local by construction. The single
+		// sanctioned exception is __queue_attempts, mirrored byte-identically
+		// for federated queues (ADR-010).
+		if topic == federation.QueueAttemptsTopic && req.Partition == 0 {
+			return s.fetchQueueAttempts(ctx, req)
+		}
+		return nil, status.Error(codes.InvalidArgument, "federation: internal topic cannot be federated")
+	}
+	hw, _ := s.b.PartitionHighWatermark(ctx, topic, req.Partition)
+	if hw <= 0 {
+		return &firnpb.FederationFetchResponse{Frames: []byte{}, SourceHwm: hw}, nil
+	}
+	first := req.FirstOffset
+	if first < 0 {
+		first = 0
+	}
+	last := req.LastOffset
+	if last < 0 || last >= hw {
+		last = hw - 1
+	}
+	if first > last {
+		return &firnpb.FederationFetchResponse{Frames: []byte{}, SourceHwm: hw}, nil
+	}
+	raw, err := s.b.ReadRange(ctx, topic, req.Partition, first, last)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "federation: %v", err)
+	}
+	return &firnpb.FederationFetchResponse{Frames: raw, SourceHwm: hw}, nil
+}
+
+// fetchQueueAttempts serves a byte-identical window of the source's
+// __queue_attempts log. Only federation keys can call this (mesh listener).
+func (s *FederationServer) fetchQueueAttempts(ctx context.Context, req *firnpb.FederationFetchRequest) (*firnpb.FederationFetchResponse, error) {
+	fl, ok := s.b.InternalLog(federation.QueueAttemptsTopic)
+	if !ok {
+		return nil, status.Error(codes.Unavailable, "federation: no shared __queue_attempts log")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, status.Error(codes.Canceled, "federation: context canceled")
+	}
+	hw := fl.HighWatermark()
+	if hw <= 0 {
+		return &firnpb.FederationFetchResponse{Frames: []byte{}, SourceHwm: 0}, nil
+	}
+	first := req.FirstOffset
+	if first < 0 {
+		first = 0
+	}
+	last := req.LastOffset
+	if last < 0 || last >= hw {
+		last = hw - 1
+	}
+	if first > last {
+		return &firnpb.FederationFetchResponse{Frames: []byte{}, SourceHwm: hw}, nil
+	}
+	raw, err := fl.ReadRange(first, last)
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, "federation: %v", err)
+	}
+	return &firnpb.FederationFetchResponse{Frames: raw, SourceHwm: hw}, nil
 }
 
 func (s *FederationServer) FederationReport(ctx context.Context, req *firnpb.FederationReportRequest) (*firnpb.FederationReportResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "federation report ships in slice 3; see plan 004")
+	if s == nil || s.b == nil {
+		return nil, status.Error(codes.Unavailable, "federation: no broker attached")
+	}
+	if req.Topic == "" || req.Partition < 0 {
+		return nil, status.Error(codes.InvalidArgument, "federation: topic and partition are required")
+	}
+	hw, _ := s.b.PartitionHighWatermark(ctx, strings.TrimSpace(req.Topic), req.Partition)
+	return &firnpb.FederationReportResponse{HighWatermark: hw, RetentionHorizon: 0}, nil
 }

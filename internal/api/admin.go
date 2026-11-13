@@ -170,6 +170,8 @@ func NewAdminHandler(reg *meta.Registry, coord *groups.Coordinator, q *queue.Man
 				writeError(w, http.StatusBadRequest, err.Error())
 			case errors.Is(err, fence.ErrFenced):
 				writeError(w, http.StatusServiceUnavailable, err.Error())
+			case errors.Is(err, queue.ErrFederatedPassive):
+				writeError(w, http.StatusConflict, "queue is passively federated on this cluster; delivery is fenced until the operator cuts over")
 			default:
 				writeError(w, http.StatusInternalServerError, "internal error")
 			}
@@ -215,6 +217,8 @@ func NewAdminHandler(reg *meta.Registry, coord *groups.Coordinator, q *queue.Man
 				writeError(w, http.StatusNotFound, err.Error())
 			case errors.Is(err, queue.ErrNotAQueue):
 				writeError(w, http.StatusBadRequest, err.Error())
+			case errors.Is(err, queue.ErrFederatedPassive):
+				writeError(w, http.StatusConflict, "queue is passively federated on this cluster; acks are fenced until the operator cuts over")
 			default:
 				writeError(w, http.StatusInternalServerError, "internal error")
 			}

@@ -11,7 +11,7 @@ Non-negotiables: storage review for data-plane diffs; plan changes land here fir
 | Slice | Delivers | Review gate |
 |---|---|---|
 | 1 (**delivered 2026-11-13**) | Internal topics `__federation_peers` / `__federation_cursors`; `FederationService` skeleton registered on the mesh listener; registration API-key scope `federation`; admin HTTP endpoints (`POST/GET/DELETE /federation/peers`, `POST /federation/keys`, `GET /federation/cursors`) | API + storage review (shared internal log) |
-| 2 | `passive` one-way mode: source `FederationFetch`; sink write fence; byte-identical block import; `__queue_attempts` mirror; **sink stays idle until cutover** | **mandatory (storage-adjacent)** |
+| 2 (**delivered 2026-11-13**) | `passive` one-way mode: source `FederationFetch` over the mesh (mTLS + federation key); sink write fence on produce/pull/ack (gRPC `FailedPrecondition`, HTTP 409); byte-identical import of topics/partitions via the existing replicated-apply path (offsets/timestamps preserved; `cmp`-identical segments verified live); `__queue_attempts` mirror byte-identical; queue message logs ride along with named queues; sink delivery engine stays idle until cutover | **mandatory (storage-adjacent) — owner review pending** |
 | 3 | Cursor materialization to FetchResponse `federation_hwm`; `firn federation status`; `firn_federation_cursor_lag_*` metric; admin UI federation section (read-only) | API + docs review |
 | 4 | `active-active` full mode: frame pull + re-origin through existing append path; cursor origin/range tracking; echo prevention by cursor invariant; **no new storage code outside broker/replication/fencereplica layers** | **mandatory (storage-adjacent)** |
 | 5 | Active-active queues: `__queue_attempts` both-way replication; convergence test (competing consumers in both clusters → exactly one cluster processes); DLQ convergence test | **mandatory** |
@@ -30,11 +30,15 @@ Non-negotiables: storage review for data-plane diffs; plan changes land here fir
 
 ### Slice 2 — passive one-way mode
 
-- Puller (`internal/federation/puller.go`): per (peer, topic, partition) loop with `-federation-interval`, `-federation-batch` (default 1024 frames), `-federation-max-range` (default 16 MiB).
-- Sink write fence: injecting a `fence` entry check into broker produce path for federated topics (result: gRPC `FailedPrecondition` / HTTP 409 `federated: passive`).
-- Import path reuses the byte-identical replication-apply path (`AppendReplicatedFrames` / Seal discipline) — offsets preserved exactly.
-- Queues: `__queue_attempts` mirrored byte-identically; **delivery engine on the sink stays idle** (per ADR-010) until operator flips the policy mode.
-- Tests: identical-bytes equality test (byte-compare segment files source→sink); timestamp preservation; register/deregister with live pull running; write-fence rejection; passive DLQ/attempts mirror byte equality after churn.
+Delivered 2026-11-13. Notes and deltas vs the original spec (this plan section is authoritative):
+
+- Registration now carries the peer-issued bearer `key` (required for direction `in|both` — ADR-010's "addr + CA + key + policy"; `out` is admitted as policy but moves no data in v1, since federation is pull-only); key is never echoed by any endpoint (`keySet` is reported instead). Optional `server_name` for peers whose cert SANs don't match the dial host. Selectors reject `__`-prefixed internal names at registration; the shared CA is the assumed peer-verification topology (a peer-pinned CA may be supplied via `ca_crt_pem`).
+- `__queue_attempts` is mirrored **byte-identically, all-or-nothing** when any queue is in scope; a filtered per-queue attempts mirror is impossible in a byte-identical world (offset forks). Attempts carry no payload. A sink with a non-empty attempts log that has served a federated queue must be reseeded (documented in ADR-010).
+- Named queues in a selector import the queue's **message log** too (queue-mode topic), not only the attempts bookkeeper; byte-identical as well.
+- Selector semantics matching ADR-010: only a completely empty selector expands to "all local topics"; `queues: ["jobs"]` alone never pulls unrelated streams.
+- Live two-cluster verification (shared mesh CA, strict bootstrap): byte-identical `cmp` of segment files on both sides for topics, queues, and `__queue_attempts`; crash-resume via persisted cursors; produce on sink → `FailedPrecondition`/HTTP 409; queue pull/ack on sink → HTTP 409; federation keys can `FederationFetch` and nothing else; federation keys cannot produce.
+- Federation puller nodes hold no output credentials; the sink authenticates **to** the peer. No inbound port exposure is added on either side.
+- Out of scope (documented): per-queue attempts filtering; push federation; metrics (`firn_federation_*`) land in slice 3.
 
 ### Slice 3 — cursor surfacing
 

@@ -46,6 +46,11 @@ const (
 // ErrUnknownDelivery is returned when Ack references an unknown/expired id.
 var ErrUnknownDelivery = errors.New("firn/queue: unknown delivery id")
 
+// ErrFederatedPassive is returned when a Pull/Ack targets a queue that is
+// federated in passive mode on this cluster — the delivery engine stays
+// idle until the operator cuts over (ADR-010).
+var ErrFederatedPassive = errors.New("firn/queue: queue is federated passively; delivery is fenced until cutover")
+
 // ErrQueueNotFound / ErrInvalidQueue complement the meta errors with
 // queue-specific context. Map to codes.NotFound / codes.InvalidArgument.
 var (
@@ -101,8 +106,22 @@ type Manager struct {
 
 	now func() time.Time
 
+	// fedFence is the passive-federation sink fence (ADR-010): queues in
+	// scope of a passive inbound peer refuse delivery and acks on this
+	// cluster until the operator cuts over. Nil = no fence. Late-bound.
+	fedFence func(queue string) bool
+
 	mu     sync.Mutex
 	queues map[string]*queueState
+}
+
+// SetFederationFence binds the passive-federation queue delivery fence.
+// Late-bound by the daemon after peer registration is wired; nil fence
+// means every queue delivers normally (single-node default).
+func (m *Manager) SetFederationFence(f func(queue string) bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.fedFence = f
 }
 
 // NewManager builds queue state for the queue-mode topics in reg and seeds
@@ -204,6 +223,9 @@ func (m *Manager) Pull(ctx context.Context, queue string, maxMessages int, visib
 	if err != nil {
 		return nil, err
 	}
+	if m.fedFence != nil && m.fedFence(queue) {
+		return nil, fmt.Errorf("%w: %s", ErrFederatedPassive, queue)
+	}
 	now := m.now()
 	m.expireLocked(now)
 
@@ -289,6 +311,9 @@ func (m *Manager) Ack(ctx context.Context, queue, deliveryID string) error {
 	q, err := m.queueStateLocked(queue)
 	if err != nil {
 		return err
+	}
+	if m.fedFence != nil && m.fedFence(queue) {
+		return fmt.Errorf("%w: %s", ErrFederatedPassive, queue)
 	}
 	m.expireLocked(m.now())
 	p, ok := q.pending[deliveryID]

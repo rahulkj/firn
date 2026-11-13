@@ -284,11 +284,30 @@ message GetMetadataResponse {
 | `404` | Not found |
 | `405` | Wrong method for path |
 | `409` | Topic already exists |
+| `409` | Resource is passively federated on this cluster (`federated: passive`) — sink is read-only until cutover |
 | `429` | Rate limited |
 | `500` | Internal error |
 | `503` | Subsystem not configured (e.g. queue manager on a read-only node); internal topic fenced on this node — another node holds the lease; retry there |
 
 ---
+
+## Federation (preview, ADR-010)
+
+Multiple Firn clusters can register as peers and replicate records one-way (`passive` — source → sink, byte-identical, offsets preserved) with the sink fenced against local writes until an operator cuts over. Registration is out-of-band: each side mints a federation-scoped key (`firn-cli federation keys`) and hands it to the other side.
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/federation/peers` | Register (or overwrite) a peer. Body: `{name, addr, direction (in\|out\|both), mode (passive\|active-active), key, topics?[], queues?[], ca_crt_pem? (base64 PEM), server_name?}`. `key` is the bearer issued by the **peer**; `direction` `in`/`both` require it. Never echoed by any endpoint. |
+| `GET` | `/federation/peers` | List peers (`keySet` is reported; the key is not). |
+| `DELETE` | `/federation/peers/{name}` | Remove a peer. Cursors for the peer are **not** deleted; a full re-import requires deleting the peer and re-registering (operator action). |
+| `POST` | `/federation/keys` | Mint a federation-scoped key for *this* cluster (shown once). Body: `{name, allowed_ips?[]}`. |
+| `GET` | `/federation/cursors` | Import progress per `(peer, topic, partition)`. |
+
+gRPC: `FederationService` is served **only on the mesh listener** (mTLS + federation key). `FederationFetch` returns raw, CRC-checked frame windows for `[first_offset, last_offset]` (clamped to source HWM; internal topics refused except `__queue_attempts`). Normal keys cannot call it; federation keys cannot call anything else.
+
+`firn-cli`: `firn-cli federation add-peer|list-peers|remove-peer|keys|status` — see the command map below.
+
+Status codes: passive registration `201`; produce/pull/ack on a passively-federated resource → gRPC `FailedPrecondition` / HTTP `409` (`federated: passive`); sink stays read-only until cutover. Passive mode is a preview; active-active is not yet available. Full details: `docs/plans/004-federation.md`, cutover runbook lands in slice 6.
 
 ## Internal services (never call from clients)
 
@@ -379,6 +398,7 @@ Failure modes operators actually see: a partition leader that loses quorum steps
 | `dlq list` | gRPC `Fetch` on `<queue>.dlq` |
 | `dlq redrive` | gRPC `Fetch` (dlq) + `Produce` (source queue) |
 | `create-apikey` / `revoke-apikey` / `list-apikeys` | `POST /apikeys` / `DELETE /apikeys/{name}` / `GET /apikeys` |
+| `federation add-peer` / `list-peers` / `remove-peer` / `keys` / `status` | `POST /federation/peers` / `GET /federation/peers` / `DELETE /federation/peers/{name}` / `POST /federation/keys` / `GET /federation/cursors` |
 
 ## Audit trail
 

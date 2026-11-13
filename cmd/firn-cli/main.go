@@ -385,18 +385,30 @@ func cmdFederationAddPeer(args []string) error {
 	mode := fs.String("mode", "passive", "mode: passive|active-active")
 	topics := fs.String("topics", "", "comma-separated topic names (empty = all)")
 	queues := fs.String("queues", "", "comma-separated queue names (empty = all)")
-	ca := fs.String("ca-cert", "", "peer CA PEM path (for outbound TLS verification; optional)")
+	ca := fs.String("ca-cert", "", "peer CA PEM path (pins the peer's server cert; optional when both clusters share a mesh CA)")
+	serverName := fs.String("server-name", "", "TLS server name for the peer cert verification (default: host part of --addr)")
+	peerKeyFlag := fs.String("key", "", "bearer key issued BY the peer cluster for this cluster (required for direction in|both); or set FIRN_PEER_KEY")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
 	if *name == "" || *addr == "" {
 		return fmt.Errorf("--name and --addr are required")
 	}
+	peerKey := *peerKeyFlag
+	if peerKey == "" {
+		peerKey = os.Getenv("FIRN_PEER_KEY")
+	}
 	fmtPeerBody := map[string]any{
 		"name":      *name,
 		"addr":      *addr,
 		"direction": *direction,
 		"mode":      *mode,
+	}
+	if *serverName != "" {
+		fmtPeerBody["server_name"] = *serverName
+	}
+	if peerKey != "" {
+		fmtPeerBody["key"] = peerKey
 	}
 	if *topics != "" {
 		parts := strings.Split(*topics, ",")

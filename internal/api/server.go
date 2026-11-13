@@ -216,6 +216,8 @@ func queueToStatus(err error) error {
 		return status.Error(codes.InvalidArgument, err.Error())
 	case errors.Is(err, queue.ErrUnknownDelivery):
 		return status.Error(codes.NotFound, err.Error())
+	case errors.Is(err, queue.ErrFederatedPassive):
+		return status.Error(codes.FailedPrecondition, err.Error())
 	default:
 		return toStatus(err)
 	}
@@ -325,7 +327,7 @@ func toStatus(err error) error {
 		return status.Error(codes.NotFound, err.Error())
 	case errors.Is(err, broker.ErrPartitionOutOfRange), errors.Is(err, broker.ErrInvalidRequest):
 		return status.Error(codes.InvalidArgument, err.Error())
-	case errors.Is(err, firnlog.ErrOffsetOutOfRange), errors.Is(err, fence.ErrFenced):
+	case errors.Is(err, firnlog.ErrOffsetOutOfRange), errors.Is(err, fence.ErrFenced), errors.Is(err, broker.ErrFederatedPassive):
 		return status.Error(codes.FailedPrecondition, err.Error())
 	default:
 		log.Printf("firn/api: internal error: %v", err)

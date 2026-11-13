@@ -35,6 +35,39 @@ func TestValidateShapeRejectsEmptyFields(t *testing.T) {
 	}
 }
 
+func TestValidateShapeRequiresKeyForInbound(t *testing.T) {
+	in := Peer{Name: "ok", Addr: "n:1", Direction: DirectionIn, Mode: ModePassive}
+	if err := ValidateShape(in); err == nil {
+		t.Fatal("direction in without key must error")
+	}
+	both := in
+	both.Direction = DirectionBoth
+	if err := ValidateShape(both); err == nil {
+		t.Fatal("direction both without key must error")
+	}
+	out := Peer{Name: "ok", Addr: "n:1", Direction: DirectionOut, Mode: ModePassive}
+	if err := ValidateShape(out); err != nil {
+		t.Fatalf("direction out must not require a key: %v", err)
+	}
+	in.Key = "secret"
+	if err := ValidateShape(in); err != nil {
+		t.Fatalf("direction in with key must pass: %v", err)
+	}
+}
+
+func TestValidateShapeRejectsInternalSelectors(t *testing.T) {
+	p := Peer{Name: "ok", Addr: "n:1", Direction: DirectionIn, Mode: ModePassive, Key: "k",
+		Selectors: []Selector{{Topics: []string{"__audit"}}}}
+	if err := ValidateShape(p); err == nil {
+		t.Fatal("internal topic in selector must error")
+	}
+	p = Peer{Name: "ok", Addr: "n:1", Direction: DirectionIn, Mode: ModePassive, Key: "k",
+		Selectors: []Selector{{Queues: []string{"__consumer_offsets"}}}}
+	if err := ValidateShape(p); err == nil {
+		t.Fatal("internal name in queue selector must error")
+	}
+}
+
 func TestParseDirectionAndMode(t *testing.T) {
 	d, err := ParseDirection("in")
 	if err != nil || d != DirectionIn {
@@ -67,7 +100,7 @@ func TestPeerAddListRemoveRoundTrip(t *testing.T) {
 	if peers := s.ListPeers(); len(peers) != 0 {
 		t.Fatalf("fresh store should have no peers, got %d", len(peers))
 	}
-	p := Peer{Name: "peer-a", Addr: "n1:9001", Direction: DirectionBoth, Mode: ModePassive,
+	p := Peer{Name: "peer-a", Addr: "n1:9001", Direction: DirectionBoth, Mode: ModePassive, Key: "peer-key-abc",
 		Selectors: []Selector{{Topics: []string{"orders"}, Queues: nil}}}
 	if err := s.AddPeer(p); err != nil {
 		t.Fatalf("AddPeer: %v", err)
@@ -122,7 +155,7 @@ func TestCursorUpsertAndDelete(t *testing.T) {
 		t.Fatalf("cursor updated: %+v", cs)
 	}
 	// RemoveWholePeer drops it:
-	if err := s.AddPeer(Peer{Name: "p", Addr: "n:1", Direction: DirectionIn, Mode: ModePassive}); err != nil {
+	if err := s.AddPeer(Peer{Name: "p", Addr: "n:1", Direction: DirectionIn, Mode: ModePassive, Key: "k"}); err != nil {
 		t.Fatalf("AddPeer: %v", err)
 	}
 	removed := s.RemoveWholePeer("p")
@@ -140,7 +173,7 @@ func TestPeerPersistenceAcrossReload(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenFromDir: %v", err)
 	}
-	p := Peer{Name: "peer-a", Addr: "n1:9001", Direction: DirectionIn, Mode: ModePassive}
+	p := Peer{Name: "peer-a", Addr: "n1:9001", Direction: DirectionIn, Mode: ModePassive, Key: "k"}
 	if err := s1.AddPeer(p); err != nil {
 		t.Fatalf("AddPeer: %v", err)
 	}
@@ -160,7 +193,7 @@ func TestPeerPersistenceAcrossReload(t *testing.T) {
 
 func TestDeleteMarkerInFold(t *testing.T) {
 	s := OpenInMemory()
-	p := Peer{Name: "x", Addr: "n:1", Direction: DirectionIn, Mode: ModePassive}
+	p := Peer{Name: "x", Addr: "n:1", Direction: DirectionIn, Mode: ModePassive, Key: "k"}
 	if err := s.AddPeer(p); err != nil {
 		t.Fatalf("AddPeer: %v", err)
 	}

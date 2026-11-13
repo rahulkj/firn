@@ -25,6 +25,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/hex"
 	"encoding/json"
 	"flag"
@@ -139,6 +140,46 @@ func advertisedAddr(addr string) string {
 	return net.JoinHostPort(host, port)
 }
 
+// dialFederationPeer builds a TLS connection to a peer cluster's mesh
+// listener for FederationService calls (ADR-010, slice 2).
+//
+// The federation channel requires mutual TLS — the mesh listener only
+// accepts clients presenting a cert signed by this cluster's mesh CA, which
+// is the same CA the peer must chain to. Cross-cluster federation therefore
+// assumes a shared mesh CA (single operator, dev/staging/prod). Distinct
+// per-cluster CAs fail the handshake by design; the puller logs and retries.
+//
+// The peer record may carry its own CA (ca_crt_pem) — when set it replaces
+// the local pool for *verifying the peer's server cert* (still useful when
+// both clusters share the CA but the operator wants pinning to it).
+// The bearer key travels as RPC metadata, attached by the puller.
+func dialFederationPeer(bundle *meshca.Bundle, peer federation.Peer) (*grpc.ClientConn, error) {
+	if peer.Addr == "" {
+		return nil, fmt.Errorf("federation: peer %q has no addr", peer.Name)
+	}
+	serverName := peer.ServerName
+	if serverName == "" {
+		host, _, err := net.SplitHostPort(peer.Addr)
+		if err != nil {
+			return nil, fmt.Errorf("federation: peer %q addr %q is not host:port: %w", peer.Name, peer.Addr, err)
+		}
+		serverName = host
+	}
+	tlsCfg := bundle.ClientTLSConfig(serverName)
+	if len(peer.CACrtPEM) > 0 {
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(peer.CACrtPEM) {
+			return nil, fmt.Errorf("federation: peer %q ca_crt_pem does not parse as a PEM CA certificate", peer.Name)
+		}
+		tlsCfg.RootCAs = pool
+	}
+	conn, err := grpc.NewClient(peer.Addr, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
+	if err != nil {
+		return nil, fmt.Errorf("federation: dial %s: %w", peer.Addr, err)
+	}
+	return conn, nil
+}
+
 // chainInterceptors chains two unary interceptors into one, applied left-to-right.
 func chainInterceptors(a, b grpc.UnaryServerInterceptor) grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
@@ -202,6 +243,9 @@ func main() {
 	adminHTML := flag.Bool("admin-ui", true, "serve the read-only admin UI at / on the HTTP listener")
 	metricsAuth := flag.Bool("metrics-auth", true, "require a viewer key on /metrics (set false for Prometheus scrape without credentials; not recommended)")
 	anonRate := flag.Int("anon-rate", 20, "max anonymous ops per -anon-window per source IP on unauthenticated endpoints (healthz, refusal attempts). 0 = unlimited.")
+	federationInterval := flag.Duration("federation-interval", 500*time.Millisecond, "federation pull cadence (passive one-way mode)")
+	federationBatch := flag.Int("federation-batch", 1024, "max frames per federation pull window")
+	federationMaxRange := flag.Int64("federation-max-range", 1<<20, "max bytes per federation pull window")
 	anonWindow := flag.Duration("anon-window", time.Minute, "sliding window for -anon-rate")
 	meshAddr := flag.String("mesh-addr", "", "mesh (internal) gRPC listen address — defaults to -grpc-addr with the port bumped by 10; serves only QuorumService/ReplicaService behind mTLS")
 	meshCABundle := flag.String("mesh-ca-bundle", "", "pre-provisioned mesh cluster CA certificate PEM (alternative to auto-provision; required for non-loopback clusters)")
@@ -435,16 +479,13 @@ func main() {
 		b.SetClusterView(&replication.SingleNodeView{NodeID: "single", Addr: advertisedAddr(*grpcAddr)})
 	}
 
-	// Federation control-plane (ADR-010, slice 1): open the internal
+	// Federation control-plane (ADR-010, slice 2): open the internal
 	// shared logs and expose them to the admin handler in read/write mode.
-	// Slice 1 has zero data motion — registration only.
+	// Imports from any passive-mode peer start on the pull cadence.
 	var federationStore *federation.Store
 	if *dataDir == "" {
 		federationStore = federation.OpenInMemory()
 	} else {
-		// Reuse the broker's shared internal-log handles for __federation_peers
-		// and __federation_cursors so there is exactly one FileLog per internal
-		// topic in the process — same model as __consumer_offsets/__audit.
 		federationStore = federation.OpenInMemory()
 		if fl, ok := b.InternalLog("__federation_peers"); ok {
 			federationStore.SetPeersLog(fl)
@@ -453,6 +494,59 @@ func main() {
 			federationStore.SetCursorsLog(fl)
 		}
 	}
+	// Build the passive-write fence once and share it between the produce
+	// path (broker) and the queue delivery path (qm): topics/queues selected
+	// by passive inbound peers are read-only on this broker until an
+	// operator cuts over. ListPeersCached folds at most once per second,
+	// so the hot append path never re-folds on every write.
+	federatedPassive := func(name string, _ int32) bool {
+		for _, peer := range federationStore.ListPeersCached(time.Second) {
+			if peer.Mode != federation.ModePassive {
+				continue
+			}
+			if peer.Direction != federation.DirectionIn && peer.Direction != federation.DirectionBoth {
+				continue
+			}
+			for _, sel := range peer.Selectors {
+				for _, t := range sel.Topics {
+					if t == name {
+						return true // passively federated here: sink, not writer
+					}
+				}
+				for _, q := range sel.Queues {
+					if q == name {
+						return true // passively federated here: delivery engine stays idle
+					}
+				}
+				// An empty selector means "everything everywhere".
+				if len(sel.Topics) == 0 && len(sel.Queues) == 0 {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	b.SetFederationFence(federatedPassive)
+	qm.SetFederationFence(func(queue string) bool { return federatedPassive(queue, 0) })
+
+	// Federation puller: no-ops until a passive peer is registered; then
+	// imports selected topics/partitions (and __queue_attempts) on the
+	// configured cadence. It only ever reads from the peer, so an empty
+	// peer set costs one timer tick.
+	pullerCtx, pullerCancel := context.WithCancel(context.Background())
+	defer pullerCancel()
+	puller := federation.NewPuller(federation.PullerConfig{
+		Broker:   b,
+		Store:    federationStore,
+		Interval: *federationInterval,
+		Batch:    *federationBatch,
+		MaxRange: *federationMaxRange,
+		Dial: func(ctx context.Context, peer federation.Peer) (*grpc.ClientConn, error) {
+			_ = ctx // grpc.NewClient is lazy; no deadline to honour at dial time
+			return dialFederationPeer(meshBundle, peer)
+		},
+	})
+	go puller.Run(pullerCtx)
 
 	// Metrics (slice 6, ADR-006).
 	met := metrics.New(b.Groups(), qm)
@@ -562,7 +656,7 @@ func main() {
 		os.Exit(1)
 	}
 	// Register FederationService on the mesh listener (mTLS-gated).
-	firnpb.RegisterFederationServiceServer(meshServer, api.NewFederationServer())
+	firnpb.RegisterFederationServiceServer(meshServer, api.NewFederationServer(b))
 
 	go func() {
 		if err := meshServer.Serve(meshLis); err != nil {

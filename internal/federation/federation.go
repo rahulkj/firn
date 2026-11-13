@@ -97,12 +97,20 @@ type Selector struct {
 }
 
 // Peer is one registered peer cluster. Name is unique within this cluster.
-// CACrtPEM is the peer's mesh CA certificate; outbound TLS dial uses it as
-// the root pool.
+// CACrtPEM is the peer's mesh CA certificate; outbound TLS dial verifies the
+// peer against it as the root pool. Key is the bearer token this cluster
+// presents to the peer's FederationService — issued by the peer out-of-band
+// (ADR-010). Stored only in the cluster-local replicated internal log; never
+// returned by the admin API (key material stays write-only, like API keys).
+// ServerName overrides the TLS server name used when verifying the peer
+// (defaults to the host part of Addr); required when the peer cert's DNS SANs
+// don't match the dial address.
 type Peer struct {
 	Name        string     `json:"name"`
 	Addr        string     `json:"addr"`
 	CACrtPEM    []byte     `json:"ca_crt_pem,omitempty"`
+	ServerName  string     `json:"server_name,omitempty"`
+	Key         string     `json:"key,omitempty"`
 	Direction   Direction  `json:"direction"`
 	Mode        Mode       `json:"mode"`
 	Selectors   []Selector `json:"selectors"`
@@ -121,6 +129,12 @@ type Cursor struct {
 	Mode             Mode   `json:"mode"`
 	UpdatedUnix      int64  `json:"updated_unix"`
 }
+
+// internalPrefix is the reserved namespace for firn-internal topics. No
+// selector may reference it: internal topics are cluster-local by design.
+// The single exception is __queue_attempts, which the puller mirrors
+// byte-identically on its own when queues are in scope — never via a selector.
+const internalPrefix = "__"
 
 var policyPrefixes = []string{"__federation_", "__api_keys", "__audit", "__consumer_offsets", "__queue_attempts"}
 
@@ -149,15 +163,27 @@ func ValidateShape(p Peer) error {
 	default:
 		return fmt.Errorf("federation: mode %d out of range", p.Mode)
 	}
+	switch p.Direction {
+	case DirectionIn, DirectionBoth:
+		if strings.TrimSpace(p.Key) == "" {
+			return errors.New("federation: direction in|both requires the peer-issued bearer key (--key)")
+		}
+	}
 	for _, sel := range p.Selectors {
 		for _, t := range sel.Topics {
 			if t == "" {
 				return errors.New("federation: topic in selector must not be empty")
 			}
+			if strings.HasPrefix(t, internalPrefix) {
+				return fmt.Errorf("federation: internal topic %q cannot be federated", t)
+			}
 		}
 		for _, q := range sel.Queues {
 			if q == "" {
 				return errors.New("federation: queue in selector must not be empty")
+			}
+			if strings.HasPrefix(q, internalPrefix) {
+				return fmt.Errorf("federation: internal name %q cannot be federated", q)
 			}
 		}
 	}
@@ -180,6 +206,9 @@ type Store struct {
 
 	peerCache map[string]Peer
 	curCache  map[string]Cursor
+
+	cacheFresh bool
+	cacheAt    time.Time
 }
 
 // OpenFromDir opens the two internal federation logs rooted at dir.
@@ -264,6 +293,34 @@ func (s *Store) ListPeers() []Peer {
 	return out
 }
 
+// ListPeersCached returns the peer list, refolding the internal logs at most
+// once per maxAge. Used by the produce/queue hot path: internal logs are
+// tiny but the append path must not re-fold on every write.
+func (s *Store) ListPeersCached(maxAge time.Duration) []Peer {
+	now := time.Now()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.cacheFresh && now.Sub(s.cacheAt) < maxAge {
+		return sortedPeers(s.peerCache)
+	}
+	if err := s.loadLocked(); err != nil {
+		// Serve the stale cache on read errors rather than blocking producers.
+		return sortedPeers(s.peerCache)
+	}
+	s.cacheFresh = true
+	s.cacheAt = now
+	return sortedPeers(s.peerCache)
+}
+
+func sortedPeers(cache map[string]Peer) []Peer {
+	out := make([]Peer, 0, len(cache))
+	for _, p := range cache {
+		out = append(out, p)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
+}
+
 // GetPeer returns one peer by name.
 func (s *Store) GetPeer(name string) (Peer, bool) {
 	s.mu.Lock()
@@ -332,6 +389,8 @@ func (s *Store) loadLocked() error {
 		}
 	}
 	s.curHWM = s.cursors.HighWatermark()
+	s.cacheFresh = true
+	s.cacheAt = time.Now()
 	return nil
 }
 

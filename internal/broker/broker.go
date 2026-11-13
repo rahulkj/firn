@@ -37,6 +37,10 @@ var ErrInvalidRequest = errors.New("firn/broker: invalid fetch request")
 // lease holder may append).
 var ErrNotLeaseHolder = errors.New("firn/broker: not lease holder for partition")
 
+// ErrFederatedPassive is returned when a produce targets a partition that
+// is federated in passive mode on this node — it is a sink, not a writer.
+var ErrFederatedPassive = errors.New("firn/broker: topic/partition is federated passively; writes are rejected")
+
 // LeaseAdvisor reports which node holds a partition's write lease.
 // firnd wires it in cluster mode; single-node mode leaves it nil.
 type LeaseAdvisor interface {
@@ -79,6 +83,11 @@ type Broker struct {
 	// gateBox is the internal-topic write fence (see internal/fence).
 	// Late-bound by the daemon after the quorum starts (cluster mode).
 	gateBox *fence.GateBox
+
+	// federationFence is the passive-federation write fence (ADR-010):
+	// topics selected by an inbound passive peer are read-only on this
+	// broker until an operator cuts over. Late-bound by the daemon.
+	federationFence FederationFence
 }
 
 // InternalLogNames returns the internal topic names whose FileLogs are
@@ -127,6 +136,18 @@ func WithBlockSealing(d time.Duration) Option {
 	return func(b *Broker) { b.sealAge = d }
 }
 
+// FederationFence reports whether (topic, partition) is federated in passive
+// mode on this cluster. True means the local broker is a sink for the
+// partition and must refuse local appends. Default: nil (no fence).
+type FederationFence func(topic string, partition int32) bool
+
+// SetFederationFence binds the passive-federation write fence.
+func (b *Broker) SetFederationFence(f FederationFence) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.federationFence = f
+}
+
 // SetAdvisor wires the cluster write-lease check. Only firnd in cluster
 // mode calls this; nil advisor = single-node, all writes allowed.
 func (b *Broker) SetAdvisor(a LeaseAdvisor) { b.advisor = a }
@@ -136,6 +157,15 @@ func (b *Broker) ListTopics() []meta.Topic { return b.reg.List() }
 
 // TopicMeta returns metadata for a topic.
 func (b *Broker) TopicMeta(name string) (meta.Topic, error) { return b.reg.Get(name) }
+
+// Topics returns the names of all registered topics, including queue-mode topics.
+func (b *Broker) Topics() []string {
+	out := []string{}
+	for _, t := range b.reg.List() {
+		out = append(out, t.Name)
+	}
+	return out
+}
 
 // Advisor returns the configured lease advisor (nil in single-node mode).
 func (b *Broker) Advisor() LeaseAdvisor { return b.advisor }
@@ -295,6 +325,10 @@ func (b *Broker) Produce(ctx context.Context, topic string, key, value []byte) (
 	}
 
 	partition := b.assign(t.Partitions, key)
+
+	if b.federationFence != nil && b.federationFence(topic, partition) {
+		return 0, 0, fmt.Errorf("%w: %s partition %d", ErrFederatedPassive, topic, partition)
+	}
 
 	if b.advisor != nil && !b.advisor.WriteAllowed(topic, partition) {
 		return 0, 0, fmt.Errorf("%w: %s partition %d", ErrNotLeaseHolder, topic, partition)
