@@ -31,9 +31,10 @@ type ClusterAdmin struct {
 type AdminOption func(*adminConfig)
 
 type adminConfig struct {
-	ca    *ClusterAdmin
-	keys  *apikeys.Store
-	audit *audit.Store
+	ca         *ClusterAdmin
+	keys       *apikeys.Store
+	audit      *audit.Store
+	federation *FederationSink
 }
 
 // WithClusterAdmin installs cluster-aware topic creation. Pass nil to get
@@ -50,6 +51,12 @@ func WithAPIKeys(store *apikeys.Store) AdminOption {
 // WithAudit wires the audit store; admin mutations emit an audit record.
 func WithAudit(s *audit.Store) AdminOption {
 	return func(c *adminConfig) { c.audit = s }
+}
+
+// WithFederation wires the federation control-plane backing store.
+// The broker passes shared handles from its internal-topics registry.
+func WithFederation(fs *FederationSink) AdminOption {
+	return func(c *adminConfig) { c.federation = fs }
 }
 
 // NewAdminHandler returns the HTTP/JSON admin surface (docs/adr/002-api.md):
@@ -285,6 +292,9 @@ func NewAdminHandler(reg *meta.Registry, coord *groups.Coordinator, q *queue.Man
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "revoked", "name": name})
 	})
+
+	// Federation control plane (ADR-010, slice 1) — only registered when a sink is wired.
+	adminRegisterFederationRoutes(mux, cfg)
 
 	mux.HandleFunc("GET /groups", func(w http.ResponseWriter, r *http.Request) {
 		if coord == nil {

@@ -783,3 +783,161 @@ var ReplicaService_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "firn.proto",
 }
+
+const (
+	FederationService_FederationFetch_FullMethodName  = "/firn.v1.FederationService/FederationFetch"
+	FederationService_FederationReport_FullMethodName = "/firn.v1.FederationService/FederationReport"
+)
+
+// FederationServiceClient is the client API for FederationService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// FederationService (ADR-010): inter-cluster peer registration and
+// frame/block transfer. Used only between two Firn clusters that have
+// explicitly registered with each other; never exposed to clients.
+type FederationServiceClient interface {
+	// FederationFetch pulls frames in [first_offset, last_offset] from this
+	// cluster's slice of the requested topic. Returns a checksummed frame
+	// stream identical in wire shape to ReplicaService frames.
+	FederationFetch(ctx context.Context, in *FederationFetchRequest, opts ...grpc.CallOption) (*FederationFetchResponse, error)
+	// FederationReport returns this cluster's cursor/watermark for the
+	// requested topic — used by peer clusters to compute lag.
+	FederationReport(ctx context.Context, in *FederationReportRequest, opts ...grpc.CallOption) (*FederationReportResponse, error)
+}
+
+type federationServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewFederationServiceClient(cc grpc.ClientConnInterface) FederationServiceClient {
+	return &federationServiceClient{cc}
+}
+
+func (c *federationServiceClient) FederationFetch(ctx context.Context, in *FederationFetchRequest, opts ...grpc.CallOption) (*FederationFetchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FederationFetchResponse)
+	err := c.cc.Invoke(ctx, FederationService_FederationFetch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *federationServiceClient) FederationReport(ctx context.Context, in *FederationReportRequest, opts ...grpc.CallOption) (*FederationReportResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(FederationReportResponse)
+	err := c.cc.Invoke(ctx, FederationService_FederationReport_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// FederationServiceServer is the server API for FederationService service.
+// All implementations must embed UnimplementedFederationServiceServer
+// for forward compatibility.
+//
+// FederationService (ADR-010): inter-cluster peer registration and
+// frame/block transfer. Used only between two Firn clusters that have
+// explicitly registered with each other; never exposed to clients.
+type FederationServiceServer interface {
+	// FederationFetch pulls frames in [first_offset, last_offset] from this
+	// cluster's slice of the requested topic. Returns a checksummed frame
+	// stream identical in wire shape to ReplicaService frames.
+	FederationFetch(context.Context, *FederationFetchRequest) (*FederationFetchResponse, error)
+	// FederationReport returns this cluster's cursor/watermark for the
+	// requested topic — used by peer clusters to compute lag.
+	FederationReport(context.Context, *FederationReportRequest) (*FederationReportResponse, error)
+	mustEmbedUnimplementedFederationServiceServer()
+}
+
+// UnimplementedFederationServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedFederationServiceServer struct{}
+
+func (UnimplementedFederationServiceServer) FederationFetch(context.Context, *FederationFetchRequest) (*FederationFetchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FederationFetch not implemented")
+}
+func (UnimplementedFederationServiceServer) FederationReport(context.Context, *FederationReportRequest) (*FederationReportResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method FederationReport not implemented")
+}
+func (UnimplementedFederationServiceServer) mustEmbedUnimplementedFederationServiceServer() {}
+func (UnimplementedFederationServiceServer) testEmbeddedByValue()                           {}
+
+// UnsafeFederationServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to FederationServiceServer will
+// result in compilation errors.
+type UnsafeFederationServiceServer interface {
+	mustEmbedUnimplementedFederationServiceServer()
+}
+
+func RegisterFederationServiceServer(s grpc.ServiceRegistrar, srv FederationServiceServer) {
+	// If the following call panics, it indicates UnimplementedFederationServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&FederationService_ServiceDesc, srv)
+}
+
+func _FederationService_FederationFetch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FederationFetchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FederationServiceServer).FederationFetch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FederationService_FederationFetch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FederationServiceServer).FederationFetch(ctx, req.(*FederationFetchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FederationService_FederationReport_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FederationReportRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FederationServiceServer).FederationReport(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FederationService_FederationReport_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FederationServiceServer).FederationReport(ctx, req.(*FederationReportRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// FederationService_ServiceDesc is the grpc.ServiceDesc for FederationService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var FederationService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "firn.v1.FederationService",
+	HandlerType: (*FederationServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "FederationFetch",
+			Handler:    _FederationService_FederationFetch_Handler,
+		},
+		{
+			MethodName: "FederationReport",
+			Handler:    _FederationService_FederationReport_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "firn.proto",
+}

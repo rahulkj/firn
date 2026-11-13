@@ -44,6 +44,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
+	"github.com/rahulkj/firn/internal/federation"
 	"github.com/rahulkj/firn/internal/meshca"
 
 	"github.com/rahulkj/firn/internal/adminui"
@@ -434,6 +435,25 @@ func main() {
 		b.SetClusterView(&replication.SingleNodeView{NodeID: "single", Addr: advertisedAddr(*grpcAddr)})
 	}
 
+	// Federation control-plane (ADR-010, slice 1): open the internal
+	// shared logs and expose them to the admin handler in read/write mode.
+	// Slice 1 has zero data motion — registration only.
+	var federationStore *federation.Store
+	if *dataDir == "" {
+		federationStore = federation.OpenInMemory()
+	} else {
+		// Reuse the broker's shared internal-log handles for __federation_peers
+		// and __federation_cursors so there is exactly one FileLog per internal
+		// topic in the process — same model as __consumer_offsets/__audit.
+		federationStore = federation.OpenInMemory()
+		if fl, ok := b.InternalLog("__federation_peers"); ok {
+			federationStore.SetPeersLog(fl)
+		}
+		if fl, ok := b.InternalLog("__federation_cursors"); ok {
+			federationStore.SetCursorsLog(fl)
+		}
+	}
+
 	// Metrics (slice 6, ADR-006).
 	met := metrics.New(b.Groups(), qm)
 
@@ -493,7 +513,7 @@ func main() {
 	if *adminHTML {
 		mux.Handle("/ui/", authorizer.Wrap(http.StripPrefix("/ui", adminui.Handler(b))))
 	}
-	mux.Handle("/", authorizer.Wrap(api.NewAdminHandler(registry, b.Groups(), qm, api.WithClusterAdmin(ca), api.WithAPIKeys(keysStore), api.WithAudit(auditStore))))
+	mux.Handle("/", authorizer.Wrap(api.NewAdminHandler(registry, b.Groups(), qm, api.WithClusterAdmin(ca), api.WithAPIKeys(keysStore), api.WithAudit(auditStore), api.WithFederation(api.NewFederationSink(federationStore, api.FederationModeReadWrite)))))
 	httpSrv := &http.Server{Addr: *httpAddr, Handler: api.LoggingMiddleware(api.HardeningMiddleware(mux)), ReadHeaderTimeout: 5 * time.Second}
 	if tlsCfg != nil {
 		httpSrv.TLSConfig = tlsCfg
@@ -541,6 +561,9 @@ func main() {
 		slog.Error("listen mesh", "addr", *meshAddr, "err", err)
 		os.Exit(1)
 	}
+	// Register FederationService on the mesh listener (mTLS-gated).
+	firnpb.RegisterFederationServiceServer(meshServer, api.NewFederationServer())
+
 	go func() {
 		if err := meshServer.Serve(meshLis); err != nil {
 			slog.Error("mesh serve", "err", err)

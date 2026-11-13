@@ -218,6 +218,42 @@ service ReplicaService {
   rpc ReplicaPut(ReplicaPutRequest) returns (ReplicaPutResponse);
 }
 
+// FederationService (ADR-010): inter-cluster peer registration and
+// frame/block transfer. Used only between two Firn clusters that have
+// explicitly registered with each other; never exposed to clients.
+service FederationService {
+  // FederationFetch pulls frames in [first_offset, last_offset] from this
+  // cluster's slice of the requested topic. Returns a checksummed frame
+  // stream identical in wire shape to ReplicaService frames.
+  rpc FederationFetch(FederationFetchRequest) returns (FederationFetchResponse);
+
+  // FederationReport returns this cluster's cursor/watermark for the
+  // requested topic — used by peer clusters to compute lag.
+  rpc FederationReport(FederationReportRequest) returns (FederationReportResponse);
+}
+
+message FederationFetchRequest {
+  string topic = 1;
+  int32 partition = 2;
+  int64 first_offset = 3;
+  int64 last_offset = 4; // inclusive; clamps to high watermark
+}
+
+message FederationFetchResponse {
+  bytes frames = 1;          // raw frames, frame-aligned; caller re-origins locally
+  int64 source_hwm = 2;      // source partition high watermark at time of fetch
+}
+
+message FederationReportRequest {
+  string topic = 1;
+  int32 partition = 2;
+}
+
+message FederationReportResponse {
+  int64 high_watermark = 1; // source's high watermark
+  int64 retention_horizon = 2;
+}
+
 // --- ADR-007 phase D: client routing surface ---
 
 message PartitionMetadata {

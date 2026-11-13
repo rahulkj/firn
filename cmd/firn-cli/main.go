@@ -24,6 +24,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -138,6 +139,8 @@ func main() {
 		err = cmdGroups()
 	case "dlq":
 		err = cmdDLQ(args[1:])
+	case "federation":
+		err = cmdFederation(args[1:])
 	default:
 		usage()
 		os.Exit(2)
@@ -354,10 +357,289 @@ func cmdMeshCA(args []string) error {
 	return nil
 }
 
+func cmdFederation(args []string) error {
+	if len(args) < 1 {
+		return fmt.Errorf("federation needs a subcommand: add-peer|list-peers|remove-peer|keys|status")
+	}
+	switch args[0] {
+	case "add-peer":
+		return cmdFederationAddPeer(args[1:])
+	case "list-peers":
+		return cmdFederationListPeers()
+	case "remove-peer":
+		return cmdFederationRemovePeer(args[1:])
+	case "keys":
+		return cmdFederationKeys(args[1:])
+	case "status":
+		return cmdFederationStatus()
+	default:
+		return fmt.Errorf("federation: unknown subcommand %q (want: add-peer|list-peers|remove-peer|keys|status)", args[0])
+	}
+}
+
+func cmdFederationAddPeer(args []string) error {
+	fs := flag.NewFlagSet("federation add-peer", flag.ContinueOnError)
+	name := fs.String("name", "", "peer name (required)")
+	addr := fs.String("addr", "", "peer mesh addr host:port (required)")
+	direction := fs.String("direction", "in", "direction: in|out|both")
+	mode := fs.String("mode", "passive", "mode: passive|active-active")
+	topics := fs.String("topics", "", "comma-separated topic names (empty = all)")
+	queues := fs.String("queues", "", "comma-separated queue names (empty = all)")
+	ca := fs.String("ca-cert", "", "peer CA PEM path (for outbound TLS verification; optional)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *name == "" || *addr == "" {
+		return fmt.Errorf("--name and --addr are required")
+	}
+	fmtPeerBody := map[string]any{
+		"name":      *name,
+		"addr":      *addr,
+		"direction": *direction,
+		"mode":      *mode,
+	}
+	if *topics != "" {
+		parts := strings.Split(*topics, ",")
+		t := []string{}
+		for _, p := range parts {
+			t = append(t, strings.TrimSpace(p))
+		}
+		fmtPeerBody["topics"] = t
+	}
+	if *queues != "" {
+		parts := strings.Split(*queues, ",")
+		q := []string{}
+		for _, p := range parts {
+			q = append(q, strings.TrimSpace(p))
+		}
+		fmtPeerBody["queues"] = q
+	}
+	if *ca != "" {
+		pemBytes, err := os.ReadFile(*ca)
+		if err != nil {
+			return fmt.Errorf("read ca-cert: %w", err)
+		}
+		fmtPeerBody["ca_crt_pem"] = base64.StdEncoding.EncodeToString(pemBytes)
+	}
+	body, _ := json.Marshal(fmtPeerBody)
+	httpAddrS := *httpAddr
+	if len(clusterHTTPAddrs) > 0 {
+		httpAddrS = clusterHTTPAddrs[0]
+	}
+	req, err := http.NewRequest("POST", httpScheme()+"://"+httpAddrS+"/federation/peers", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	key, ok := bearerKey()
+	if ok {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	resp, err := httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("federation add-peer: HTTP %d: %s", resp.StatusCode, respBody)
+	}
+	var out map[string]any
+	_ = json.Unmarshal(respBody, &out)
+	if *jsonOut {
+		return printJSON(out)
+	}
+	fmt.Printf("peer %q added (addr=%s, direction=%s, mode=%s)\n", *name, *addr, *direction, *mode)
+	return nil
+}
+
+func cmdFederationListPeers() error {
+	httpAddrS := *httpAddr
+	if len(clusterHTTPAddrs) > 0 {
+		httpAddrS = clusterHTTPAddrs[0]
+	}
+	req, err := http.NewRequest("GET", httpScheme()+"://"+httpAddrS+"/federation/peers", nil)
+	if err != nil {
+		return err
+	}
+	key, ok := bearerKey()
+	if ok {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	resp, err := httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("federation list-peers: HTTP %d: %s", resp.StatusCode, data)
+	}
+	var out struct {
+		Peers []struct {
+			Name      string   `json:"name"`
+			Addr      string   `json:"addr"`
+			Direction string   `json:"direction"`
+			Mode      string   `json:"mode"`
+			Topics    []string `json:"topics"`
+			Queues    []string `json:"queues"`
+			CreatedAt int64    `json:"createdAt"`
+			UpdatedAt int64    `json:"updatedAt"`
+		} `json:"peers"`
+	}
+	_ = json.Unmarshal(data, &out)
+	if *jsonOut {
+		return printJSON(out)
+	}
+	if len(out.Peers) == 0 {
+		fmt.Println("no federation peers registered")
+		return nil
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "NAME\tADDR\tDIRECTION\tMODE\tTOPICS\tQUEUES")
+	for _, p := range out.Peers {
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n", p.Name, p.Addr, p.Direction, p.Mode, strings.Join(p.Topics, ","), strings.Join(p.Queues, ","))
+	}
+	return tw.Flush()
+}
+
+func cmdFederationRemovePeer(args []string) error {
+	fs := flag.NewFlagSet("federation remove-peer", flag.ContinueOnError)
+	name := fs.String("name", "", "peer name (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *name == "" {
+		return fmt.Errorf("--name is required")
+	}
+	httpAddrS := *httpAddr
+	if len(clusterHTTPAddrs) > 0 {
+		httpAddrS = clusterHTTPAddrs[0]
+	}
+	req, err := http.NewRequest("DELETE", httpScheme()+"://"+httpAddrS+"/federation/peers/"+*name, nil)
+	if err != nil {
+		return err
+	}
+	key, ok := bearerKey()
+	if ok {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	resp, err := httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("federation remove-peer: HTTP %d: %s", resp.StatusCode, b)
+	}
+	fmt.Printf("peer %q removed\n", *name)
+	return nil
+}
+
+func cmdFederationKeys(args []string) error {
+	fs := flag.NewFlagSet("federation keys", flag.ContinueOnError)
+	name := fs.String("name", "", "key name (required)")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *name == "" {
+		return fmt.Errorf("--name is required")
+	}
+	httpAddrS := *httpAddr
+	if len(clusterHTTPAddrs) > 0 {
+		httpAddrS = clusterHTTPAddrs[0]
+	}
+	req, err := http.NewRequest("POST", httpScheme()+"://"+httpAddrS+"/federation/keys", bytes.NewReader([]byte(fmt.Sprintf(`{"name":%q}`, *name))))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	key, ok := bearerKey()
+	if ok {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	resp, err := httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusCreated {
+		return fmt.Errorf("federation keys: HTTP %d: %s", resp.StatusCode, data)
+	}
+	var out map[string]any
+	_ = json.Unmarshal(data, &out)
+	if *jsonOut {
+		return printJSON(out)
+	}
+	fmt.Printf("created federation key %q: %s\n", out["name"], out["key"])
+	fmt.Printf("note: the key is shown exactly once; store it now.\n")
+	return nil
+}
+
+func cmdFederationStatus() error {
+	httpAddrS := *httpAddr
+	if len(clusterHTTPAddrs) > 0 {
+		httpAddrS = clusterHTTPAddrs[0]
+	}
+	req, err := http.NewRequest("GET", httpScheme()+"://"+httpAddrS+"/federation/cursors", nil)
+	if err != nil {
+		return err
+	}
+	key, ok := bearerKey()
+	if ok {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
+	resp, err := httpClient().Do(req)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	data, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("federation status: HTTP %d: %s", resp.StatusCode, data)
+	}
+	var out struct {
+		Cursors []struct {
+			Peer             string `json:"peer"`
+			Topic            string `json:"topic"`
+			Partition        int32  `json:"partition"`
+			LastSourceOffset int64  `json:"last_source_offset"`
+			Mode             string `json:"mode"`
+			UpdatedUnix      int64  `json:"updated_unix"`
+		} `json:"cursors"`
+	}
+	_ = json.Unmarshal(data, &out)
+	if *jsonOut {
+		return printJSON(out)
+	}
+	if len(out.Cursors) == 0 {
+		fmt.Println("no federation cursors persisted yet (no data imported yet)")
+		return nil
+	}
+	tw := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	_, _ = fmt.Fprintln(tw, "PEER\tTOPIC\tPARTITION\tLAST-SOURCE-OFFSET\tMODE\tUPDATED")
+	for _, c := range out.Cursors {
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%s\t%d\n", c.Peer, c.Topic, c.Partition, c.LastSourceOffset, c.Mode, c.UpdatedUnix)
+	}
+	return tw.Flush()
+}
+
+func bearerKey() (string, bool) {
+	if *apiKey != "" {
+		return *apiKey, true
+	}
+	if v := os.Getenv("FIRN_API_KEY"); v != "" {
+		return v, true
+	}
+	return "", false
+}
+
 func usage() {
 	fmt.Fprint(os.Stderr, `usage: firn-cli [--addr gRPC] [--http-addr HTTP] [--api-key KEY] [--ca-cert PEM] [--json] <command> [flags]
 
-commands: create-topic create-queue list produce fetch groups dlq create-apikey revoke-apikey list-apikeys mesh-ca
+commands: create-topic create-queue list produce fetch groups dlq create-apikey revoke-apikey list-apikeys mesh-ca federation
 see -h on any command for its flags (e.g. firn-cli produce -h)
 `)
 }

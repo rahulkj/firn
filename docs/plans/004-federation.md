@@ -10,7 +10,7 @@ Non-negotiables: storage review for data-plane diffs; plan changes land here fir
 
 | Slice | Delivers | Review gate |
 |---|---|---|
-| 1 | Internal topics `__federation_peers` / `__federation_cursors`; `FederationService` skeleton + registration keys/passive checks; admin HTTP endpoints (`POST/GET/DELETE /federation/peers`, `POST /federation/keys`, `GET /federation/cursors`); auth scope `federation` | API review |
+| 1 (**delivered 2026-11-13**) | Internal topics `__federation_peers` / `__federation_cursors`; `FederationService` skeleton registered on the mesh listener; registration API-key scope `federation`; admin HTTP endpoints (`POST/GET/DELETE /federation/peers`, `POST /federation/keys`, `GET /federation/cursors`) | API + storage review (shared internal log) |
 | 2 | `passive` one-way mode: source `FederationFetch`; sink write fence; byte-identical block import; `__queue_attempts` mirror; **sink stays idle until cutover** | **mandatory (storage-adjacent)** |
 | 3 | Cursor materialization to FetchResponse `federation_hwm`; `firn federation status`; `firn_federation_cursor_lag_*` metric; admin UI federation section (read-only) | API + docs review |
 | 4 | `active-active` full mode: frame pull + re-origin through existing append path; cursor origin/range tracking; echo prevention by cursor invariant; **no new storage code outside broker/replication/fencereplica layers** | **mandatory (storage-adjacent)** |

@@ -83,7 +83,7 @@ type Broker struct {
 
 // InternalLogNames returns the internal topic names whose FileLogs are
 // shared between the broker, its stores, and the replication agent.
-var InternalLogNames = []string{"__consumer_offsets", "__queue_attempts", "__audit", "__api_keys"}
+var InternalLogNames = []string{"__consumer_offsets", "__queue_attempts", "__audit", "__api_keys", "__federation_peers", "__federation_cursors"}
 
 // InternalGateBox returns the internal-topic write fence box. The daemon
 // fills it in (cluster mode) once the quorum leases exist; until then

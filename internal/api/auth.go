@@ -185,14 +185,26 @@ func (a *auth) Wrap(next http.Handler) http.Handler {
 
 // Commands under this map require the listed role; everything else is viewer+.
 var grpcRoles = map[string]apikeys.Role{
-	"/firn.v1.FirnService/Produce":         apikeys.RoleOperator,
-	"/firn.v1.FirnService/JoinGroup":       apikeys.RoleOperator,
-	"/firn.v1.FirnService/Heartbeat":       apikeys.RoleOperator,
-	"/firn.v1.FirnService/Pull":            apikeys.RoleOperator,
-	"/firn.v1.FirnService/Ack":             apikeys.RoleOperator,
-	"/firn.v1.FirnService/CommitOffset":    apikeys.RoleOperator,
-	"/firn.v1.ReplicaService/ReplicaPut":   apikeys.RoleOperator,
-	"/firn.v1.ReplicaService/ReplicaFetch": apikeys.RoleViewer,
+	// Operator-tier (produce, queue, groups write)
+	"/firn.v1.FirnService/Produce":      apikeys.RoleOperator,
+	"/firn.v1.FirnService/JoinGroup":    apikeys.RoleOperator,
+	"/firn.v1.FirnService/Heartbeat":    apikeys.RoleOperator,
+	"/firn.v1.FirnService/Pull":         apikeys.RoleOperator,
+	"/firn.v1.FirnService/Ack":          apikeys.RoleOperator,
+	"/firn.v1.FirnService/CommitOffset": apikeys.RoleOperator,
+	// Viewer-tier (read-only)
+	"/firn.v1.FirnService/SyncGroup":         apikeys.RoleViewer,
+	"/firn.v1.FirnService/LeaveGroup":        apikeys.RoleViewer,
+	"/firn.v1.FirnService/Fetch":             apikeys.RoleViewer,
+	"/firn.v1.FirnService/FetchOffset":       apikeys.RoleViewer,
+	"/firn.v1.FirnService/FetchGroupOffsets": apikeys.RoleViewer,
+	"/firn.v1.FirnService/GetMetadata":       apikeys.RoleViewer,
+	"/firn.v1.ReplicaService/ReplicaFetch":   apikeys.RoleViewer,
+	// Internal-tier (ReplicaPut is operator on the mesh port too)
+	"/firn.v1.ReplicaService/ReplicaPut": apikeys.RoleOperator,
+	// Federation-tier (only federation keys may call these)
+	"/firn.v1.FederationService/FederationFetch":  apikeys.RoleFederation,
+	"/firn.v1.FederationService/FederationReport": apikeys.RoleFederation,
 }
 
 // GRPCInterceptor enforces bearer authentication and rate limiting on every
@@ -233,16 +245,20 @@ func (a *auth) GRPCInterceptor() grpc.UnaryServerInterceptor {
 		}
 		min, mapped := grpcRoles[info.FullMethod]
 		if !mapped {
-			min = apikeys.RoleViewer
+			min = apikeys.RoleOperator // default operator for any unmapped FirnService RPC
 		}
 		r, err := apikeys.ParseRole(key.Role)
 		if err != nil {
-			min = apikeys.RoleViewer
+			return nil, status.Error(codes.Unauthenticated, "unrecognised role on key")
 		}
-		if r < min {
-			return nil, status.Error(codes.PermissionDenied, "insufficient role")
+		// Federation keys are isolated: they only satisfy federation RPCs.
+		if r == apikeys.RoleFederation && min != apikeys.RoleFederation {
+			return nil, status.Error(codes.PermissionDenied, "federation key cannot call this RPC")
 		}
-		return handler(ctx, req)
+		if r >= min || (min == apikeys.RoleFederation && r == apikeys.RoleFederation) {
+			return handler(ctx, req)
+		}
+		return nil, status.Error(codes.PermissionDenied, "insufficient role")
 	}
 }
 

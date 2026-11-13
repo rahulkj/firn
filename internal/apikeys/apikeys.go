@@ -29,6 +29,13 @@ const (
 	RoleViewer   Role = 1
 	RoleOperator Role = 2
 	RoleAdmin    Role = 3
+	// RoleFederation is a least-privilege role for cross-cluster federation
+	// peers. Federation-scoped keys can authenticate the FederationService
+	// but cannot produce, fetch, commit, or read admin endpoints. Additive
+	// encoding: 4 > 3, so an existing admin-key check (>= RoleAdmin) still
+	// admits federation keys for legacy reasons; federation keys DENY all
+	// other interceptors by default (see grpcRoles in internal/api/auth.go).
+	RoleFederation Role = 4
 )
 
 func (r Role) String() string {
@@ -39,6 +46,8 @@ func (r Role) String() string {
 		return "operator"
 	case RoleAdmin:
 		return "admin"
+	case RoleFederation:
+		return "federation"
 	default:
 		return "unknown"
 	}
@@ -53,6 +62,8 @@ func ParseRole(s string) (Role, error) {
 		return RoleOperator, nil
 	case "admin":
 		return RoleAdmin, nil
+	case "federation":
+		return RoleFederation, nil
 	default:
 		return 0, fmt.Errorf("apikeys: unknown role %q", s)
 	}

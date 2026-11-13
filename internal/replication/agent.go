@@ -366,7 +366,7 @@ func (c *Config) tick(ctx context.Context) {
 // InternalTopics are internal single-partition logs that replicate like
 // ordinary user topics. They are discovered, not configured: if present they
 // get replicated; absent, they are ignored on open.
-var InternalTopics = []string{"__consumer_offsets", "__queue_attempts", "__audit", "__api_keys"}
+var InternalTopics = []string{"__consumer_offsets", "__queue_attempts", "__audit", "__api_keys", "__federation_peers", "__federation_cursors"}
 
 func fnv64(s string) uint64 {
 	var h uint64 = 14695981039346656037

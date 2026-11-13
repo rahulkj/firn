@@ -107,7 +107,7 @@ func (s *ReplicaServer) ReplicaPut(ctx context.Context, req *firnpb.ReplicaPutRe
 }
 
 func isInternalTopic(name string) bool {
-	for _, t := range []string{"__consumer_offsets", "__queue_attempts", "__audit", "__api_keys"} {
+	for _, t := range []string{"__consumer_offsets", "__queue_attempts", "__audit", "__api_keys", "__federation_peers", "__federation_cursors"} {
 		if name == t {
 			return true
 		}
