@@ -1,6 +1,6 @@
 # AGENTS.md — firn
 
-Firn is a from-scratch event broker in Go providing **streaming** (topics/partitions, replay, consumer groups) and **queue** (ack/redelivery) semantics over a shared append-only log. See `docs/adr/` for the decisions that matter.
+Firn is a from-scratch event broker in Go providing **streaming** (topics/partitions, replay, consumer groups) and **queue** (ack/redelivery) semantics over a shared append-only log. See `docs/adr/` for the decisions that matter (010 = federation).
 
 ## Commands
 

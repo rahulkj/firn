@@ -60,6 +60,11 @@ Manual-run caveats: (1) a clean-VM run was not available to the agent; all check
 - **Compaction refused on replicated internal logs**: `FileLog.Compact()` renumbers records, which would silently diverge byte-identical replicas; fenced stores refuse `Compact()` and skip auto-compact. Single-node compaction unchanged. `__consumer_offsets`/`__queue_attempts` growth in cluster mode is now bounded by commit rate, not by compaction — capacity planning note for the release checklist.
 - **`-race` fix in `FileLog`** (see Data race fix) — also required the package contract change.
 
+## Unreleased
+
+- ADR-010 federation + plan 004 added (multi-writer content-hash merge; passive one-way DR; client-visible federation cursors via `__federation_cursors` + `FetchResponse.federation_hwm`; API-key-registered peers; pull-only v1; queues federate fully with attempt-state mirroring).
+- **BREAKING**: module path, binaries, proto package, metrics prefix, env vars renamed to Firn (see separate commit); MIT license added; repo published as rahulkj/firn public with MIT.
+
 ## v0.3.0 — 2026-11-13 (BREAKING) — Firn is the durable event broker
 
 **Eventing is now Firn** (module rename, no functional change). The rename covers every user-facing identifier; the next release is breaking by design. Note the naming history, kept honest: the project was first renamed to **Slipway**, then rejected after conflict sweeps found four live software companies under that name (incl. a funded SF AI-onboarding startup in the same space); **Firn** (compacted snow layers — the compaction/retention metaphor) swept clean in two independent searches.
