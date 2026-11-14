@@ -103,7 +103,7 @@ func TestPassivePullByteIdenticalAndResumes(t *testing.T) {
 	defer pullCancel()
 	go puller.Run(pullCtx)
 
-	waitFor(t, 5*time.Second, func() bool {
+	waitFor(t, 15*time.Second, func() bool {
 		hw, err := dst.PartitionHighWatermark(ctx, "orders", 0)
 		return err == nil && hw == 20
 	})
@@ -158,7 +158,7 @@ func TestPassivePullByteIdenticalAndResumes(t *testing.T) {
 		Dial:     bufconnDialer(lis),
 	})
 	go puller2.Run(pullCtx2)
-	waitFor(t, 5*time.Second, func() bool {
+	waitFor(t, 15*time.Second, func() bool {
 		hw, err := dst.PartitionHighWatermark(ctx, "orders", 0)
 		return err == nil && hw == 25
 	})

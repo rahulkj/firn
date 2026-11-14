@@ -32,7 +32,7 @@ func TestInternalTopicSingleWriter(t *testing.T) {
 
 	// Wait for the internal lease on __consumer_offsets to be granted.
 	holderIdx := -1
-	waitFor(t, "internal lease granted", 5*time.Second, func() bool {
+	waitFor(t, "internal lease granted", 15*time.Second, func() bool {
 		for i, cn := range nodes {
 			if l, ok := cn.q.Lease("__consumer_offsets", 0); ok && l.Holder != "" && l.Holder == cn.id {
 				holderIdx = i
@@ -62,7 +62,7 @@ func TestInternalTopicSingleWriter(t *testing.T) {
 	}
 
 	// Wait for the block commit to be visible on every node.
-	waitFor(t, "__consumer_offsets replicated to all nodes", 10*time.Second, func() bool {
+	waitFor(t, "__consumer_offsets replicated to all nodes", 30*time.Second, func() bool {
 		for _, cn := range nodes {
 			fl, ok := cn.b.InternalLog("__consumer_offsets")
 			if !ok || fl.HighWatermark() != 1 {

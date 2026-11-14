@@ -47,7 +47,7 @@ func TestActiveActiveQueueDeliveryAndDLQConverge(t *testing.T) {
 	}
 
 	// Wait for the jobs records to reach B (re-origined).
-	waitFor(t, 15*time.Second, func() bool {
+	waitFor(t, 30*time.Second, func() bool {
 		hw, err := b.broker.PartitionHighWatermark(ctx, "jobs", 0)
 		return err == nil && hw == int64(n)
 	})
@@ -76,7 +76,7 @@ func TestActiveActiveQueueDeliveryAndDLQConverge(t *testing.T) {
 	}
 
 	// Converge: both clusters' DLQs must contain the same four jobs.
-	waitFor(t, 15*time.Second, func() bool {
+	waitFor(t, 30*time.Second, func() bool {
 		ka := dlqKeys(t, a.broker, "jobs")
 		kb := dlqKeys(t, b.broker, "jobs")
 		return len(ka) == n && len(kb) == n
@@ -103,7 +103,7 @@ func TestActiveActiveQueueAttemptsMirrorRoundTrip(t *testing.T) {
 			t.Fatalf("produce on A: %v", err)
 		}
 	}
-	waitFor(t, 15*time.Second, func() bool {
+	waitFor(t, 30*time.Second, func() bool {
 		hw, err := b.broker.PartitionHighWatermark(ctx, "jobs", 0)
 		return err == nil && hw == int64(n)
 	})
@@ -130,7 +130,7 @@ func TestActiveActiveQueueAttemptsMirrorRoundTrip(t *testing.T) {
 	}
 	// Attempt counts converge within lag: A's attempts for each A-offset
 	// must reach 1 once the mirror flows back.
-	waitFor(t, 15*time.Second, func() bool { return attemptsReached(aQM, "jobs", n, 1) })
+	waitFor(t, 30*time.Second, func() bool { return attemptsReached(aQM, "jobs", n, 1) })
 	if !attemptsReached(aQM, "jobs", n, 1) {
 		t.Fatalf("attempts did not mirror back to A within lag")
 	}

@@ -54,6 +54,7 @@ type Puller struct {
 	cfg    PullerConfig
 	logger *slog.Logger
 	stop   chan struct{}
+	done   chan struct{} // closed when Run returns; Stop waits on it
 
 	started time.Time
 	lagMu   sync.Mutex
@@ -80,11 +81,14 @@ func NewPuller(cfg PullerConfig) *Puller {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	return &Puller{cfg: cfg, logger: cfg.Logger, stop: make(chan struct{}), started: time.Now(), lag: map[string]time.Time{}, rr: map[string][]LocalRange{}, rrFetched: map[string]time.Time{}}
+	return &Puller{cfg: cfg, logger: cfg.Logger, stop: make(chan struct{}), done: make(chan struct{}), started: time.Now(), lag: map[string]time.Time{}, rr: map[string][]LocalRange{}, rrFetched: map[string]time.Time{}}
 }
 
-// Run polls until ctx is cancelled or Stop is called.
+// Run polls until ctx is cancelled or Stop is called. It returns after any
+// in-flight poll finishes, so callers may Stop() and then safely close the
+// broker without racing a pending append.
 func (p *Puller) Run(ctx context.Context) {
+	defer close(p.done)
 	tick := time.NewTicker(p.cfg.Interval)
 	defer tick.Stop()
 	for {
@@ -99,7 +103,16 @@ func (p *Puller) Run(ctx context.Context) {
 	}
 }
 
-func (p *Puller) Stop() { close(p.stop) }
+// Stop stops the poll loop and waits for Run to return.
+func (p *Puller) Stop() {
+	select {
+	case <-p.done:
+		return
+	default:
+		close(p.stop)
+		<-p.done
+	}
+}
 
 // poll pulls from every passive- or active-active peer registered with
 // direction in|both. Failures are logged and retried next tick; abort none.

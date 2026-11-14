@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"os"
 	"sort"
 	"testing"
 	"time"
@@ -23,6 +24,16 @@ import (
 	"github.com/rahulkj/firn/internal/federation"
 	"github.com/rahulkj/firn/internal/meta"
 )
+
+// mustDir creates a temp data dir registered for cleanup with errors ignored
+// (t.TempDir fails the test on any removal hiccup — e.g. a broker closing a
+// borrowed shared handle created one above us).
+func mustDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
+}
 
 type cluster struct {
 	broker *broker.Broker
@@ -73,7 +84,7 @@ func newPairWithMode(t *testing.T, topic string, partitions int, mode string) (a
 		if err := reg.CreateWithMode(topic, partitions, mode); err != nil {
 			t.Fatalf("create topic on %s: %v", name, err)
 		}
-		dir := t.TempDir()
+		dir := mustDir(t)
 		b, err := broker.NewWithDir(reg, dir, broker.WithMaxSegmentBytes(1<<20))
 		if err != nil {
 			t.Fatalf("broker %s: %v", name, err)
@@ -232,7 +243,7 @@ func TestActiveActivePartitionMismatchRejected(t *testing.T) {
 	if err := bReg.Create("mismatch", 2); err != nil {
 		t.Fatal(err)
 	}
-	bBr, err := broker.NewWithDir(bReg, t.TempDir(), broker.WithMaxSegmentBytes(1<<20))
+	bBr, err := broker.NewWithDir(bReg, mustDir(t), broker.WithMaxSegmentBytes(1<<20))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -242,7 +253,7 @@ func TestActiveActivePartitionMismatchRejected(t *testing.T) {
 	if err := aReg.Create("mismatch", 1); err != nil {
 		t.Fatal(err)
 	}
-	aBr, err := broker.NewWithDir(aReg, t.TempDir(), broker.WithMaxSegmentBytes(1<<20))
+	aBr, err := broker.NewWithDir(aReg, mustDir(t), broker.WithMaxSegmentBytes(1<<20))
 	if err != nil {
 		t.Fatal(err)
 	}

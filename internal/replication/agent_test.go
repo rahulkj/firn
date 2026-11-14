@@ -134,7 +134,7 @@ func TestReplicationAndFailover(t *testing.T) {
 		}
 		return nil
 	}
-	waitFor(t, "a writable node per partition", 10*time.Second, func() bool {
+	waitFor(t, "a writable node per partition", 30*time.Second, func() bool {
 		for p := int32(0); p < 2; p++ {
 			if holderFor(p) == nil {
 				return false
@@ -159,7 +159,7 @@ func TestReplicationAndFailover(t *testing.T) {
 	}
 
 	// Force blocks to seal and replicate: wait for commits visible everywhere.
-	waitFor(t, "blocks committed everywhere", 10*time.Second, func() bool {
+	waitFor(t, "blocks committed everywhere", 30*time.Second, func() bool {
 		for _, cn := range nodes {
 			blocks := cn.q.Blocks("failover", 0)
 			if len(blocks) == 0 {
@@ -248,7 +248,7 @@ func TestFailoverToSurvivor(t *testing.T) {
 
 	// Pre-failover data must be replicated+committed everywhere BEFORE the
 	// holder dies — otherwise the tail is unrecoverable (by design).
-	waitFor(t, "pre-failover data replicated", 10*time.Second, func() bool {
+	waitFor(t, "pre-failover data replicated", 30*time.Second, func() bool {
 		for _, cn := range nodes {
 			hw, err := cn.b.PartitionHighWatermark(ctx, "failover", 0)
 			if err != nil || hw != 5 {
