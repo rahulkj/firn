@@ -67,6 +67,12 @@ type Config struct {
 
 	// internalLogs caches broker-owned internal FileLog handles.
 	internalLogs map[string]*log.FileLog
+
+	// stop/done implement the same stop/wait handshake the puller uses:
+	// Stop halts the loop and waits for Run to return, so teardown never
+	// races in-flight ticks against broker Close or t.TempDir() removal.
+	stop chan struct{}
+	done chan struct{}
 }
 
 // internalLog returns the broker-owned FileLog handle for an internal topic.
@@ -321,16 +327,37 @@ func NewAgent(cfg Config) *Config {
 	cfg.slogLogger = slog.Default()
 	cfg.claimEpoch = map[string]uint64{}
 	cfg.internalLogs = map[string]*log.FileLog{}
+	cfg.stop = make(chan struct{})
+	cfg.done = make(chan struct{})
 	return &cfg
 }
 
-// Run starts the agent; it stops when ctx is cancelled.
+// Stop asks the agent loop to exit and waits for it to return. Idempotent.
+func (c *Config) Stop() {
+	select {
+	case <-c.done:
+		return
+	default:
+		select {
+		case <-c.stop:
+		default:
+			close(c.stop)
+		}
+		<-c.done
+	}
+}
+
+// Run starts the agent; it stops when ctx is cancelled or Stop is called.
+// It closes done on return, letting Stop wait for in-flight ticks.
 func (c *Config) Run(ctx context.Context) {
+	defer close(c.done)
 	ticker := time.NewTicker(c.Interval)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
+			return
+		case <-c.stop:
 			return
 		case <-ticker.C:
 			c.tick(ctx)

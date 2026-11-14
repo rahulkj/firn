@@ -3,6 +3,7 @@ package replication
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -30,6 +31,7 @@ type clusterNode struct {
 	l       *bufconn.Listener
 	srv     *grpc.Server
 	cancel  context.CancelFunc
+	agent   *Config
 	dataDir string
 }
 
@@ -86,7 +88,7 @@ func newCluster(t *testing.T, n int, root string) []*clusterNode {
 		}
 		ctx, cancel := context.WithCancel(context.Background())
 		cn.cancel = cancel
-		go NewAgent(Config{
+		cn.agent = NewAgent(Config{
 			NodeID:   cn.id,
 			Peers:    peersExcl,
 			All:      peers,
@@ -102,12 +104,14 @@ func newCluster(t *testing.T, n int, root string) []*clusterNode {
 			},
 			LeaseTTL: time.Second,
 			Interval: 50 * time.Millisecond,
-		}).Run(ctx)
+		})
+		go cn.agent.Run(ctx)
 	}
 
 	t.Cleanup(func() {
 		for _, cn := range nodes {
 			cn.cancel()
+			cn.agent.Stop()
 			quorum.UnregisterLocalNode(cn.q)
 			cn.q.Close()
 			_ = cn.b.Close()
@@ -143,17 +147,32 @@ func TestReplicationAndFailover(t *testing.T) {
 		return true
 	})
 
-	// Produce through each partition's lease holder.
+	// Produce through each partition's lease holder. The lease can be
+	// re-granted between the wait above and the write (leader re-grants on a
+	// tick shortly before lease expiry), so retry against a fresh holder on
+	// NotLeaseHolder rather than fail the test on a race.
 	ctx := context.Background()
 	for partition := int32(0); partition < 2; partition++ {
-		holder := holderFor(partition)
-		if holder == nil {
-			t.Fatalf("no holder for partition %d", partition)
-		}
-		fmt.Printf("partition %d lease holder: %s\n", partition, holder.id)
+		value := func(v int32) []byte { return []byte(fmt.Sprintf("p%d-v%d", partition, v)) }
 		for i := int32(0); i < 10; i++ {
-			if _, _, err := holder.b.Produce(ctx, "failover", nil, []byte(fmt.Sprintf("p%d-v%d", partition, i))); err != nil {
-				t.Fatalf("produce p%d: %v", partition, err)
+			deadline := time.Now().Add(10 * time.Second)
+			for {
+				holder := holderFor(partition)
+				if holder == nil {
+					time.Sleep(20 * time.Millisecond)
+					continue
+				}
+				_, _, err := holder.b.Produce(ctx, "failover", nil, value(i))
+				if err == nil {
+					break
+				}
+				if !errors.Is(err, broker.ErrNotLeaseHolder) {
+					t.Fatalf("produce p%d: %v", partition, err)
+				}
+				if time.Now().After(deadline) {
+					t.Fatalf("produce p%d: holder never stable enough (%v)", partition, err)
+				}
+				time.Sleep(20 * time.Millisecond)
 			}
 		}
 	}
