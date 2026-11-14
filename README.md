@@ -12,6 +12,7 @@ Status: **v0.4.0 — Firn, the durable event broker (secure by default, MIT).** 
 - [`docs/operator.md`](docs/operator.md) — platform operator guide: install, network, sizing, storage integrations, all `firn-cli` commands, UI screens, runbooks
 - [`docs/developer.md`](docs/developer.md) — client guide: publish/consume from apps (Go, Python, Java, .NET samples), auth, best practices, troubleshooting
 - [`docs/sre.md`](docs/sre.md) — observability: metrics catalog, Prometheus scrape, alerting rules, logs, dashboards, on-call workflows
+- [`docs/comparison.md`](docs/comparison.md) — Firn vs Kafka/Redpanda/Pulsar/RabbitMQ/NATS/Redis/Kinesis/Pub/Sub/SQS: feature matrix, category scorecard, where Firn wins and where it loses
 - [`docs/personas.md`](docs/personas.md) — who does what: operator, SRE, developer, security auditor, incident commander, release manager
 
 ## Quick start
@@ -114,6 +115,8 @@ Two+ Firn clusters can replicate topics and queues between them over mTLS + a fe
 10. [ADR-010 Federation (multi-cluster replication)](docs/adr/010-federation.md)
 11. [ADR-011 Secure-by-default mode](docs/adr/011-secure-mode.md)
 12. **[ADR-012 Architecture — components & deployment topologies](docs/adr/012-architecture.md)** — start here for the system map (standalone, HA cluster, active/passive and active/active federation)
+13. [ADR-013 Unbuilt features](docs/adr/013-unbuilt-features.md)
+14. [ADR-014 (proposed) Group commit / flush window](docs/adr/014-group-commit.md) — batching appends into one fsync; not accepted, no code yet
 
 Working with coding agents on this repo: read [`AGENTS.md`](AGENTS.md) — storage invariants are mandatory context, and storage diffs always need human review.
 
