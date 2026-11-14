@@ -173,12 +173,12 @@ Two supported paths.
 
 ```sh
 # pick one; verify against SHA256SUMS from the release
-tar -xzf firn-v0.5.3-linux-amd64.tar.gz
+tar -xzf firn-v0.5.4-linux-amd64.tar.gz
 sudo install -m 0755 firnd /usr/local/bin/firnd
 sudo install -m 0755 firn-cli /usr/local/bin/firn-cli
 ```
 
-Binaries are static, no libc dependency. Download at <https://github.com/rahulkj/firn/releases/tag/v0.5.3> (verify with `shasum -a 256 -c SHA256SUMS` **and** `gh attestation verify firn-v0.5.3-linux-amd64.tar.gz --repo rahulkj/firn` for SLSA build provenance; see [`docs/distribution.md`](distribution.md)).
+Binaries are static, no libc dependency. Download at <https://github.com/rahulkj/firn/releases/tag/v0.5.4> (verify with `shasum -a 256 -c SHA256SUMS` **and** `gh attestation verify firn-v0.5.4-linux-amd64.tar.gz --repo rahulkj/firn` for SLSA build provenance; see [`docs/distribution.md`](distribution.md)).
 
 ### From source
 

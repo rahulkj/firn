@@ -12,7 +12,7 @@ mode: cluster # cluster | standalone
 
 image:
   repository: ghcr.io/rahulkj/firn
-  tag: v0.5.3
+  tag: v0.5.4
   pullPolicy: IfNotPresent
 
 persistence:

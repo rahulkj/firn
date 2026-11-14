@@ -131,6 +131,12 @@ Storage semantics are unchanged for single-node default (`-flush-window=0`).
 
 Security posture during this release: every mutation path continues to audit-record in every mode; `ProduceBatch`/`AckBatch` are metered as one RPC per call (not per record — their value *is* the batching); no new dependencies; SBOM/cosign/grype unchanged; `-flush-window` defaults to `0` (v0.4.0 behavior for anyone upgrading).
 
+## v0.5.4 — 2026-11-14 — restart crash-loop fix
+
+**Crash-loop-on-restart fixed** (found by the first live k8s deployment, then by restarting the cluster): firnd created `<data-dir>/metadata/` with default umask (`0755`) and its quorum log files with `0644` — then `enforceStoragePermissions()` refused to boot on the next start (dir must be `0700`, files `0600`). Every cluster restart crash-looped forever. `internal/quorum` now creates both `0700`/`0600`. Permission-mode only; no storage semantics changed (the quorum log is not the FileLog; flagged for review).
+
+Also: deploy examples (compose, Quadlet, install.sh, site docs) use the client-gRPC port in `-peers` examples — `meshPeerAddr()` derives the mesh port as gRPC+10, and examples passed the mesh port, dead-locking the quorum with global fencing (the same class of port confusion fixed in the k8s manifests previously).
+
 ## v0.5.3 — 2026-11-14 — mesh CA boot fix + manifest install fixes
 
 **Boot-breaking defect fixed** (found by deploying the manifests to a real 3-node cluster). The mesh CA loader only parsed the first PEM block, so a CA generated with `openssl ecparam -genkey` (PEM order: `EC PARAMETERS`, then `EC PRIVATE KEY`) was rejected and **cluster nodes crash-looped at boot** with `mesh: cannot ensure mesh CA: firn/meshca: no mesh CA found …` — even though the files were present with correct modes. The parser (`internal/meshca`) now accepts any PEM bundle containing an EC private key; regression test added (`TestEnsureAcceptsOpenSSLStyleMultiBlockCAKey`).

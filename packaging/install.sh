@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # firn installer — interactive setup of firnd as a system service.
 # Linux (systemd) and macOS (launchd). Windows: use WSL2 or the OCI image.
-# Usage:  sudo ./install.sh [--version v0.5.3] [--unattended] [--help]
+# Usage:  sudo ./install.sh [--version v0.5.4] [--unattended] [--help]
 set -euo pipefail
 
-FIRN_VERSION="${FIRN_VERSION:-v0.5.3}"
+FIRN_VERSION="${FIRN_VERSION:-v0.5.4}"
 UNATTENDED=0
 while [ $# -gt 0 ]; do
   case "$1" in
