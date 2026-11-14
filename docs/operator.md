@@ -66,6 +66,28 @@ Measured on Apple M3 Pro, darwin/arm64, local NVMe (`go test -bench=. -benchmem 
 
 These are per-partition-range numbers — the fsync cost does not amortize across partitions, only across a single partition's append path. Horizontal concurrency scales with partitions and nodes (lease-parallelism), not with tuning.
 
+### Partition budget — how many partitions per node?
+
+Measured on the same machine (broker created fresh, one record produced per partition):
+
+| Partitions created | Result | Open FDs |
+|---|---|---|
+| 200 | all produce | 211 |
+| 1,000 | all produce | 1,011 |
+| 2,500 | all produce, ~2.7 ms per create+produce op (dominated by fsync) | 2,512 |
+
+**There is no hard-coded cap.** The limits, in order of appearance:
+
+1. **File descriptors.** Every segment = one open FD. Linux default `ulimit -n` of 1024 caps you at a few hundred partitions; 4096 caps you near two thousand. Set **`ulimit -n 65536`** (systemd: `LimitNOFILE=65536`) before exceeding a few hundred partitions.
+2. **Metadata/quorum churn.** In clusters, every sealed block (~64 MiB) emits one descriptor — thousands of partitions multiplying segment rolls multiply descriptor rate, but a 3-node quorum shrugs at this for a long while.
+3. **Produce throughput does **not** scale with partition count.** Measured: 300 durable produces finished in 699 ms across 3 partitions (2.33 ms/op) and 981 ms across 1,000 partitions (3.27 ms/op) — fsync-per-append is the wall, everything serializes on the broker's append path, and partitions spread ordering, not throughput.
+
+**Practical guidance:**
+
+- **Hundreds per node** is the clean number. **Thousands** work if you raise `ulimit -n` and accept slower per-write latency. **Tens of thousands** is not supported in any meaningful sense — not because of memory or FDs, but because of the produce path above.
+- Sizing `-segment-bytes` larger reduces segment rolls and open FDs per partition (each segment holds 1 FD), at the cost of coarser retention granularity.
+- If you find yourself wanting thousands of partitions per node, question the sharding — it usually means per-tenant topics that don't need isolation, not a real scaling requirement.
+
 **Rules of thumb (validate with `go test -bench=. ./bench/...` on your hardware — NVMe vs. SATA vs. network storage matters enormously):**
 
 | Workload | CPU / RAM | Disk | Expected |
@@ -79,7 +101,7 @@ These are per-partition-range numbers — the fsync cost does not amortize acros
 
 **CPU is mostly fsync + CRC.** Produce throughput is ~350–500 msg/s per partition range with fsync-per-append (ADR-003; measured ~2 ms/op). Batching/throughput beyond that requires a different storage policy — not available — so scale by partitions and nodes, not by message rate tuning.
 
-**Memory.** In-memory index is proportional to record count, not bytes; keep partition counts modest (hundreds, not tens of thousands).
+**Memory.** In-memory index is proportional to record count, not bytes; partition budget (above) dominates the practical ceiling long before RAM.
 
 ---
 
