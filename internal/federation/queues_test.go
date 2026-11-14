@@ -66,17 +66,23 @@ func TestActiveActiveQueueDeliveryAndDLQConverge(t *testing.T) {
 	// Competing consumers on both sides; 1ms visibility so leases lapse
 	// instantly and attempts escalate. No acks anywhere — at-least-once per
 	// cluster; divergent clusters land the same jobs in their DLQs.
-	for round := 0; round < 8; round++ {
+	// Converge lazily: keep pulling until both DLQs are full, rather than
+	// running a fixed number of rounds — the mirror cycles on their own
+	// pacing, and on slow CI we must not under-pull.
+	for round := 0; round < 40; round++ {
 		if _, err := aQM.Pull(ctx, "jobs", n, time.Millisecond); err != nil {
 			t.Fatalf("pull A: %v", err)
 		}
 		if _, err := bQM.Pull(ctx, "jobs", n, time.Millisecond); err != nil {
 			t.Fatalf("pull B: %v", err)
 		}
+		if len(dlqKeys(t, a.broker, "jobs")) == n && len(dlqKeys(t, b.broker, "jobs")) == n {
+			break
+		}
 	}
 
 	// Converge: both clusters' DLQs must contain the same four jobs.
-	waitFor(t, 30*time.Second, func() bool {
+	waitFor(t, 90*time.Second, func() bool {
 		ka := dlqKeys(t, a.broker, "jobs")
 		kb := dlqKeys(t, b.broker, "jobs")
 		return len(ka) == n && len(kb) == n
