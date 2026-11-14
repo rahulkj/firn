@@ -28,7 +28,7 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- $peers := list -}}
 {{- range $i := until (int (include "firn.replicaCount" $root)) -}}
 {{- $name := printf "%s-%d" (include "firn.fullname" $root) $i -}}
-{{- $peers = append $peers (printf "%s=%s.%s-mesh.%s:%d" $name $name (include "firn.fullname" $root) $root.Release.Namespace (int $root.Values.service.meshPort)) -}}
+{{- $peers = append $peers (printf "%s=%s.%s-mesh.%s.svc.cluster.local:%d" $name $name (include "firn.fullname" $root) $root.Release.Namespace (int $root.Values.service.grpcPort)) -}}
 {{- end -}}
 {{- join "," $peers -}}
 {{- end }}

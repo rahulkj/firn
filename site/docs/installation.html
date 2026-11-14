@@ -110,7 +110,7 @@ helm install firn ./deploy/helm/firn --set meshCA.existingSecret=firn-mesh-ca  #
 <li>Copy <code>ca.crt</code> + <code>ca.key</code> into each node's <code>&lt;data-dir&gt;/mesh-ca/</code> (<code>0600</code>).</li>
 <li>Start three nodes with matching <code>-node-id</code> and the <strong>same</strong> <code>-peers</code> list including all three:</li>
 </ol>
-<pre class="code">firnd -node-id n1 -peers n1=192.0.2.11:9471,n2=192.0.2.12:9471,n3=192.0.2.13:9471 \
+<pre class="code">firnd -node-id n1 -peers n1=192.0.2.11:9461,n2=192.0.2.12:9461,n3=192.0.2.13:9461 \
   -http-addr :9460 -grpc-addr :9461 -data-dir /var/lib/firn
 # n2, n3 identical modulo -node-id and -data-dir</pre>
 <p>Membership is fixed at startup; topics created in cluster mode fan out through the quorum (<code>HTTP 202 propagating</code>); produce/fetch route via <code>GetMetadata</code> to the partition's lease holder. <strong>Envelope:</strong> single-region, fixed membership, ≥3 voting nodes, full-restart upgrades, single-copy-of-metadata quorum. Rolling upgrades and dynamic membership are <em>not</em> supported (v1 limitation, documented in the ADRs).</p>

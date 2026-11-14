@@ -44,7 +44,7 @@ services:
       - ./mesh-ca/ca.key:/run/firn/ca.key:ro
     command: ["-data-dir", "/var/lib/firn", "-http-addr", ":9460", "-grpc-addr", ":9461",
       "-mesh-ca-bundle", "/run/firn/ca.crt", "-mesh-ca-key", "/run/firn/ca.key",
-      "-node-id", "firn-n1", "-peers", "firn-n1=firn-n1:9471,firn-n2=firn-n2:9471,firn-n3=firn-n3:9471"]
+      "-node-id", "firn-n1", "-peers", "firn-n1=firn-n1:9461,firn-n2=firn-n2:9461,firn-n3=firn-n3:9461"]
     ports:
       - "9470:9460"
       - "9471:9461"
@@ -58,7 +58,7 @@ services:
       - ./mesh-ca/ca.key:/run/firn/ca.key:ro
     command: ["-data-dir", "/var/lib/firn", "-http-addr", ":9460", "-grpc-addr", ":9461",
       "-mesh-ca-bundle", "/run/firn/ca.crt", "-mesh-ca-key", "/run/firn/ca.key",
-      "-node-id", "firn-n2", "-peers", "firn-n1=firn-n1:9471,firn-n2=firn-n2:9471,firn-n3=firn-n3:9471"]
+      "-node-id", "firn-n2", "-peers", "firn-n1=firn-n1:9461,firn-n2=firn-n2:9461,firn-n3=firn-n3:9461"]
     ports:
       - "9570:9460"
       - "9571:9461"
@@ -72,7 +72,7 @@ services:
       - ./mesh-ca/ca.key:/run/firn/ca.key:ro
     command: ["-data-dir", "/var/lib/firn", "-http-addr", ":9460", "-grpc-addr", ":9461",
       "-mesh-ca-bundle", "/run/firn/ca.crt", "-mesh-ca-key", "/run/firn/ca.key",
-      "-node-id", "firn-n3", "-peers", "firn-n1=firn-n1:9471,firn-n2=firn-n2:9471,firn-n3=firn-n3:9471"]
+      "-node-id", "firn-n3", "-peers", "firn-n1=firn-n1:9461,firn-n2=firn-n2:9461,firn-n3=firn-n3:9461"]
     ports:
       - "9670:9460"
       - "9671:9461"

@@ -97,7 +97,7 @@ NODE_ID=""; PEERS=""
 MESH_CA_BUNDLE=""; MESH_CA_KEY=""
 if [ "$MODE" = cluster ]; then
   ask NODE_ID "This node's ID (n1, n2, n3…)"
-  ask PEERS    "Peer list including self — e.g. n1=192.0.2.11:9471,n2=192.0.2.12:9471,n3=192.0.2.13:9471"
+  ask PEERS    "Peer list including self — e.g. n1=192.0.2.11:9461,n2=192.0.2.12:9461,n3=192.0.2.13:9461"
   if [ -z "$NODE_ID" ] || [ -z "$PEERS" ]; then die "cluster mode requires -node-id and -peers"; fi
   case "$PEERS" in *"$NODE_ID="*) : ;; *) die "peers must include this node: $NODE_ID=<host>:<mesh-port>" ;; esac
   mkdir -p "$DATA_DIR/mesh-ca"

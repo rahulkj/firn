@@ -7,7 +7,7 @@
 # Logs:  journalctl --user -u firn -f
 # Cluster mode: pre-create a shared mesh CA (openssl commands in ADR-015
 # §3.3), mount ca.crt/ca.key at /run/firn (read-only) and pass:
-#   Exec=firnd -data-dir /var/lib/firn -mesh-ca-bundle /run/firn/ca.crt -mesh-ca-key /run/firn/ca.key -node-id n1 -peers n1=n1:9471,n2=n2:9471,n3=n3:9471
+#   Exec=firnd -data-dir /var/lib/firn -mesh-ca-bundle /run/firn/ca.crt -mesh-ca-key /run/firn/ca.key -node-id n1 -peers n1=n1:9461,n2=n2:9461,n3=n3:9461
 [Unit]
 Description=firn event broker (firnd)
 After=network-online.target
