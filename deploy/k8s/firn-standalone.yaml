@@ -57,6 +57,15 @@ spec:
       serviceAccountName: firn
       securityContext:
         fsGroup: 10001 # match the image's firn (uid 10001)
+      initContainers:
+        # NFS (and some other provisioners) hand out mode-0777 PVCs, which
+        # fail firnd's startup dir-mode-check (700 required)
+        - name: permissions
+          image: alpine:3.21
+          command: ["/bin/sh", "-c", "set -e; chown -R 10001:10001 /data; chmod 700 /data"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
       containers:
         - name: firnd
           image: ghcr.io/rahulkj/firn:v0.5.2
