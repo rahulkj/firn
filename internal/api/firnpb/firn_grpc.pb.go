@@ -24,6 +24,7 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	FirnService_Produce_FullMethodName           = "/firn.v1.FirnService/Produce"
+	FirnService_ProduceBatch_FullMethodName      = "/firn.v1.FirnService/ProduceBatch"
 	FirnService_Fetch_FullMethodName             = "/firn.v1.FirnService/Fetch"
 	FirnService_JoinGroup_FullMethodName         = "/firn.v1.FirnService/JoinGroup"
 	FirnService_SyncGroup_FullMethodName         = "/firn.v1.FirnService/SyncGroup"
@@ -42,6 +43,7 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type FirnServiceClient interface {
 	Produce(ctx context.Context, in *ProduceRequest, opts ...grpc.CallOption) (*ProduceResponse, error)
+	ProduceBatch(ctx context.Context, in *ProduceBatchRequest, opts ...grpc.CallOption) (*ProduceBatchResponse, error)
 	Fetch(ctx context.Context, in *FetchRequest, opts ...grpc.CallOption) (*FetchResponse, error)
 	JoinGroup(ctx context.Context, in *JoinGroupRequest, opts ...grpc.CallOption) (*JoinGroupResponse, error)
 	SyncGroup(ctx context.Context, in *SyncGroupRequest, opts ...grpc.CallOption) (*SyncGroupResponse, error)
@@ -67,6 +69,16 @@ func (c *firnServiceClient) Produce(ctx context.Context, in *ProduceRequest, opt
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProduceResponse)
 	err := c.cc.Invoke(ctx, FirnService_Produce_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *firnServiceClient) ProduceBatch(ctx context.Context, in *ProduceBatchRequest, opts ...grpc.CallOption) (*ProduceBatchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ProduceBatchResponse)
+	err := c.cc.Invoke(ctx, FirnService_ProduceBatch_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -188,6 +200,7 @@ func (c *firnServiceClient) GetMetadata(ctx context.Context, in *GetMetadataRequ
 // for forward compatibility.
 type FirnServiceServer interface {
 	Produce(context.Context, *ProduceRequest) (*ProduceResponse, error)
+	ProduceBatch(context.Context, *ProduceBatchRequest) (*ProduceBatchResponse, error)
 	Fetch(context.Context, *FetchRequest) (*FetchResponse, error)
 	JoinGroup(context.Context, *JoinGroupRequest) (*JoinGroupResponse, error)
 	SyncGroup(context.Context, *SyncGroupRequest) (*SyncGroupResponse, error)
@@ -211,6 +224,9 @@ type UnimplementedFirnServiceServer struct{}
 
 func (UnimplementedFirnServiceServer) Produce(context.Context, *ProduceRequest) (*ProduceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Produce not implemented")
+}
+func (UnimplementedFirnServiceServer) ProduceBatch(context.Context, *ProduceBatchRequest) (*ProduceBatchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ProduceBatch not implemented")
 }
 func (UnimplementedFirnServiceServer) Fetch(context.Context, *FetchRequest) (*FetchResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Fetch not implemented")
@@ -280,6 +296,24 @@ func _FirnService_Produce_Handler(srv interface{}, ctx context.Context, dec func
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(FirnServiceServer).Produce(ctx, req.(*ProduceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _FirnService_ProduceBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProduceBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FirnServiceServer).ProduceBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FirnService_ProduceBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FirnServiceServer).ProduceBatch(ctx, req.(*ProduceBatchRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -492,6 +526,10 @@ var FirnService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Produce",
 			Handler:    _FirnService_Produce_Handler,
+		},
+		{
+			MethodName: "ProduceBatch",
+			Handler:    _FirnService_ProduceBatch_Handler,
 		},
 		{
 			MethodName: "Fetch",

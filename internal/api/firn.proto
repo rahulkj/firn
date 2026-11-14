@@ -9,6 +9,7 @@ option go_package = "github.com/rahulkj/firn/internal/api/firnpb";
 
 service FirnService {
   rpc Produce(ProduceRequest) returns (ProduceResponse);
+  rpc ProduceBatch(ProduceBatchRequest) returns (ProduceBatchResponse);
   rpc Fetch(FetchRequest) returns (FetchResponse);
 
   rpc JoinGroup(JoinGroupRequest) returns (JoinGroupResponse);
@@ -36,6 +37,37 @@ message ProduceRequest {
 message ProduceResponse {
   int32 partition = 1;
   int64 offset = 2;
+}
+
+// One record in a ProduceBatch call. Key unset = round-robin across the
+// topic's partitions (same routing rule as Produce).
+message ProduceBatchRecord {
+  bytes key = 1;
+  bytes value = 2;
+}
+
+// ProduceBatch appends many records with one RPC instead of one RPC per
+// record. Caller gets one partition+offset per record, in request order.
+// Hard cap: 500 records per call.
+//
+// Atomicity: NOT transactional. Records are produced in order into their
+// partitions; a failure mid-batch stops the call and reports an error.
+// Records before the failing one are durable; records after are not.
+// At-least-once: retrying the batch re-produces the whole batch, so
+// earlier records may appear at NEW offsets (duplicates). Consumers must
+// already tolerate duplicates (all firn delivery modes are at-least-once).
+message ProduceBatchRequest {
+  string topic = 1;
+  repeated ProduceBatchRecord records = 2;
+}
+
+message ProduceBatchRecordResult {
+  int32 partition = 1;
+  int64 offset = 2;
+}
+
+message ProduceBatchResponse {
+  repeated ProduceBatchRecordResult records = 1;
 }
 
 message FetchRequest {

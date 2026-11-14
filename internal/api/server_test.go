@@ -391,3 +391,63 @@ func TestAdminCreateAndListTopics(t *testing.T) {
 		t.Fatalf("topics = %+v, want [orders/3]", list.Topics)
 	}
 }
+
+func TestProduceBatchGRPC(t *testing.T) {
+	cli, _, reg := newTestCluster(t)
+	if err := reg.Create("events", 3); err != nil {
+		t.Fatalf("create topic: %v", err)
+	}
+
+	batch := make([]*firnpb.ProduceBatchRecord, 0, 10)
+	for i := 0; i < 10; i++ {
+		batch = append(batch, &firnpb.ProduceBatchRecord{Key: []byte(fmt.Sprintf("k-%d", i%2)), Value: []byte(fmt.Sprintf("v-%02d", i))})
+	}
+	resp, err := cli.ProduceBatch(context.Background(), &firnpb.ProduceBatchRequest{Topic: "events", Records: batch})
+	if err != nil {
+		t.Fatalf("produce batch: %v", err)
+	}
+	if len(resp.Records) != 10 {
+		t.Fatalf("results = %d, want 10", len(resp.Records))
+	}
+	byPartition := map[int32][]*firnpb.ProduceBatchRecordResult{}
+	for _, r := range resp.Records {
+		byPartition[r.Partition] = append(byPartition[r.Partition], r)
+	}
+	for p, rs := range byPartition {
+		for i := 1; i < len(rs); i++ {
+			if rs[i].Offset <= rs[i-1].Offset {
+				t.Fatalf("partition %d offsets not monotonic: %v", p, rs)
+			}
+		}
+	}
+
+	// Verify by fetching back: total record count per partition must match.
+	total := 0
+	for p := int32(0); p < 3; p++ {
+		fr, err := cli.Fetch(context.Background(), &firnpb.FetchRequest{Topic: "events", Partition: p, Offset: 0, MaxRecords: 100})
+		if err != nil {
+			t.Fatalf("fetch partition %d: %v", p, err)
+		}
+		total += len(fr.Records)
+	}
+	if total != 10 {
+		t.Fatalf("fetched %d records, produced 10", total)
+	}
+
+	// Empty and oversized batches rejected with InvalidArgument.
+	if _, err := cli.ProduceBatch(context.Background(), &firnpb.ProduceBatchRequest{Topic: "events"}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("empty batch: want InvalidArgument, got %v", err)
+	}
+	tooMany := make([]*firnpb.ProduceBatchRecord, 501)
+	for i := range tooMany {
+		tooMany[i] = &firnpb.ProduceBatchRecord{Value: []byte{byte(i)}}
+	}
+	if _, err := cli.ProduceBatch(context.Background(), &firnpb.ProduceBatchRequest{Topic: "events", Records: tooMany}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("oversized batch: want InvalidArgument, got %v", err)
+	}
+
+	// Unknown topic is not silently accepted.
+	if _, err := cli.ProduceBatch(context.Background(), &firnpb.ProduceBatchRequest{Topic: "nosuchtopic", Records: []*firnpb.ProduceBatchRecord{{Value: []byte("x")}}}); err == nil {
+		t.Fatal("batch to unknown topic must fail")
+	}
+}

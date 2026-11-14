@@ -59,6 +59,13 @@ defer sdk.Close()
 // publish
 _, offset, err := sdk.Produce(ctx, "orders", []byte("order-42"), []byte(`{"item":"book"}`))
 
+// publish a batch (one RPC instead of N, cap 500 records per call)
+results, err := sdk.ProduceBatch(ctx, "orders", []firngo.KeyValue{
+    {Key: []byte("order-42"), Value: []byte(`{"item":"book"}`)},
+    {Key: []byte("order-43"), Value: []byte(`{"item":"pen"}`)},
+})
+// or from the CLI: firn-cli produce --topic orders --batch-file events.jsonl
+
 // consume
 recs, err := sdk.Fetch(ctx, "orders", 0, 0, 100)
 
@@ -184,6 +191,7 @@ If your application consumes from a federated cluster: per-peer direction, mode,
 | Command | Typical use |
 |---|---|
 | `firn-cli produce --topic T --key K --value V` | smoke-test publishes |
+| `firn-cli produce --topic T --batch-file events.jsonl` | bulk publishes (one RPC per 500 lines) |
 | `firn-cli fetch --topic T [--partition P] [--offset N] [--max N]` | read records; `--json` for machines |
 | `firn-cli list` | which topics exist (name + partitions + mode) |
 | `firn-cli groups` | your consumer group's members, generation, leader |

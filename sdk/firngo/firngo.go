@@ -5,6 +5,7 @@
 //	c, err := firngo.DialInsecure(ctx, "localhost:9461")            // dev only
 //	c, err := firngo.DialProduction(ctx, "firn.example.com:9461", "ev-xxx") // TLS via system roots
 //	_, _, err = c.Produce(ctx, "orders", key, value)
+//	_, err = c.ProduceBatch(ctx, "orders", []firngo.KeyValue{{Key: key, Value: value}})
 //	recs, err := c.Fetch(ctx, "orders", 0, 0, 100)
 //	c.SubscribeInPartition(ctx, "orders", 0, 0, 100, func(r Record) error {
 //	    fmt.Printf("%s %s\n", r.Key, r.Value)
@@ -98,6 +99,45 @@ func (c *Client) Produce(ctx context.Context, topic string, key, value []byte) (
 		return 0, 0, fmt.Errorf("firngo: produce: %w", err)
 	}
 	return resp.Partition, resp.Offset, nil
+}
+
+// KeyValue is one record for ProduceBatch. Key nil = round-robin across partitions.
+type KeyValue struct {
+	Key   []byte
+	Value []byte
+}
+
+// BatchResult is where one ProduceBatch record landed.
+type BatchResult struct {
+	Partition int32
+	Offset    int64
+}
+
+// ProduceBatch appends up to 500 records with one RPC (vs one RPC per
+// record). Per-partition ordering matches request order. NOT atomic: on
+// error, records before the failing one are durable and records after are
+// not — retry the whole batch; at-least-once may duplicate earlier records
+// at new offsets.
+func (c *Client) ProduceBatch(ctx context.Context, topic string, records []KeyValue) ([]BatchResult, error) {
+	if len(records) == 0 {
+		return nil, errors.New("firngo: ProduceBatch requires at least 1 record")
+	}
+	if len(records) > 500 {
+		return nil, errors.New("firngo: ProduceBatch is limited to 500 records per call")
+	}
+	in := make([]*firnpb.ProduceBatchRecord, 0, len(records))
+	for _, r := range records {
+		in = append(in, &firnpb.ProduceBatchRecord{Key: r.Key, Value: r.Value})
+	}
+	resp, err := c.fc.ProduceBatch(c.authCtx(ctx), &firnpb.ProduceBatchRequest{Topic: topic, Records: in})
+	if err != nil {
+		return nil, fmt.Errorf("firngo: produce batch: %w", err)
+	}
+	out := make([]BatchResult, 0, len(resp.Records))
+	for _, r := range resp.Records {
+		out = append(out, BatchResult{Partition: r.Partition, Offset: r.Offset})
+	}
+	return out, nil
 }
 
 // Fetch reads up to max records starting at offset.

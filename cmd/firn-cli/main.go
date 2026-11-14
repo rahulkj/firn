@@ -964,10 +964,14 @@ func cmdList() error {
 func cmdProduce(args []string) error {
 	fs := flag.NewFlagSet("produce", flag.ContinueOnError)
 	topic := fs.String("topic", "", "topic (required)")
-	key := fs.String("key", "", "message key (optional)")
-	value := fs.String("value", "", "message value; '-' reads stdin")
+	key := fs.String("key", "", "message key (optional); ignored with --batch-file")
+	value := fs.String("value", "", "message value; '-' reads stdin; ignored with --batch-file")
+	batchFile := fs.String("batch-file", "", "JSONL file with one {\"key\": string?, \"value\": string} per line; use '-' for stdin; produces the whole file with one ProduceBatch RPC per 500 records")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *batchFile != "" {
+		return cmdProduceBatch(*topic, *batchFile)
 	}
 	if *topic == "" || *value == "" {
 		return fmt.Errorf("--topic and --value are required")
@@ -1012,6 +1016,100 @@ func cmdProduce(args []string) error {
 		return printJSON(map[string]any{"partition": resp.Partition, "offset": resp.Offset})
 	}
 	fmt.Printf("produced to %s partition=%d offset=%d\n", *topic, resp.Partition, resp.Offset)
+	return nil
+}
+
+type batchLine struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// cmdProduceBatch implements --batch-file: JSONL in, one ProduceBatch RPC
+// per 500 lines out. Sequential — record order is preserved exactly.
+func cmdProduceBatch(topic, batchFile string) error {
+	if topic == "" {
+		return fmt.Errorf("--topic is required")
+	}
+	var in io.Reader
+	var f *os.File
+	var err error
+	if batchFile == "-" {
+		in = os.Stdin
+	} else {
+		f, err = os.Open(batchFile)
+		if err != nil {
+			return fmt.Errorf("open --batch-file: %w", err)
+		}
+		defer func() { _ = f.Close() }()
+		in = f
+	}
+
+	readJSONL := func() ([]batchLine, error) {
+		var lines []batchLine
+		dec := json.NewDecoder(in)
+		for {
+			var line batchLine
+			err := dec.Decode(&line)
+			if err == io.EOF {
+				return lines, nil
+			}
+			if err != nil {
+				return nil, fmt.Errorf("--batch-file: %w", err)
+			}
+			lines = append(lines, line)
+		}
+	}
+
+	lines, err := readJSONL()
+	if err != nil {
+		return err
+	}
+	if len(lines) == 0 {
+		return fmt.Errorf("--batch-file %s: no records", batchFile)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	type placed struct {
+		Partition int32 `json:"partition"`
+		Offset    int64 `json:"offset"`
+	}
+	var results []placed
+	for start := 0; start < len(lines); start += 500 {
+		end := start + 500
+		if end > len(lines) {
+			end = len(lines)
+		}
+		batch := make([]*firnpb.ProduceBatchRecord, 0, end-start)
+		for _, line := range lines[start:end] {
+			rec := &firnpb.ProduceBatchRecord{Value: []byte(line.Value)}
+			if line.Key != "" {
+				rec.Key = []byte(line.Key)
+			}
+			batch = append(batch, rec)
+		}
+		var resp *firnpb.ProduceBatchResponse
+		err := callWithRouting(ctx, topic, -1, func(client firnpb.FirnServiceClient) error {
+			r, err := client.ProduceBatch(ctx, &firnpb.ProduceBatchRequest{Topic: topic, Records: batch})
+			resp = r
+			return err
+		})
+		if err != nil {
+			return fmt.Errorf("produce batch records %d-%d: %w", start, end-1, err)
+		}
+		for _, r := range resp.Records {
+			results = append(results, placed{Partition: r.Partition, Offset: r.Offset})
+		}
+	}
+	if *jsonOut {
+		return printJSON(map[string]any{"topic": topic, "produced": len(results), "records": results})
+	}
+	partitions := map[int32]bool{}
+	for _, r := range results {
+		partitions[r.Partition] = true
+	}
+	fmt.Printf("produced to %s: %d records across %d partition(s)\n", topic, len(results), len(partitions))
 	return nil
 }
 

@@ -237,6 +237,23 @@ firn-cli -api-key "$KEY" produce --topic orders --key k1 --value hello
 # produced to orders partition=1 offset=0
 ```
 
+### ProduceBatch (since Unreleased)
+
+```proto
+message ProduceBatchRecord    { bytes key = 1; bytes value = 2; }
+message ProduceBatchRequest   { string topic = 1; repeated ProduceBatchRecord records = 2; }
+message ProduceBatchRecordResult { int32 partition = 1; int64 offset = 2; }
+message ProduceBatchResponse  { repeated ProduceBatchRecordResult records = 1; }
+```
+
+One RPC instead of N `Produce` calls; hard cap 500 records per call. Response order matches request order; partition assignment per record uses the same rule as `Produce` (FNV(key) % partitions, round-robin when unset).
+
+Failure semantics: **not atomic**. Records are produced in order; a failure mid-batch stops the call with an error — records before it are durable, records after are not. At-least-once: retrying the whole batch re-produces it, so earlier records may appear at **new offsets** (duplicates). Consumers must already tolerate duplicates.
+
+CLI: `firn-cli produce --topic orders --batch-file records.jsonl` (one JSON object per line: `{"key": "...", "value": "..."}`; `key` optional, omitted for round-robin; the `-` filename reads stdin; batches larger than 500 lines are chunked automatically).
+
+Errors: `INVALID_ARGUMENT` (empty topic, empty batch, >500 records) · `NOT_FOUND` (topic doesn't exist) · `PERMISSION_DENIED`/`UNAUTHENTICATED` as usual.
+
 ### Fetch (federation watermark hint)
 
 `FetchResponse.federation_hwm` (since v0.4.0): advisory minimum — the lowest `LastLocalOffset` applied from any inbound federation peer (passive or active-active) covering (topic, partition); `0` when unknown or not federated. Hint only; never a correctness input cross-cluster. `firn-cli fetch --json` includes it.

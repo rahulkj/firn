@@ -8,9 +8,11 @@ package api
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"sort"
 	"time"
+
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -58,6 +60,35 @@ func (s *Server) Produce(ctx context.Context, req *firnpb.ProduceRequest) (*firn
 		s.met.ProduceTotal.WithLabelValues(req.Topic).Inc()
 	}
 	return &firnpb.ProduceResponse{Partition: partition, Offset: offset}, nil
+}
+
+// ProduceBatch appends many records with one RPC. Ordering: records are
+// produced in request order into their partitions. Failure semantics: not
+// transactional — records before the first failure are durable, records
+// after are not; the caller should retry the whole batch (at-least-once).
+// Hard cap: 500 records per call.
+func (s *Server) ProduceBatch(ctx context.Context, req *firnpb.ProduceBatchRequest) (*firnpb.ProduceBatchResponse, error) {
+	if req.Topic == "" {
+		return nil, status.Error(codes.InvalidArgument, "topic must not be empty")
+	}
+	if len(req.Records) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "records must contain at least 1 item")
+	}
+	if len(req.Records) > 500 {
+		return nil, status.Error(codes.InvalidArgument, "records must contain at most 500 items")
+	}
+	out := &firnpb.ProduceBatchResponse{Records: make([]*firnpb.ProduceBatchRecordResult, 0, len(req.Records))}
+	for i, rec := range req.Records {
+		partition, offset, err := s.b.Produce(ctx, req.Topic, rec.Key, rec.Value)
+		if err != nil {
+			return nil, toStatus(fmt.Errorf("record %d: %w", i, err))
+		}
+		if s.met != nil {
+			s.met.ProduceTotal.WithLabelValues(req.Topic).Inc()
+		}
+		out.Records = append(out.Records, &firnpb.ProduceBatchRecordResult{Partition: partition, Offset: offset})
+	}
+	return out, nil
 }
 
 // Fetch returns up to max_records records from (topic, partition) starting

@@ -139,6 +139,218 @@ func (x *ProduceResponse) GetOffset() int64 {
 	return 0
 }
 
+// One record in a ProduceBatch call. Key unset = round-robin across the
+// topic's partitions (same routing rule as Produce).
+type ProduceBatchRecord struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Key           []byte                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Value         []byte                 `protobuf:"bytes,2,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProduceBatchRecord) Reset() {
+	*x = ProduceBatchRecord{}
+	mi := &file_firn_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProduceBatchRecord) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProduceBatchRecord) ProtoMessage() {}
+
+func (x *ProduceBatchRecord) ProtoReflect() protoreflect.Message {
+	mi := &file_firn_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProduceBatchRecord.ProtoReflect.Descriptor instead.
+func (*ProduceBatchRecord) Descriptor() ([]byte, []int) {
+	return file_firn_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *ProduceBatchRecord) GetKey() []byte {
+	if x != nil {
+		return x.Key
+	}
+	return nil
+}
+
+func (x *ProduceBatchRecord) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+// ProduceBatch appends many records with one RPC instead of one RPC per
+// record. Caller gets one partition+offset per record, in request order.
+// Hard cap: 500 records per call.
+//
+// Atomicity: NOT transactional. Records are produced in order into their
+// partitions; a failure mid-batch stops the call and reports an error.
+// Records before the failing one are durable; records after are not.
+// At-least-once: retrying the batch re-produces the whole batch, so
+// earlier records may appear at NEW offsets (duplicates). Consumers must
+// already tolerate duplicates (all firn delivery modes are at-least-once).
+type ProduceBatchRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Topic         string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
+	Records       []*ProduceBatchRecord  `protobuf:"bytes,2,rep,name=records,proto3" json:"records,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProduceBatchRequest) Reset() {
+	*x = ProduceBatchRequest{}
+	mi := &file_firn_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProduceBatchRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProduceBatchRequest) ProtoMessage() {}
+
+func (x *ProduceBatchRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_firn_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProduceBatchRequest.ProtoReflect.Descriptor instead.
+func (*ProduceBatchRequest) Descriptor() ([]byte, []int) {
+	return file_firn_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *ProduceBatchRequest) GetTopic() string {
+	if x != nil {
+		return x.Topic
+	}
+	return ""
+}
+
+func (x *ProduceBatchRequest) GetRecords() []*ProduceBatchRecord {
+	if x != nil {
+		return x.Records
+	}
+	return nil
+}
+
+type ProduceBatchRecordResult struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Partition     int32                  `protobuf:"varint,1,opt,name=partition,proto3" json:"partition,omitempty"`
+	Offset        int64                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProduceBatchRecordResult) Reset() {
+	*x = ProduceBatchRecordResult{}
+	mi := &file_firn_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProduceBatchRecordResult) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProduceBatchRecordResult) ProtoMessage() {}
+
+func (x *ProduceBatchRecordResult) ProtoReflect() protoreflect.Message {
+	mi := &file_firn_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProduceBatchRecordResult.ProtoReflect.Descriptor instead.
+func (*ProduceBatchRecordResult) Descriptor() ([]byte, []int) {
+	return file_firn_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *ProduceBatchRecordResult) GetPartition() int32 {
+	if x != nil {
+		return x.Partition
+	}
+	return 0
+}
+
+func (x *ProduceBatchRecordResult) GetOffset() int64 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
+type ProduceBatchResponse struct {
+	state         protoimpl.MessageState      `protogen:"open.v1"`
+	Records       []*ProduceBatchRecordResult `protobuf:"bytes,1,rep,name=records,proto3" json:"records,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ProduceBatchResponse) Reset() {
+	*x = ProduceBatchResponse{}
+	mi := &file_firn_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ProduceBatchResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ProduceBatchResponse) ProtoMessage() {}
+
+func (x *ProduceBatchResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_firn_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ProduceBatchResponse.ProtoReflect.Descriptor instead.
+func (*ProduceBatchResponse) Descriptor() ([]byte, []int) {
+	return file_firn_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *ProduceBatchResponse) GetRecords() []*ProduceBatchRecordResult {
+	if x != nil {
+		return x.Records
+	}
+	return nil
+}
+
 type FetchRequest struct {
 	state     protoimpl.MessageState `protogen:"open.v1"`
 	Topic     string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
@@ -152,7 +364,7 @@ type FetchRequest struct {
 
 func (x *FetchRequest) Reset() {
 	*x = FetchRequest{}
-	mi := &file_firn_proto_msgTypes[2]
+	mi := &file_firn_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -164,7 +376,7 @@ func (x *FetchRequest) String() string {
 func (*FetchRequest) ProtoMessage() {}
 
 func (x *FetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[2]
+	mi := &file_firn_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -177,7 +389,7 @@ func (x *FetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchRequest.ProtoReflect.Descriptor instead.
 func (*FetchRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{2}
+	return file_firn_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *FetchRequest) GetTopic() string {
@@ -222,7 +434,7 @@ type FetchResponse struct {
 
 func (x *FetchResponse) Reset() {
 	*x = FetchResponse{}
-	mi := &file_firn_proto_msgTypes[3]
+	mi := &file_firn_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -234,7 +446,7 @@ func (x *FetchResponse) String() string {
 func (*FetchResponse) ProtoMessage() {}
 
 func (x *FetchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[3]
+	mi := &file_firn_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -247,7 +459,7 @@ func (x *FetchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchResponse.ProtoReflect.Descriptor instead.
 func (*FetchResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{3}
+	return file_firn_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *FetchResponse) GetRecords() []*Record {
@@ -275,7 +487,7 @@ type Record struct {
 
 func (x *Record) Reset() {
 	*x = Record{}
-	mi := &file_firn_proto_msgTypes[4]
+	mi := &file_firn_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -287,7 +499,7 @@ func (x *Record) String() string {
 func (*Record) ProtoMessage() {}
 
 func (x *Record) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[4]
+	mi := &file_firn_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -300,7 +512,7 @@ func (x *Record) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Record.ProtoReflect.Descriptor instead.
 func (*Record) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{4}
+	return file_firn_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *Record) GetOffset() int64 {
@@ -334,7 +546,7 @@ type TopicAssignment struct {
 
 func (x *TopicAssignment) Reset() {
 	*x = TopicAssignment{}
-	mi := &file_firn_proto_msgTypes[5]
+	mi := &file_firn_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -346,7 +558,7 @@ func (x *TopicAssignment) String() string {
 func (*TopicAssignment) ProtoMessage() {}
 
 func (x *TopicAssignment) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[5]
+	mi := &file_firn_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -359,7 +571,7 @@ func (x *TopicAssignment) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TopicAssignment.ProtoReflect.Descriptor instead.
 func (*TopicAssignment) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{5}
+	return file_firn_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *TopicAssignment) GetTopic() string {
@@ -389,7 +601,7 @@ type JoinGroupRequest struct {
 
 func (x *JoinGroupRequest) Reset() {
 	*x = JoinGroupRequest{}
-	mi := &file_firn_proto_msgTypes[6]
+	mi := &file_firn_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -401,7 +613,7 @@ func (x *JoinGroupRequest) String() string {
 func (*JoinGroupRequest) ProtoMessage() {}
 
 func (x *JoinGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[6]
+	mi := &file_firn_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -414,7 +626,7 @@ func (x *JoinGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JoinGroupRequest.ProtoReflect.Descriptor instead.
 func (*JoinGroupRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{6}
+	return file_firn_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *JoinGroupRequest) GetGroupId() string {
@@ -466,7 +678,7 @@ type JoinGroupResponse struct {
 
 func (x *JoinGroupResponse) Reset() {
 	*x = JoinGroupResponse{}
-	mi := &file_firn_proto_msgTypes[7]
+	mi := &file_firn_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -478,7 +690,7 @@ func (x *JoinGroupResponse) String() string {
 func (*JoinGroupResponse) ProtoMessage() {}
 
 func (x *JoinGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[7]
+	mi := &file_firn_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -491,7 +703,7 @@ func (x *JoinGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JoinGroupResponse.ProtoReflect.Descriptor instead.
 func (*JoinGroupResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{7}
+	return file_firn_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *JoinGroupResponse) GetMemberId() string {
@@ -547,7 +759,7 @@ type SyncGroupRequest struct {
 
 func (x *SyncGroupRequest) Reset() {
 	*x = SyncGroupRequest{}
-	mi := &file_firn_proto_msgTypes[8]
+	mi := &file_firn_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -559,7 +771,7 @@ func (x *SyncGroupRequest) String() string {
 func (*SyncGroupRequest) ProtoMessage() {}
 
 func (x *SyncGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[8]
+	mi := &file_firn_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -572,7 +784,7 @@ func (x *SyncGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncGroupRequest.ProtoReflect.Descriptor instead.
 func (*SyncGroupRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{8}
+	return file_firn_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *SyncGroupRequest) GetGroupId() string {
@@ -606,7 +818,7 @@ type SyncGroupResponse struct {
 
 func (x *SyncGroupResponse) Reset() {
 	*x = SyncGroupResponse{}
-	mi := &file_firn_proto_msgTypes[9]
+	mi := &file_firn_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -618,7 +830,7 @@ func (x *SyncGroupResponse) String() string {
 func (*SyncGroupResponse) ProtoMessage() {}
 
 func (x *SyncGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[9]
+	mi := &file_firn_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -631,7 +843,7 @@ func (x *SyncGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SyncGroupResponse.ProtoReflect.Descriptor instead.
 func (*SyncGroupResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{9}
+	return file_firn_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *SyncGroupResponse) GetAssignment() []*TopicAssignment {
@@ -659,7 +871,7 @@ type HeartbeatRequest struct {
 
 func (x *HeartbeatRequest) Reset() {
 	*x = HeartbeatRequest{}
-	mi := &file_firn_proto_msgTypes[10]
+	mi := &file_firn_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -671,7 +883,7 @@ func (x *HeartbeatRequest) String() string {
 func (*HeartbeatRequest) ProtoMessage() {}
 
 func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[10]
+	mi := &file_firn_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -684,7 +896,7 @@ func (x *HeartbeatRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatRequest.ProtoReflect.Descriptor instead.
 func (*HeartbeatRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{10}
+	return file_firn_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *HeartbeatRequest) GetGroupId() string {
@@ -718,7 +930,7 @@ type HeartbeatResponse struct {
 
 func (x *HeartbeatResponse) Reset() {
 	*x = HeartbeatResponse{}
-	mi := &file_firn_proto_msgTypes[11]
+	mi := &file_firn_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -730,7 +942,7 @@ func (x *HeartbeatResponse) String() string {
 func (*HeartbeatResponse) ProtoMessage() {}
 
 func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[11]
+	mi := &file_firn_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -743,7 +955,7 @@ func (x *HeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use HeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*HeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{11}
+	return file_firn_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *HeartbeatResponse) GetGenerationId() int64 {
@@ -770,7 +982,7 @@ type LeaveGroupRequest struct {
 
 func (x *LeaveGroupRequest) Reset() {
 	*x = LeaveGroupRequest{}
-	mi := &file_firn_proto_msgTypes[12]
+	mi := &file_firn_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -782,7 +994,7 @@ func (x *LeaveGroupRequest) String() string {
 func (*LeaveGroupRequest) ProtoMessage() {}
 
 func (x *LeaveGroupRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[12]
+	mi := &file_firn_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -795,7 +1007,7 @@ func (x *LeaveGroupRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeaveGroupRequest.ProtoReflect.Descriptor instead.
 func (*LeaveGroupRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{12}
+	return file_firn_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *LeaveGroupRequest) GetGroupId() string {
@@ -820,7 +1032,7 @@ type LeaveGroupResponse struct {
 
 func (x *LeaveGroupResponse) Reset() {
 	*x = LeaveGroupResponse{}
-	mi := &file_firn_proto_msgTypes[13]
+	mi := &file_firn_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -832,7 +1044,7 @@ func (x *LeaveGroupResponse) String() string {
 func (*LeaveGroupResponse) ProtoMessage() {}
 
 func (x *LeaveGroupResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[13]
+	mi := &file_firn_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -845,7 +1057,7 @@ func (x *LeaveGroupResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeaveGroupResponse.ProtoReflect.Descriptor instead.
 func (*LeaveGroupResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{13}
+	return file_firn_proto_rawDescGZIP(), []int{17}
 }
 
 type CommitOffsetRequest struct {
@@ -862,7 +1074,7 @@ type CommitOffsetRequest struct {
 
 func (x *CommitOffsetRequest) Reset() {
 	*x = CommitOffsetRequest{}
-	mi := &file_firn_proto_msgTypes[14]
+	mi := &file_firn_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -874,7 +1086,7 @@ func (x *CommitOffsetRequest) String() string {
 func (*CommitOffsetRequest) ProtoMessage() {}
 
 func (x *CommitOffsetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[14]
+	mi := &file_firn_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -887,7 +1099,7 @@ func (x *CommitOffsetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitOffsetRequest.ProtoReflect.Descriptor instead.
 func (*CommitOffsetRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{14}
+	return file_firn_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *CommitOffsetRequest) GetGroupId() string {
@@ -940,7 +1152,7 @@ type CommitOffsetResponse struct {
 
 func (x *CommitOffsetResponse) Reset() {
 	*x = CommitOffsetResponse{}
-	mi := &file_firn_proto_msgTypes[15]
+	mi := &file_firn_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -952,7 +1164,7 @@ func (x *CommitOffsetResponse) String() string {
 func (*CommitOffsetResponse) ProtoMessage() {}
 
 func (x *CommitOffsetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[15]
+	mi := &file_firn_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -965,7 +1177,7 @@ func (x *CommitOffsetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommitOffsetResponse.ProtoReflect.Descriptor instead.
 func (*CommitOffsetResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{15}
+	return file_firn_proto_rawDescGZIP(), []int{19}
 }
 
 type FetchOffsetRequest struct {
@@ -979,7 +1191,7 @@ type FetchOffsetRequest struct {
 
 func (x *FetchOffsetRequest) Reset() {
 	*x = FetchOffsetRequest{}
-	mi := &file_firn_proto_msgTypes[16]
+	mi := &file_firn_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -991,7 +1203,7 @@ func (x *FetchOffsetRequest) String() string {
 func (*FetchOffsetRequest) ProtoMessage() {}
 
 func (x *FetchOffsetRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[16]
+	mi := &file_firn_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1004,7 +1216,7 @@ func (x *FetchOffsetRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchOffsetRequest.ProtoReflect.Descriptor instead.
 func (*FetchOffsetRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{16}
+	return file_firn_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *FetchOffsetRequest) GetGroupId() string {
@@ -1040,7 +1252,7 @@ type FetchOffsetResponse struct {
 
 func (x *FetchOffsetResponse) Reset() {
 	*x = FetchOffsetResponse{}
-	mi := &file_firn_proto_msgTypes[17]
+	mi := &file_firn_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1052,7 +1264,7 @@ func (x *FetchOffsetResponse) String() string {
 func (*FetchOffsetResponse) ProtoMessage() {}
 
 func (x *FetchOffsetResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[17]
+	mi := &file_firn_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1065,7 +1277,7 @@ func (x *FetchOffsetResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchOffsetResponse.ProtoReflect.Descriptor instead.
 func (*FetchOffsetResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{17}
+	return file_firn_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *FetchOffsetResponse) GetOffset() int64 {
@@ -1109,7 +1321,7 @@ type OffsetEntry struct {
 
 func (x *OffsetEntry) Reset() {
 	*x = OffsetEntry{}
-	mi := &file_firn_proto_msgTypes[18]
+	mi := &file_firn_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1121,7 +1333,7 @@ func (x *OffsetEntry) String() string {
 func (*OffsetEntry) ProtoMessage() {}
 
 func (x *OffsetEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[18]
+	mi := &file_firn_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1134,7 +1346,7 @@ func (x *OffsetEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use OffsetEntry.ProtoReflect.Descriptor instead.
 func (*OffsetEntry) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{18}
+	return file_firn_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *OffsetEntry) GetTopic() string {
@@ -1181,7 +1393,7 @@ type FetchGroupOffsetsRequest struct {
 
 func (x *FetchGroupOffsetsRequest) Reset() {
 	*x = FetchGroupOffsetsRequest{}
-	mi := &file_firn_proto_msgTypes[19]
+	mi := &file_firn_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1193,7 +1405,7 @@ func (x *FetchGroupOffsetsRequest) String() string {
 func (*FetchGroupOffsetsRequest) ProtoMessage() {}
 
 func (x *FetchGroupOffsetsRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[19]
+	mi := &file_firn_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1206,7 +1418,7 @@ func (x *FetchGroupOffsetsRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchGroupOffsetsRequest.ProtoReflect.Descriptor instead.
 func (*FetchGroupOffsetsRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{19}
+	return file_firn_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *FetchGroupOffsetsRequest) GetGroupId() string {
@@ -1225,7 +1437,7 @@ type FetchGroupOffsetsResponse struct {
 
 func (x *FetchGroupOffsetsResponse) Reset() {
 	*x = FetchGroupOffsetsResponse{}
-	mi := &file_firn_proto_msgTypes[20]
+	mi := &file_firn_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1237,7 +1449,7 @@ func (x *FetchGroupOffsetsResponse) String() string {
 func (*FetchGroupOffsetsResponse) ProtoMessage() {}
 
 func (x *FetchGroupOffsetsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[20]
+	mi := &file_firn_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1250,7 +1462,7 @@ func (x *FetchGroupOffsetsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FetchGroupOffsetsResponse.ProtoReflect.Descriptor instead.
 func (*FetchGroupOffsetsResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{20}
+	return file_firn_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *FetchGroupOffsetsResponse) GetOffsets() []*OffsetEntry {
@@ -1276,7 +1488,7 @@ type QueueDelivery struct {
 
 func (x *QueueDelivery) Reset() {
 	*x = QueueDelivery{}
-	mi := &file_firn_proto_msgTypes[21]
+	mi := &file_firn_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1288,7 +1500,7 @@ func (x *QueueDelivery) String() string {
 func (*QueueDelivery) ProtoMessage() {}
 
 func (x *QueueDelivery) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[21]
+	mi := &file_firn_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1301,7 +1513,7 @@ func (x *QueueDelivery) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QueueDelivery.ProtoReflect.Descriptor instead.
 func (*QueueDelivery) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{21}
+	return file_firn_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *QueueDelivery) GetDeliveryId() string {
@@ -1371,7 +1583,7 @@ type PullRequest struct {
 
 func (x *PullRequest) Reset() {
 	*x = PullRequest{}
-	mi := &file_firn_proto_msgTypes[22]
+	mi := &file_firn_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1383,7 +1595,7 @@ func (x *PullRequest) String() string {
 func (*PullRequest) ProtoMessage() {}
 
 func (x *PullRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[22]
+	mi := &file_firn_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1396,7 +1608,7 @@ func (x *PullRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullRequest.ProtoReflect.Descriptor instead.
 func (*PullRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{22}
+	return file_firn_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *PullRequest) GetQueue() string {
@@ -1429,7 +1641,7 @@ type PullResponse struct {
 
 func (x *PullResponse) Reset() {
 	*x = PullResponse{}
-	mi := &file_firn_proto_msgTypes[23]
+	mi := &file_firn_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1441,7 +1653,7 @@ func (x *PullResponse) String() string {
 func (*PullResponse) ProtoMessage() {}
 
 func (x *PullResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[23]
+	mi := &file_firn_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1454,7 +1666,7 @@ func (x *PullResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PullResponse.ProtoReflect.Descriptor instead.
 func (*PullResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{23}
+	return file_firn_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *PullResponse) GetDeliveries() []*QueueDelivery {
@@ -1474,7 +1686,7 @@ type AckRequest struct {
 
 func (x *AckRequest) Reset() {
 	*x = AckRequest{}
-	mi := &file_firn_proto_msgTypes[24]
+	mi := &file_firn_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1486,7 +1698,7 @@ func (x *AckRequest) String() string {
 func (*AckRequest) ProtoMessage() {}
 
 func (x *AckRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[24]
+	mi := &file_firn_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1499,7 +1711,7 @@ func (x *AckRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckRequest.ProtoReflect.Descriptor instead.
 func (*AckRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{24}
+	return file_firn_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *AckRequest) GetQueue() string {
@@ -1524,7 +1736,7 @@ type AckResponse struct {
 
 func (x *AckResponse) Reset() {
 	*x = AckResponse{}
-	mi := &file_firn_proto_msgTypes[25]
+	mi := &file_firn_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1536,7 +1748,7 @@ func (x *AckResponse) String() string {
 func (*AckResponse) ProtoMessage() {}
 
 func (x *AckResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[25]
+	mi := &file_firn_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1549,7 +1761,7 @@ func (x *AckResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AckResponse.ProtoReflect.Descriptor instead.
 func (*AckResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{25}
+	return file_firn_proto_rawDescGZIP(), []int{29}
 }
 
 type QuorumMessageRequest struct {
@@ -1561,7 +1773,7 @@ type QuorumMessageRequest struct {
 
 func (x *QuorumMessageRequest) Reset() {
 	*x = QuorumMessageRequest{}
-	mi := &file_firn_proto_msgTypes[26]
+	mi := &file_firn_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1573,7 +1785,7 @@ func (x *QuorumMessageRequest) String() string {
 func (*QuorumMessageRequest) ProtoMessage() {}
 
 func (x *QuorumMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[26]
+	mi := &file_firn_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1586,7 +1798,7 @@ func (x *QuorumMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuorumMessageRequest.ProtoReflect.Descriptor instead.
 func (*QuorumMessageRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{26}
+	return file_firn_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *QuorumMessageRequest) GetPayload() []byte {
@@ -1604,7 +1816,7 @@ type QuorumMessageResponse struct {
 
 func (x *QuorumMessageResponse) Reset() {
 	*x = QuorumMessageResponse{}
-	mi := &file_firn_proto_msgTypes[27]
+	mi := &file_firn_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1616,7 +1828,7 @@ func (x *QuorumMessageResponse) String() string {
 func (*QuorumMessageResponse) ProtoMessage() {}
 
 func (x *QuorumMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[27]
+	mi := &file_firn_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1629,7 +1841,7 @@ func (x *QuorumMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuorumMessageResponse.ProtoReflect.Descriptor instead.
 func (*QuorumMessageResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{27}
+	return file_firn_proto_rawDescGZIP(), []int{31}
 }
 
 type ReplicaFetchRequest struct {
@@ -1644,7 +1856,7 @@ type ReplicaFetchRequest struct {
 
 func (x *ReplicaFetchRequest) Reset() {
 	*x = ReplicaFetchRequest{}
-	mi := &file_firn_proto_msgTypes[28]
+	mi := &file_firn_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1656,7 +1868,7 @@ func (x *ReplicaFetchRequest) String() string {
 func (*ReplicaFetchRequest) ProtoMessage() {}
 
 func (x *ReplicaFetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[28]
+	mi := &file_firn_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1669,7 +1881,7 @@ func (x *ReplicaFetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaFetchRequest.ProtoReflect.Descriptor instead.
 func (*ReplicaFetchRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{28}
+	return file_firn_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *ReplicaFetchRequest) GetTopic() string {
@@ -1709,7 +1921,7 @@ type ReplicaFetchResponse struct {
 
 func (x *ReplicaFetchResponse) Reset() {
 	*x = ReplicaFetchResponse{}
-	mi := &file_firn_proto_msgTypes[29]
+	mi := &file_firn_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1721,7 +1933,7 @@ func (x *ReplicaFetchResponse) String() string {
 func (*ReplicaFetchResponse) ProtoMessage() {}
 
 func (x *ReplicaFetchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[29]
+	mi := &file_firn_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1734,7 +1946,7 @@ func (x *ReplicaFetchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaFetchResponse.ProtoReflect.Descriptor instead.
 func (*ReplicaFetchResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{29}
+	return file_firn_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *ReplicaFetchResponse) GetFrames() []byte {
@@ -1756,7 +1968,7 @@ type ReplicaPutRequest struct {
 
 func (x *ReplicaPutRequest) Reset() {
 	*x = ReplicaPutRequest{}
-	mi := &file_firn_proto_msgTypes[30]
+	mi := &file_firn_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1768,7 +1980,7 @@ func (x *ReplicaPutRequest) String() string {
 func (*ReplicaPutRequest) ProtoMessage() {}
 
 func (x *ReplicaPutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[30]
+	mi := &file_firn_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1781,7 +1993,7 @@ func (x *ReplicaPutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaPutRequest.ProtoReflect.Descriptor instead.
 func (*ReplicaPutRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{30}
+	return file_firn_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *ReplicaPutRequest) GetTopic() string {
@@ -1821,7 +2033,7 @@ type ReplicaPutResponse struct {
 
 func (x *ReplicaPutResponse) Reset() {
 	*x = ReplicaPutResponse{}
-	mi := &file_firn_proto_msgTypes[31]
+	mi := &file_firn_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1833,7 +2045,7 @@ func (x *ReplicaPutResponse) String() string {
 func (*ReplicaPutResponse) ProtoMessage() {}
 
 func (x *ReplicaPutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[31]
+	mi := &file_firn_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1846,7 +2058,7 @@ func (x *ReplicaPutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaPutResponse.ProtoReflect.Descriptor instead.
 func (*ReplicaPutResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{31}
+	return file_firn_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *ReplicaPutResponse) GetHighWatermark() int64 {
@@ -1873,7 +2085,7 @@ type FederationFetchRequest struct {
 
 func (x *FederationFetchRequest) Reset() {
 	*x = FederationFetchRequest{}
-	mi := &file_firn_proto_msgTypes[32]
+	mi := &file_firn_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1885,7 +2097,7 @@ func (x *FederationFetchRequest) String() string {
 func (*FederationFetchRequest) ProtoMessage() {}
 
 func (x *FederationFetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[32]
+	mi := &file_firn_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1898,7 +2110,7 @@ func (x *FederationFetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FederationFetchRequest.ProtoReflect.Descriptor instead.
 func (*FederationFetchRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{32}
+	return file_firn_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *FederationFetchRequest) GetTopic() string {
@@ -1946,7 +2158,7 @@ type FederationFetchResponse struct {
 
 func (x *FederationFetchResponse) Reset() {
 	*x = FederationFetchResponse{}
-	mi := &file_firn_proto_msgTypes[33]
+	mi := &file_firn_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1958,7 +2170,7 @@ func (x *FederationFetchResponse) String() string {
 func (*FederationFetchResponse) ProtoMessage() {}
 
 func (x *FederationFetchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[33]
+	mi := &file_firn_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1971,7 +2183,7 @@ func (x *FederationFetchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FederationFetchResponse.ProtoReflect.Descriptor instead.
 func (*FederationFetchResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{33}
+	return file_firn_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *FederationFetchResponse) GetFrames() []byte {
@@ -1998,7 +2210,7 @@ type FederationReportRequest struct {
 
 func (x *FederationReportRequest) Reset() {
 	*x = FederationReportRequest{}
-	mi := &file_firn_proto_msgTypes[34]
+	mi := &file_firn_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2010,7 +2222,7 @@ func (x *FederationReportRequest) String() string {
 func (*FederationReportRequest) ProtoMessage() {}
 
 func (x *FederationReportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[34]
+	mi := &file_firn_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2023,7 +2235,7 @@ func (x *FederationReportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FederationReportRequest.ProtoReflect.Descriptor instead.
 func (*FederationReportRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{34}
+	return file_firn_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *FederationReportRequest) GetTopic() string {
@@ -2056,7 +2268,7 @@ type LocalRangePB struct {
 
 func (x *LocalRangePB) Reset() {
 	*x = LocalRangePB{}
-	mi := &file_firn_proto_msgTypes[35]
+	mi := &file_firn_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2068,7 +2280,7 @@ func (x *LocalRangePB) String() string {
 func (*LocalRangePB) ProtoMessage() {}
 
 func (x *LocalRangePB) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[35]
+	mi := &file_firn_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2081,7 +2293,7 @@ func (x *LocalRangePB) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LocalRangePB.ProtoReflect.Descriptor instead.
 func (*LocalRangePB) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{35}
+	return file_firn_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *LocalRangePB) GetStart() int64 {
@@ -2120,7 +2332,7 @@ type FederationReportResponse struct {
 
 func (x *FederationReportResponse) Reset() {
 	*x = FederationReportResponse{}
-	mi := &file_firn_proto_msgTypes[36]
+	mi := &file_firn_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2132,7 +2344,7 @@ func (x *FederationReportResponse) String() string {
 func (*FederationReportResponse) ProtoMessage() {}
 
 func (x *FederationReportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[36]
+	mi := &file_firn_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2145,7 +2357,7 @@ func (x *FederationReportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FederationReportResponse.ProtoReflect.Descriptor instead.
 func (*FederationReportResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{36}
+	return file_firn_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *FederationReportResponse) GetHighWatermark() int64 {
@@ -2187,7 +2399,7 @@ type PartitionMetadata struct {
 
 func (x *PartitionMetadata) Reset() {
 	*x = PartitionMetadata{}
-	mi := &file_firn_proto_msgTypes[37]
+	mi := &file_firn_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2199,7 +2411,7 @@ func (x *PartitionMetadata) String() string {
 func (*PartitionMetadata) ProtoMessage() {}
 
 func (x *PartitionMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[37]
+	mi := &file_firn_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2212,7 +2424,7 @@ func (x *PartitionMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartitionMetadata.ProtoReflect.Descriptor instead.
 func (*PartitionMetadata) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{37}
+	return file_firn_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *PartitionMetadata) GetPartitionId() int32 {
@@ -2248,7 +2460,7 @@ type TopicMetadata struct {
 
 func (x *TopicMetadata) Reset() {
 	*x = TopicMetadata{}
-	mi := &file_firn_proto_msgTypes[38]
+	mi := &file_firn_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2260,7 +2472,7 @@ func (x *TopicMetadata) String() string {
 func (*TopicMetadata) ProtoMessage() {}
 
 func (x *TopicMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[38]
+	mi := &file_firn_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2273,7 +2485,7 @@ func (x *TopicMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TopicMetadata.ProtoReflect.Descriptor instead.
 func (*TopicMetadata) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{38}
+	return file_firn_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *TopicMetadata) GetName() string {
@@ -2315,7 +2527,7 @@ type BrokerMetadata struct {
 
 func (x *BrokerMetadata) Reset() {
 	*x = BrokerMetadata{}
-	mi := &file_firn_proto_msgTypes[39]
+	mi := &file_firn_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2327,7 +2539,7 @@ func (x *BrokerMetadata) String() string {
 func (*BrokerMetadata) ProtoMessage() {}
 
 func (x *BrokerMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[39]
+	mi := &file_firn_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2340,7 +2552,7 @@ func (x *BrokerMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrokerMetadata.ProtoReflect.Descriptor instead.
 func (*BrokerMetadata) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{39}
+	return file_firn_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *BrokerMetadata) GetId() string {
@@ -2373,7 +2585,7 @@ type GetMetadataRequest struct {
 
 func (x *GetMetadataRequest) Reset() {
 	*x = GetMetadataRequest{}
-	mi := &file_firn_proto_msgTypes[40]
+	mi := &file_firn_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2385,7 +2597,7 @@ func (x *GetMetadataRequest) String() string {
 func (*GetMetadataRequest) ProtoMessage() {}
 
 func (x *GetMetadataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[40]
+	mi := &file_firn_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2398,7 +2610,7 @@ func (x *GetMetadataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMetadataRequest.ProtoReflect.Descriptor instead.
 func (*GetMetadataRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{40}
+	return file_firn_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *GetMetadataRequest) GetTopics() []string {
@@ -2418,7 +2630,7 @@ type GetMetadataResponse struct {
 
 func (x *GetMetadataResponse) Reset() {
 	*x = GetMetadataResponse{}
-	mi := &file_firn_proto_msgTypes[41]
+	mi := &file_firn_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2430,7 +2642,7 @@ func (x *GetMetadataResponse) String() string {
 func (*GetMetadataResponse) ProtoMessage() {}
 
 func (x *GetMetadataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[41]
+	mi := &file_firn_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2443,7 +2655,7 @@ func (x *GetMetadataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMetadataResponse.ProtoReflect.Descriptor instead.
 func (*GetMetadataResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{41}
+	return file_firn_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *GetMetadataResponse) GetBrokers() []*BrokerMetadata {
@@ -2472,7 +2684,18 @@ const file_firn_proto_rawDesc = "" +
 	"\x05value\x18\x03 \x01(\fR\x05value\"G\n" +
 	"\x0fProduceResponse\x12\x1c\n" +
 	"\tpartition\x18\x01 \x01(\x05R\tpartition\x12\x16\n" +
-	"\x06offset\x18\x02 \x01(\x03R\x06offset\"{\n" +
+	"\x06offset\x18\x02 \x01(\x03R\x06offset\"<\n" +
+	"\x12ProduceBatchRecord\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\fR\x03key\x12\x14\n" +
+	"\x05value\x18\x02 \x01(\fR\x05value\"b\n" +
+	"\x13ProduceBatchRequest\x12\x14\n" +
+	"\x05topic\x18\x01 \x01(\tR\x05topic\x125\n" +
+	"\arecords\x18\x02 \x03(\v2\x1b.firn.v1.ProduceBatchRecordR\arecords\"P\n" +
+	"\x18ProduceBatchRecordResult\x12\x1c\n" +
+	"\tpartition\x18\x01 \x01(\x05R\tpartition\x12\x16\n" +
+	"\x06offset\x18\x02 \x01(\x03R\x06offset\"S\n" +
+	"\x14ProduceBatchResponse\x12;\n" +
+	"\arecords\x18\x01 \x03(\v2!.firn.v1.ProduceBatchRecordResultR\arecords\"{\n" +
 	"\fFetchRequest\x12\x14\n" +
 	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x1c\n" +
 	"\tpartition\x18\x02 \x01(\x05R\tpartition\x12\x16\n" +
@@ -2643,9 +2866,10 @@ const file_firn_proto_rawDesc = "" +
 	"\x06topics\x18\x01 \x03(\tR\x06topics\"x\n" +
 	"\x13GetMetadataResponse\x121\n" +
 	"\abrokers\x18\x01 \x03(\v2\x17.firn.v1.BrokerMetadataR\abrokers\x12.\n" +
-	"\x06topics\x18\x02 \x03(\v2\x16.firn.v1.TopicMetadataR\x06topics2\xba\x06\n" +
+	"\x06topics\x18\x02 \x03(\v2\x16.firn.v1.TopicMetadataR\x06topics2\x87\a\n" +
 	"\vFirnService\x12<\n" +
-	"\aProduce\x12\x17.firn.v1.ProduceRequest\x1a\x18.firn.v1.ProduceResponse\x126\n" +
+	"\aProduce\x12\x17.firn.v1.ProduceRequest\x1a\x18.firn.v1.ProduceResponse\x12K\n" +
+	"\fProduceBatch\x12\x1c.firn.v1.ProduceBatchRequest\x1a\x1d.firn.v1.ProduceBatchResponse\x126\n" +
 	"\x05Fetch\x12\x15.firn.v1.FetchRequest\x1a\x16.firn.v1.FetchResponse\x12B\n" +
 	"\tJoinGroup\x12\x19.firn.v1.JoinGroupRequest\x1a\x1a.firn.v1.JoinGroupResponse\x12B\n" +
 	"\tSyncGroup\x12\x19.firn.v1.SyncGroupRequest\x1a\x1a.firn.v1.SyncGroupResponse\x12B\n" +
@@ -2680,100 +2904,108 @@ func file_firn_proto_rawDescGZIP() []byte {
 	return file_firn_proto_rawDescData
 }
 
-var file_firn_proto_msgTypes = make([]protoimpl.MessageInfo, 42)
+var file_firn_proto_msgTypes = make([]protoimpl.MessageInfo, 46)
 var file_firn_proto_goTypes = []any{
 	(*ProduceRequest)(nil),            // 0: firn.v1.ProduceRequest
 	(*ProduceResponse)(nil),           // 1: firn.v1.ProduceResponse
-	(*FetchRequest)(nil),              // 2: firn.v1.FetchRequest
-	(*FetchResponse)(nil),             // 3: firn.v1.FetchResponse
-	(*Record)(nil),                    // 4: firn.v1.Record
-	(*TopicAssignment)(nil),           // 5: firn.v1.TopicAssignment
-	(*JoinGroupRequest)(nil),          // 6: firn.v1.JoinGroupRequest
-	(*JoinGroupResponse)(nil),         // 7: firn.v1.JoinGroupResponse
-	(*SyncGroupRequest)(nil),          // 8: firn.v1.SyncGroupRequest
-	(*SyncGroupResponse)(nil),         // 9: firn.v1.SyncGroupResponse
-	(*HeartbeatRequest)(nil),          // 10: firn.v1.HeartbeatRequest
-	(*HeartbeatResponse)(nil),         // 11: firn.v1.HeartbeatResponse
-	(*LeaveGroupRequest)(nil),         // 12: firn.v1.LeaveGroupRequest
-	(*LeaveGroupResponse)(nil),        // 13: firn.v1.LeaveGroupResponse
-	(*CommitOffsetRequest)(nil),       // 14: firn.v1.CommitOffsetRequest
-	(*CommitOffsetResponse)(nil),      // 15: firn.v1.CommitOffsetResponse
-	(*FetchOffsetRequest)(nil),        // 16: firn.v1.FetchOffsetRequest
-	(*FetchOffsetResponse)(nil),       // 17: firn.v1.FetchOffsetResponse
-	(*OffsetEntry)(nil),               // 18: firn.v1.OffsetEntry
-	(*FetchGroupOffsetsRequest)(nil),  // 19: firn.v1.FetchGroupOffsetsRequest
-	(*FetchGroupOffsetsResponse)(nil), // 20: firn.v1.FetchGroupOffsetsResponse
-	(*QueueDelivery)(nil),             // 21: firn.v1.QueueDelivery
-	(*PullRequest)(nil),               // 22: firn.v1.PullRequest
-	(*PullResponse)(nil),              // 23: firn.v1.PullResponse
-	(*AckRequest)(nil),                // 24: firn.v1.AckRequest
-	(*AckResponse)(nil),               // 25: firn.v1.AckResponse
-	(*QuorumMessageRequest)(nil),      // 26: firn.v1.QuorumMessageRequest
-	(*QuorumMessageResponse)(nil),     // 27: firn.v1.QuorumMessageResponse
-	(*ReplicaFetchRequest)(nil),       // 28: firn.v1.ReplicaFetchRequest
-	(*ReplicaFetchResponse)(nil),      // 29: firn.v1.ReplicaFetchResponse
-	(*ReplicaPutRequest)(nil),         // 30: firn.v1.ReplicaPutRequest
-	(*ReplicaPutResponse)(nil),        // 31: firn.v1.ReplicaPutResponse
-	(*FederationFetchRequest)(nil),    // 32: firn.v1.FederationFetchRequest
-	(*FederationFetchResponse)(nil),   // 33: firn.v1.FederationFetchResponse
-	(*FederationReportRequest)(nil),   // 34: firn.v1.FederationReportRequest
-	(*LocalRangePB)(nil),              // 35: firn.v1.LocalRangePB
-	(*FederationReportResponse)(nil),  // 36: firn.v1.FederationReportResponse
-	(*PartitionMetadata)(nil),         // 37: firn.v1.PartitionMetadata
-	(*TopicMetadata)(nil),             // 38: firn.v1.TopicMetadata
-	(*BrokerMetadata)(nil),            // 39: firn.v1.BrokerMetadata
-	(*GetMetadataRequest)(nil),        // 40: firn.v1.GetMetadataRequest
-	(*GetMetadataResponse)(nil),       // 41: firn.v1.GetMetadataResponse
+	(*ProduceBatchRecord)(nil),        // 2: firn.v1.ProduceBatchRecord
+	(*ProduceBatchRequest)(nil),       // 3: firn.v1.ProduceBatchRequest
+	(*ProduceBatchRecordResult)(nil),  // 4: firn.v1.ProduceBatchRecordResult
+	(*ProduceBatchResponse)(nil),      // 5: firn.v1.ProduceBatchResponse
+	(*FetchRequest)(nil),              // 6: firn.v1.FetchRequest
+	(*FetchResponse)(nil),             // 7: firn.v1.FetchResponse
+	(*Record)(nil),                    // 8: firn.v1.Record
+	(*TopicAssignment)(nil),           // 9: firn.v1.TopicAssignment
+	(*JoinGroupRequest)(nil),          // 10: firn.v1.JoinGroupRequest
+	(*JoinGroupResponse)(nil),         // 11: firn.v1.JoinGroupResponse
+	(*SyncGroupRequest)(nil),          // 12: firn.v1.SyncGroupRequest
+	(*SyncGroupResponse)(nil),         // 13: firn.v1.SyncGroupResponse
+	(*HeartbeatRequest)(nil),          // 14: firn.v1.HeartbeatRequest
+	(*HeartbeatResponse)(nil),         // 15: firn.v1.HeartbeatResponse
+	(*LeaveGroupRequest)(nil),         // 16: firn.v1.LeaveGroupRequest
+	(*LeaveGroupResponse)(nil),        // 17: firn.v1.LeaveGroupResponse
+	(*CommitOffsetRequest)(nil),       // 18: firn.v1.CommitOffsetRequest
+	(*CommitOffsetResponse)(nil),      // 19: firn.v1.CommitOffsetResponse
+	(*FetchOffsetRequest)(nil),        // 20: firn.v1.FetchOffsetRequest
+	(*FetchOffsetResponse)(nil),       // 21: firn.v1.FetchOffsetResponse
+	(*OffsetEntry)(nil),               // 22: firn.v1.OffsetEntry
+	(*FetchGroupOffsetsRequest)(nil),  // 23: firn.v1.FetchGroupOffsetsRequest
+	(*FetchGroupOffsetsResponse)(nil), // 24: firn.v1.FetchGroupOffsetsResponse
+	(*QueueDelivery)(nil),             // 25: firn.v1.QueueDelivery
+	(*PullRequest)(nil),               // 26: firn.v1.PullRequest
+	(*PullResponse)(nil),              // 27: firn.v1.PullResponse
+	(*AckRequest)(nil),                // 28: firn.v1.AckRequest
+	(*AckResponse)(nil),               // 29: firn.v1.AckResponse
+	(*QuorumMessageRequest)(nil),      // 30: firn.v1.QuorumMessageRequest
+	(*QuorumMessageResponse)(nil),     // 31: firn.v1.QuorumMessageResponse
+	(*ReplicaFetchRequest)(nil),       // 32: firn.v1.ReplicaFetchRequest
+	(*ReplicaFetchResponse)(nil),      // 33: firn.v1.ReplicaFetchResponse
+	(*ReplicaPutRequest)(nil),         // 34: firn.v1.ReplicaPutRequest
+	(*ReplicaPutResponse)(nil),        // 35: firn.v1.ReplicaPutResponse
+	(*FederationFetchRequest)(nil),    // 36: firn.v1.FederationFetchRequest
+	(*FederationFetchResponse)(nil),   // 37: firn.v1.FederationFetchResponse
+	(*FederationReportRequest)(nil),   // 38: firn.v1.FederationReportRequest
+	(*LocalRangePB)(nil),              // 39: firn.v1.LocalRangePB
+	(*FederationReportResponse)(nil),  // 40: firn.v1.FederationReportResponse
+	(*PartitionMetadata)(nil),         // 41: firn.v1.PartitionMetadata
+	(*TopicMetadata)(nil),             // 42: firn.v1.TopicMetadata
+	(*BrokerMetadata)(nil),            // 43: firn.v1.BrokerMetadata
+	(*GetMetadataRequest)(nil),        // 44: firn.v1.GetMetadataRequest
+	(*GetMetadataResponse)(nil),       // 45: firn.v1.GetMetadataResponse
 }
 var file_firn_proto_depIdxs = []int32{
-	4,  // 0: firn.v1.FetchResponse.records:type_name -> firn.v1.Record
-	5,  // 1: firn.v1.JoinGroupResponse.assignment:type_name -> firn.v1.TopicAssignment
-	5,  // 2: firn.v1.SyncGroupResponse.assignment:type_name -> firn.v1.TopicAssignment
-	18, // 3: firn.v1.FetchGroupOffsetsResponse.offsets:type_name -> firn.v1.OffsetEntry
-	21, // 4: firn.v1.PullResponse.deliveries:type_name -> firn.v1.QueueDelivery
-	35, // 5: firn.v1.FederationReportResponse.foreign_ranges:type_name -> firn.v1.LocalRangePB
-	37, // 6: firn.v1.TopicMetadata.partitions_meta:type_name -> firn.v1.PartitionMetadata
-	39, // 7: firn.v1.GetMetadataResponse.brokers:type_name -> firn.v1.BrokerMetadata
-	38, // 8: firn.v1.GetMetadataResponse.topics:type_name -> firn.v1.TopicMetadata
-	0,  // 9: firn.v1.FirnService.Produce:input_type -> firn.v1.ProduceRequest
-	2,  // 10: firn.v1.FirnService.Fetch:input_type -> firn.v1.FetchRequest
-	6,  // 11: firn.v1.FirnService.JoinGroup:input_type -> firn.v1.JoinGroupRequest
-	8,  // 12: firn.v1.FirnService.SyncGroup:input_type -> firn.v1.SyncGroupRequest
-	10, // 13: firn.v1.FirnService.Heartbeat:input_type -> firn.v1.HeartbeatRequest
-	12, // 14: firn.v1.FirnService.LeaveGroup:input_type -> firn.v1.LeaveGroupRequest
-	14, // 15: firn.v1.FirnService.CommitOffset:input_type -> firn.v1.CommitOffsetRequest
-	16, // 16: firn.v1.FirnService.FetchOffset:input_type -> firn.v1.FetchOffsetRequest
-	19, // 17: firn.v1.FirnService.FetchGroupOffsets:input_type -> firn.v1.FetchGroupOffsetsRequest
-	22, // 18: firn.v1.FirnService.Pull:input_type -> firn.v1.PullRequest
-	24, // 19: firn.v1.FirnService.Ack:input_type -> firn.v1.AckRequest
-	40, // 20: firn.v1.FirnService.GetMetadata:input_type -> firn.v1.GetMetadataRequest
-	26, // 21: firn.v1.QuorumService.QuorumMessage:input_type -> firn.v1.QuorumMessageRequest
-	28, // 22: firn.v1.ReplicaService.ReplicaFetch:input_type -> firn.v1.ReplicaFetchRequest
-	30, // 23: firn.v1.ReplicaService.ReplicaPut:input_type -> firn.v1.ReplicaPutRequest
-	32, // 24: firn.v1.FederationService.FederationFetch:input_type -> firn.v1.FederationFetchRequest
-	34, // 25: firn.v1.FederationService.FederationReport:input_type -> firn.v1.FederationReportRequest
-	1,  // 26: firn.v1.FirnService.Produce:output_type -> firn.v1.ProduceResponse
-	3,  // 27: firn.v1.FirnService.Fetch:output_type -> firn.v1.FetchResponse
-	7,  // 28: firn.v1.FirnService.JoinGroup:output_type -> firn.v1.JoinGroupResponse
-	9,  // 29: firn.v1.FirnService.SyncGroup:output_type -> firn.v1.SyncGroupResponse
-	11, // 30: firn.v1.FirnService.Heartbeat:output_type -> firn.v1.HeartbeatResponse
-	13, // 31: firn.v1.FirnService.LeaveGroup:output_type -> firn.v1.LeaveGroupResponse
-	15, // 32: firn.v1.FirnService.CommitOffset:output_type -> firn.v1.CommitOffsetResponse
-	17, // 33: firn.v1.FirnService.FetchOffset:output_type -> firn.v1.FetchOffsetResponse
-	20, // 34: firn.v1.FirnService.FetchGroupOffsets:output_type -> firn.v1.FetchGroupOffsetsResponse
-	23, // 35: firn.v1.FirnService.Pull:output_type -> firn.v1.PullResponse
-	25, // 36: firn.v1.FirnService.Ack:output_type -> firn.v1.AckResponse
-	41, // 37: firn.v1.FirnService.GetMetadata:output_type -> firn.v1.GetMetadataResponse
-	27, // 38: firn.v1.QuorumService.QuorumMessage:output_type -> firn.v1.QuorumMessageResponse
-	29, // 39: firn.v1.ReplicaService.ReplicaFetch:output_type -> firn.v1.ReplicaFetchResponse
-	31, // 40: firn.v1.ReplicaService.ReplicaPut:output_type -> firn.v1.ReplicaPutResponse
-	33, // 41: firn.v1.FederationService.FederationFetch:output_type -> firn.v1.FederationFetchResponse
-	36, // 42: firn.v1.FederationService.FederationReport:output_type -> firn.v1.FederationReportResponse
-	26, // [26:43] is the sub-list for method output_type
-	9,  // [9:26] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	2,  // 0: firn.v1.ProduceBatchRequest.records:type_name -> firn.v1.ProduceBatchRecord
+	4,  // 1: firn.v1.ProduceBatchResponse.records:type_name -> firn.v1.ProduceBatchRecordResult
+	8,  // 2: firn.v1.FetchResponse.records:type_name -> firn.v1.Record
+	9,  // 3: firn.v1.JoinGroupResponse.assignment:type_name -> firn.v1.TopicAssignment
+	9,  // 4: firn.v1.SyncGroupResponse.assignment:type_name -> firn.v1.TopicAssignment
+	22, // 5: firn.v1.FetchGroupOffsetsResponse.offsets:type_name -> firn.v1.OffsetEntry
+	25, // 6: firn.v1.PullResponse.deliveries:type_name -> firn.v1.QueueDelivery
+	39, // 7: firn.v1.FederationReportResponse.foreign_ranges:type_name -> firn.v1.LocalRangePB
+	41, // 8: firn.v1.TopicMetadata.partitions_meta:type_name -> firn.v1.PartitionMetadata
+	43, // 9: firn.v1.GetMetadataResponse.brokers:type_name -> firn.v1.BrokerMetadata
+	42, // 10: firn.v1.GetMetadataResponse.topics:type_name -> firn.v1.TopicMetadata
+	0,  // 11: firn.v1.FirnService.Produce:input_type -> firn.v1.ProduceRequest
+	3,  // 12: firn.v1.FirnService.ProduceBatch:input_type -> firn.v1.ProduceBatchRequest
+	6,  // 13: firn.v1.FirnService.Fetch:input_type -> firn.v1.FetchRequest
+	10, // 14: firn.v1.FirnService.JoinGroup:input_type -> firn.v1.JoinGroupRequest
+	12, // 15: firn.v1.FirnService.SyncGroup:input_type -> firn.v1.SyncGroupRequest
+	14, // 16: firn.v1.FirnService.Heartbeat:input_type -> firn.v1.HeartbeatRequest
+	16, // 17: firn.v1.FirnService.LeaveGroup:input_type -> firn.v1.LeaveGroupRequest
+	18, // 18: firn.v1.FirnService.CommitOffset:input_type -> firn.v1.CommitOffsetRequest
+	20, // 19: firn.v1.FirnService.FetchOffset:input_type -> firn.v1.FetchOffsetRequest
+	23, // 20: firn.v1.FirnService.FetchGroupOffsets:input_type -> firn.v1.FetchGroupOffsetsRequest
+	26, // 21: firn.v1.FirnService.Pull:input_type -> firn.v1.PullRequest
+	28, // 22: firn.v1.FirnService.Ack:input_type -> firn.v1.AckRequest
+	44, // 23: firn.v1.FirnService.GetMetadata:input_type -> firn.v1.GetMetadataRequest
+	30, // 24: firn.v1.QuorumService.QuorumMessage:input_type -> firn.v1.QuorumMessageRequest
+	32, // 25: firn.v1.ReplicaService.ReplicaFetch:input_type -> firn.v1.ReplicaFetchRequest
+	34, // 26: firn.v1.ReplicaService.ReplicaPut:input_type -> firn.v1.ReplicaPutRequest
+	36, // 27: firn.v1.FederationService.FederationFetch:input_type -> firn.v1.FederationFetchRequest
+	38, // 28: firn.v1.FederationService.FederationReport:input_type -> firn.v1.FederationReportRequest
+	1,  // 29: firn.v1.FirnService.Produce:output_type -> firn.v1.ProduceResponse
+	5,  // 30: firn.v1.FirnService.ProduceBatch:output_type -> firn.v1.ProduceBatchResponse
+	7,  // 31: firn.v1.FirnService.Fetch:output_type -> firn.v1.FetchResponse
+	11, // 32: firn.v1.FirnService.JoinGroup:output_type -> firn.v1.JoinGroupResponse
+	13, // 33: firn.v1.FirnService.SyncGroup:output_type -> firn.v1.SyncGroupResponse
+	15, // 34: firn.v1.FirnService.Heartbeat:output_type -> firn.v1.HeartbeatResponse
+	17, // 35: firn.v1.FirnService.LeaveGroup:output_type -> firn.v1.LeaveGroupResponse
+	19, // 36: firn.v1.FirnService.CommitOffset:output_type -> firn.v1.CommitOffsetResponse
+	21, // 37: firn.v1.FirnService.FetchOffset:output_type -> firn.v1.FetchOffsetResponse
+	24, // 38: firn.v1.FirnService.FetchGroupOffsets:output_type -> firn.v1.FetchGroupOffsetsResponse
+	27, // 39: firn.v1.FirnService.Pull:output_type -> firn.v1.PullResponse
+	29, // 40: firn.v1.FirnService.Ack:output_type -> firn.v1.AckResponse
+	45, // 41: firn.v1.FirnService.GetMetadata:output_type -> firn.v1.GetMetadataResponse
+	31, // 42: firn.v1.QuorumService.QuorumMessage:output_type -> firn.v1.QuorumMessageResponse
+	33, // 43: firn.v1.ReplicaService.ReplicaFetch:output_type -> firn.v1.ReplicaFetchResponse
+	35, // 44: firn.v1.ReplicaService.ReplicaPut:output_type -> firn.v1.ReplicaPutResponse
+	37, // 45: firn.v1.FederationService.FederationFetch:output_type -> firn.v1.FederationFetchResponse
+	40, // 46: firn.v1.FederationService.FederationReport:output_type -> firn.v1.FederationReportResponse
+	29, // [29:47] is the sub-list for method output_type
+	11, // [11:29] is the sub-list for method input_type
+	11, // [11:11] is the sub-list for extension type_name
+	11, // [11:11] is the sub-list for extension extendee
+	0,  // [0:11] is the sub-list for field type_name
 }
 
 func init() { file_firn_proto_init() }
@@ -2787,7 +3019,7 @@ func file_firn_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_firn_proto_rawDesc), len(file_firn_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   42,
+			NumMessages:   46,
 			NumExtensions: 0,
 			NumServices:   4,
 		},

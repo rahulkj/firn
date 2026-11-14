@@ -9,7 +9,7 @@ Derived from ADR-014. One slice per session, same loop as plans 001–005:
 | Slice | Delivers | Review gate |
 |---|---|---|
 | 1 (**delivered 2026-11-13, awaiting mandatory storage review — do not merge**) | **Group commit / flush window** (`-flush-window`, `-max-batch-bytes`, default off): stage frames in memory; write+fsync the staged batch per window; produce acks only after the window flushes; deterministic rollback of a failed batch (truncate touched segments); `kill -9`-style torn-tail coverage in window_test.go; broker-wide produce mutex no longer held across the blocking append (it serialized every produce behind the window); `bench/baseline.md` re-run with ~186k msg/s windowed produce (256 in-flight producers) vs ~370 msg/s default | **mandatory (storage)** — in flight |
-| 2 (pending slice 1 review) | **Producer batching**: `ProduceBatch` RPC (one fsync per batch at the SDK/CLI layer), CLI `produce --batch`, SDK `ProduceBatch`, docs/examples | API review |
+| 2 (**delivered 2026-11-13, awaiting API review**) | **Producer batching**: `ProduceBatch` RPC (one RPC per batch vs per record; hard cap 500; not atomic — records before a failure are durable; retry may duplicate earlier records); `firn-cli produce --batch-file events.jsonl` (JSONL, auto-chunked to 500-record calls); SDK `ProduceBatch`/`KeyValue`/`BatchResult`; docs synced (`api.md`, `developer.md`) | API review — in flight |
 | 3 (**delivered 2026-11-13, awaiting mandatory storage-adjacent review**) | **Queue commit coalescing**: `__consumer_offsets` per-commit re-fold eliminated — Commit advances `foldedHWM` directly (local cache == post-append log); `refreshIfMoved` re-folds only on externally-driven HWM movement (replicated apply), preserving read-through; catch-up fold at commit time closes the stale-cache regression window across nodes. Acceptance tests pin all four properties (`internal/groups/offset_store_test.go`); profile had `groups.fold` = 53% CPU | **mandatory (storage-adjacent)** — in flight |
 | 4 (pending slice 3 + slice 1 evidence) | **Flush window on internal topics** if evidence says fsync-on-commit dominates (`__consumer_offsets`, `__queue_attempts`, `__audit`, `__api_keys`) — may reuse slice 1 mechanism with a tighter window or remain fsync-per-append; decided by measurement | **mandatory (storage)** |
 | 5 (pending cluster GA plan) | **Cluster-mode throughput**: node-count multiplication math revisited with real per-node numbers; cluster mode out of experimental status (dynamic membership, rebalance/drain) — separate plan (`008-cluster-ga.md`), out of scope here | storage + quorum review |
@@ -25,9 +25,11 @@ Derived from ADR-014. One slice per session, same loop as plans 001–005:
 - Property tests first (ADR-014 list): ack⇒durable (reopen after kill -9), no-ack⇒no-visibility, atomic window visibility, flush-time monotonic allocation, fetch-never-past-watermark during concurrent flush, internal-topic behavior decided by evidence.
 - Storage review mandatory. Default stays `-flush-window=0` through at least one release; release notes call the feature out. No headline number in docs until measured.
 
-### Slice 2 — producer batching
+### Slice 2 — producer batching (delivered, pending API review)
 
-- `ProduceBatch{topic, repeated records}` RPC; broker funnels into per-partition windows; one fsync per batch end-to-end; CLI `firn-cli produce --batch-file file.jsonl`; SDK `ProduceBatch`.
+- `ProduceBatch{topic, repeated records}` RPC — one call per batch instead of one call per record; hard cap 500 records per call; `INVALID_ARGUMENT` on empty topic, empty batch, or >500 records.
+- Not atomic: records are produced in request order; a failure mid-batch stops the call — records before it are durable, records after are not; retry re-produces the whole batch; retries may duplicate earlier records at new offsets (at-least-once, same as every other path).
+- CLI: `firn-cli produce --topic T --batch-file events.jsonl` — JSONL (`{"key": "...", "value": "..."}` per line, `key` optional/absent for round-robin, `-` reads stdin), auto-chunked to 500-record calls. SDK: `firngo.ProduceBatch(ctx, topic, []firngo.KeyValue{...})` returning `[]firngo.BatchResult` (partition + offset per record).
 - Exactly one user-visible storage-semantics consideration: offsets within a batch are contiguous per partition.
 
 ### Slice 3 — queue commit re-fold (delivered, pending review)

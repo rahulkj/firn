@@ -151,3 +151,111 @@ func TestSDKSubscribeDeliversInOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestSDKProduceBatchRoundTrip(t *testing.T) {
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	srv := grpc.NewServer()
+	reg := meta.NewRegistry()
+	if err := reg.Create("events", 3); err != nil {
+		t.Fatal(err)
+	}
+	b, err := broker.NewWithDir(reg, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Close() }()
+	firnpb.RegisterFirnServiceServer(srv, api.NewServer(b, nil))
+	go func() { _ = srv.Serve(ln) }()
+	defer srv.Stop()
+
+	ctx := context.Background()
+	sdk, err := firngo.DialInsecure(ctx, ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sdk.Close() }()
+
+	records := make([]firngo.KeyValue, 0, 30)
+	for i := 0; i < 30; i++ {
+		key := []byte(fmt.Sprintf("k-%d", i%4))
+		if i%4 == 3 {
+			key = nil // exercise round-robin routing
+		}
+		records = append(records, firngo.KeyValue{Key: key, Value: []byte(fmt.Sprintf("payload-%02d", i))})
+	}
+	results, err := sdk.ProduceBatch(ctx, "events", records)
+	if err != nil {
+		t.Fatalf("produce batch: %v", err)
+	}
+	if len(results) != len(records) {
+		t.Fatalf("results = %d, want %d", len(results), len(records))
+	}
+	ledgers := map[int32][]firngo.BatchResult{}
+	for _, r := range results {
+		if r.Partition < 0 || r.Partition >= 3 {
+			t.Fatalf("partition out of range: %d", r.Partition)
+		}
+		ledgers[r.Partition] = append(ledgers[r.Partition], r)
+	}
+	for p, rs := range ledgers {
+		for i := 1; i < len(rs); i++ {
+			if rs[i].Offset <= rs[i-1].Offset {
+				t.Fatalf("partition %d offsets not monotonic: %d then %d", p, rs[i-1].Offset, rs[i].Offset)
+			}
+		}
+	}
+
+	// Read everything back and check payload presence per partition.
+	for p := int32(0); p < 3; p++ {
+		recs, err := sdk.Fetch(ctx, "events", p, 0, 100)
+		if err != nil {
+			t.Fatalf("fetch partition %d: %v", p, err)
+		}
+		if len(recs) != len(ledgers[p]) {
+			t.Fatalf("partition %d fetched %d records, produced %d", p, len(recs), len(ledgers[p]))
+		}
+	}
+}
+
+func TestSDKProduceBatchValidatesInput(t *testing.T) {
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	srv := grpc.NewServer()
+	reg := meta.NewRegistry()
+	if err := reg.Create("events", 1); err != nil {
+		t.Fatal(err)
+	}
+	b, err := broker.NewWithDir(reg, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Close() }()
+	firnpb.RegisterFirnServiceServer(srv, api.NewServer(b, nil))
+	go func() { _ = srv.Serve(ln) }()
+	defer srv.Stop()
+
+	ctx := context.Background()
+	sdk, err := firngo.DialInsecure(ctx, ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sdk.Close() }()
+
+	if _, err := sdk.ProduceBatch(ctx, "events", nil); err == nil {
+		t.Fatal("empty batch must be rejected")
+	}
+	tooMany := make([]firngo.KeyValue, 501)
+	for i := range tooMany {
+		tooMany[i] = firngo.KeyValue{Value: []byte{byte(i)}}
+	}
+	if _, err := sdk.ProduceBatch(ctx, "events", tooMany); err == nil {
+		t.Fatal(">500 records must be rejected")
+	}
+}
