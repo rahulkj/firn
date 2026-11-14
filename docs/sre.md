@@ -42,6 +42,15 @@ How to wire metrics, logs, and dashboards for a running Firn cluster, and how to
 | `firn_group_rebalances_total` | counter | group stability |
 | `firn_queue_depth` | gauge | unacked messages + redeliveries across queues |
 | `firn_federation_cursor_lag_seconds` | gauge | seconds since last full import per peer/topic/partition |
+| `firn_blocks_sealed_total{topic,partition}` | counter | sealed blocks produced; zero on an idle cluster is normal, flat-zero with traffic means sealing is stalled |
+| `firn_block_bytes_sealed_total{topic,partition}` | counter | bytes sealed per partition |
+| `firn_blocks_pushed_total{topic,partition,peer,result}` | counter | block replication attempts by peer; `result="failed"` above incident tolerance signals replica lag |
+| `firn_blocks_committed_total{topic,partition}` | counter | blocks proposed for quorum commit after the push-majority threshold is met |
+| `firn_lease_grants_total{topic,partition}` | counter | lease grants/re-grants; rising slope = membership churn |
+| `firn_lease_renewals_total{topic,partition}` | counter | self-holder lease renewals; absence in a healthy cluster signals a stuck/failed holder |
+| `firn_flush_window_bytes_sum`, `firn_flush_window_records_sum` | histogram | group-commit batch size; observe to tune `-flush-window`/`-max-batch-bytes` |
+| `firn_flush_window_wait_seconds_sum` | histogram | age of oldest pending record when window flushed (timer + fsync) |
+| `firn_flush_failures_total` | counter | flush-window fsync failures; non-zero = every produce in a window returned an error |
 
 Scrape example (Prometheus):
 

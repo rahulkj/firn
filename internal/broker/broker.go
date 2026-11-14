@@ -300,6 +300,11 @@ type ClusterView interface {
 	Leader() string
 }
 
+// SealObserver, if set, is called once per freshly sealed block: topic,
+// partition, block size in bytes. Wired by the metrics package at process
+// start (ADR-007's cluster metric surface).
+var SealObserver func(topic string, partition int32, sealedBytes int64)
+
 // SetClusterView wires cluster metadata into /firnd for GetMetadata.
 func (b *Broker) SetClusterView(v ClusterView) { b.cluster = v }
 
@@ -529,11 +534,14 @@ func (b *Broker) SealAll() int {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	sealed := 0
-	for _, parts := range b.logs {
-		for _, pl := range parts {
+	for topic, parts := range b.logs {
+		for partition, pl := range parts {
 			if fl, ok := pl.(*log.FileLog); ok {
 				if ok, err := fl.SealIfOlderThan(b.sealAge); err == nil && ok {
 					sealed++
+					if SealObserver != nil {
+						SealObserver(topic, int32(partition), fl.LastSealedBytes())
+					}
 				}
 			}
 		}

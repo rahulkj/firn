@@ -14,6 +14,7 @@ package metrics
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -36,6 +37,12 @@ type Metrics struct {
 	FlushWindowBytes           prometheus.Histogram
 	FlushWindowWaitSeconds     prometheus.Histogram
 	FlushWindowFailuresTotal   prometheus.Counter
+	BlocksSealedTotal          *prometheus.CounterVec
+	BlockBytesSealedTotal      *prometheus.CounterVec
+	BlocksPushedTotal          *prometheus.CounterVec
+	BlocksCommittedTotal       *prometheus.CounterVec
+	LeaseGrantsTotal           *prometheus.CounterVec
+	LeaseRenewalsTotal         *prometheus.CounterVec
 
 	registry *prometheus.Registry
 }
@@ -106,6 +113,31 @@ func New(coord *groups.Coordinator, qm *queue.Manager) *Metrics {
 		Name: "firn_flush_failures_total",
 		Help: "Flush-window fsync failures (whole batch rolled back, produce errors returned).",
 	})
+	// ADR-007 cluster metric surface: seal rate, block replication, lease tenure.
+	m.BlocksSealedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "firn_blocks_sealed_total",
+		Help: "Sealed blocks produced (topic, partition). Rate signals seal throughput; zero on a healthy cluster means no active traffic.",
+	}, []string{"topic", "partition"})
+	m.BlockBytesSealedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "firn_block_bytes_sealed_total",
+		Help: "Bytes sealed (topic, partition).",
+	}, []string{"topic", "partition"})
+	m.BlocksPushedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "firn_blocks_pushed_total",
+		Help: "Peer block push attempts (topic, partition, peer, result). result=\"failed\" beyond incident tolerance signals replica lag.",
+	}, []string{"topic", "partition", "peer", "result"})
+	m.BlocksCommittedTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "firn_blocks_committed_total",
+		Help: "Blocks proposed for quorum commit after the push-majority threshold (topic, partition).",
+	}, []string{"topic", "partition"})
+	m.LeaseGrantsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "firn_lease_grants_total",
+		Help: "Lease grants/re-grants (topic, partition). Rising slope means membership churn.",
+	}, []string{"topic", "partition"})
+	m.LeaseRenewalsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "firn_lease_renewals_total",
+		Help: "Self-holder lease renewals (topic, partition). Absent renewals on a 3-node cluster means the holder stopped holding — check lease TTL and network.",
+	}, []string{"topic", "partition"})
 
 	// Wire the FileLog fsync observer (ADR-006) and the flush-window observer (ADR-014).
 	log.FsyncObserver = func(d time.Duration) { m.FsyncSeconds.Observe(d.Seconds()) }
@@ -117,9 +149,45 @@ func New(coord *groups.Coordinator, qm *queue.Manager) *Metrics {
 			m.FlushWindowFailuresTotal.Inc()
 		}
 	}
+	// ADR-007 wiring is done in main (needs the broker seal hook and the
+	// replication recorders), via methods on Metrics so the wiring stays in
+	// one place in cmd/firnd/main.go.
 
-	m.registry.MustRegister(m.ProduceTotal, m.FetchTotal, m.FsyncSeconds, m.GroupRebalances, m.QueueDepth, m.FederationCursorLagSeconds, m.FlushWindowRecords, m.FlushWindowBytes, m.FlushWindowWaitSeconds, m.FlushWindowFailuresTotal)
+	m.registry.MustRegister(m.ProduceTotal, m.FetchTotal, m.FsyncSeconds, m.GroupRebalances, m.QueueDepth, m.FederationCursorLagSeconds, m.FlushWindowRecords, m.FlushWindowBytes, m.FlushWindowWaitSeconds, m.FlushWindowFailuresTotal, m.BlocksSealedTotal, m.BlockBytesSealedTotal, m.BlocksPushedTotal, m.BlocksCommittedTotal, m.LeaseGrantsTotal, m.LeaseRenewalsTotal)
 	return m
+}
+
+// ObserveSeal is called once per freshly sealed block (topic, partition,
+// sealed size in bytes). Installed by main as the broker's SealObserver —
+// broker.go declares the hook, knows nothing about prometheus.
+func (m *Metrics) ObserveSeal(topic string, partition int32, sealedBytes int64) {
+	p := strconv.Itoa(int(partition))
+	m.BlocksSealedTotal.WithLabelValues(topic, p).Inc()
+	m.BlockBytesSealedTotal.WithLabelValues(topic, p).Add(float64(sealedBytes))
+}
+
+// ObserveBlockPush is called once per block push attempt toward a specific
+// peer (ok=true on success). Installed as replication.RecordBlockPush.
+func (m *Metrics) ObserveBlockPush(topic string, partition int32, peer string, ok bool) {
+	m.BlocksPushedTotal.WithLabelValues(topic, strconv.Itoa(int(partition)), peer, strconv.FormatBool(ok)).Inc()
+}
+
+// ObserveBlockCommit is called once per block reaching quorum majority.
+// Installed as replication.RecordBlockCommit.
+func (m *Metrics) ObserveBlockCommit(topic string, partition int32) {
+	m.BlocksCommittedTotal.WithLabelValues(topic, strconv.Itoa(int(partition))).Inc()
+}
+
+// ObserveLeaseGrant is called when the leader assigns or re-grants a
+// partition's write lease. Installed as replication.RecordLeaseGrant.
+func (m *Metrics) ObserveLeaseGrant(topic string, partition int32) {
+	m.LeaseGrantsTotal.WithLabelValues(topic, strconv.Itoa(int(partition))).Inc()
+}
+
+// ObserveLeaseRenewal is called when the self-holder renews before expiry.
+// Installed as replication.RecordLeaseRenewal.
+func (m *Metrics) ObserveLeaseRenewal(topic string, partition int32) {
+	m.LeaseRenewalsTotal.WithLabelValues(topic, strconv.Itoa(int(partition))).Inc()
 }
 
 // Handler returns the /metrics HTTP handler.

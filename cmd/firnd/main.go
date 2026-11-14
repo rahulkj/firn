@@ -572,6 +572,30 @@ func main() {
 	// Metrics (slice 6, ADR-006): created before federation so the puller can feed its lag gauge.
 	met := metrics.New(b.Groups(), qm)
 
+	// Seal sweep (ADR-007 blocks): with -block-seal-interval set, the
+	// broker rolls aged active segments into sealed blocks on a timer. This
+	// is what produces sealed blocks for replication and feeds the
+	// firn_blocks_sealed_total / firn_block_bytes_sealed_total counters in
+	// single-node mode where no replication agent fires the seal.
+	if *blockSealInterval > 0 {
+		go func() {
+			ticker := time.NewTicker(500 * time.Millisecond)
+			defer ticker.Stop()
+			for range ticker.C {
+				_ = b.SealAll()
+			}
+		}()
+	}
+
+	// ADR-007/014 wiring — Sealed counters + replication push/commit/lease
+	// counters. The broker/replication packages declare the hooks; the metric
+	// registry consumes them without import cycles.
+	broker.SealObserver = met.ObserveSeal
+	replication.RecordBlockCommit = met.ObserveBlockCommit
+	replication.RecordBlockPush = met.ObserveBlockPush
+	replication.RecordLeaseGrant = met.ObserveLeaseGrant
+	replication.RecordLeaseRenewal = met.ObserveLeaseRenewal
+
 	// Federation control-plane (ADR-010, slice 2): open the internal
 	// shared logs and expose them to the admin handler in read/write mode.
 	// Imports from any passive-mode peer start on the pull cadence.

@@ -312,6 +312,25 @@ func (c *Config) Leader() string { return c.Quorum.Leader() }
 func (c *Config) AllNodes() []string { return append([]string(nil), c.All...) }
 
 // NewAgent constructs a replication agent.
+// RecordLeaseGrant, if set, is called when the leader assigns or renews a
+// partition write lease. Wired by the metrics package (ADR-007's cluster
+// metric surface: lease tenure observed and alerted on via this counter).
+var RecordLeaseGrant func(topic string, partition int32)
+
+// RecordLeaseRenewal, if set, is called when a self-holder renews its own
+// lease before expiry. The level of this series tracks lease health.
+var RecordLeaseRenewal func(topic string, partition int32)
+
+// RecordBlockPush is invoked per peer push attempt. ok=true when the push
+// completed; ok=false when it failed. The "lag" operators want to see is
+// drops in firn_blocks_pushed_total{...,result="ok"} paired with a healthy
+// seal counter — a tombstone between them is a lag signal.
+var RecordBlockPush func(topic string, partition int32, peer string, ok bool)
+
+// RecordBlockCommit is invoked after a block reaches quorum majority and
+// is proposed for commit. One call per block replicated.
+var RecordBlockCommit func(topic string, partition int32)
+
 func NewAgent(cfg Config) *Config {
 	if cfg.Dial == nil {
 		cfg.Dial = func(ctx context.Context, addr string) (*grpc.ClientConn, error) {
@@ -439,6 +458,9 @@ func (c *Config) maintainLeases(ctx context.Context) {
 					lease := quorum.Lease{Topic: t.Name, Partition: p, Holder: c.NodeID, Epoch: epoch, GrantedAtMs: now}
 					data, _ := json.Marshal(lease)
 					_, _, _ = c.Quorum.ProposeNamed(quorum.EntryLeaseGrant, data)
+					if RecordLeaseRenewal != nil {
+						RecordLeaseRenewal(t.Name, p)
+					}
 				}
 
 			case !ok || !fresh:
@@ -459,6 +481,9 @@ func (c *Config) maintainLeases(ctx context.Context) {
 				lease := quorum.Lease{Topic: t.Name, Partition: p, Holder: holder, Epoch: epoch, GrantedAtMs: now}
 				data, _ := json.Marshal(lease)
 				_, _, _ = c.Quorum.ProposeNamed(quorum.EntryLeaseGrant, data)
+				if RecordLeaseGrant != nil {
+					RecordLeaseGrant(t.Name, p)
+				}
 			}
 		}
 	}
@@ -536,7 +561,11 @@ func (c *Config) pushSealed(ctx context.Context, topic string, partition int32) 
 		}
 		pushed := 1 // self counts
 		for _, peer := range c.Peers {
-			if err := c.pushBlock(ctx, peer, topic, partition, raw, d.Descriptor.FirstOffset); err != nil {
+			err := c.pushBlock(ctx, peer, topic, partition, raw, d.Descriptor.FirstOffset)
+			if RecordBlockPush != nil {
+				RecordBlockPush(topic, partition, peer, err == nil)
+			}
+			if err != nil {
 				slog.Warn("block push failed", "peer", peer, "err", err)
 				continue
 			}
@@ -545,6 +574,9 @@ func (c *Config) pushSealed(ctx context.Context, topic string, partition int32) 
 		// Majority of 3 = 2; of 2 = 2. Require 2 pushed (self + 1).
 		if pushed >= 2 {
 			c.proposeBlockCommit(topic, partition, d.Descriptor)
+			if RecordBlockCommit != nil {
+				RecordBlockCommit(topic, partition)
+			}
 		}
 	}
 }

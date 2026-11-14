@@ -157,6 +157,8 @@ type FileLog struct {
 	segments   []*segment
 	hwm        int64 // allocated offsets (ADR-014: allocation time may precede durability)
 	visibleHWM int64 // durable records only: what Fetch and HighWatermark expose (invariant 2)
+
+	lastSealedBytes int64 // bytes of the most recently sealed block; read by the seal hook (metrics)
 }
 
 // pendingFrame is one staged-but-unflushed record. Offsets are assigned at
@@ -348,6 +350,14 @@ func (l *FileLog) recoverSegments(segs []namedSegment) (*FileLog, error) {
 	return l, nil
 }
 
+// LastSealedBytes returns the size of the most recently sealed block, or
+// zero if none has been sealed since Open. Test/observability surface.
+func (l *FileLog) LastSealedBytes() int64 {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.lastSealedBytes
+}
+
 // SealIfOlderThan rolls the active segment (producing a sealed block) only
 // if it has existed for at least d and holds records. Returns true if a
 // seal happened. Any staged flush-window batch is flushed first (ADR-014:
@@ -364,6 +374,7 @@ func (l *FileLog) SealIfOlderThan(d time.Duration) (bool, error) {
 		return false, fmt.Errorf("firn/log: seal sync: %w", err)
 	}
 	active.sealed = true
+	l.lastSealedBytes = active.writePos
 	seg, err := l.createSegment(l.hwm)
 	if err != nil {
 		return false, fmt.Errorf("firn/log: seal create segment: %w", err)

@@ -64,7 +64,11 @@ func NewSlidingWindow(max int, window time.Duration) *SlidingWindow {
 }
 
 // Allow records one hit for key and reports whether it fits in the window.
+// A window with max <= 0 is treated as unlimited (no cap).
 func (w *SlidingWindow) Allow(key string) bool {
+	if w.max <= 0 {
+		return true
+	}
 	now := time.Now()
 	w.mu.Lock()
 	defer w.mu.Unlock()

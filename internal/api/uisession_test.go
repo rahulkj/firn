@@ -353,3 +353,20 @@ func TestUISessionWrongMethodRejected(t *testing.T) {
 	}
 	_ = f.bodyString(t, resp)
 }
+
+func TestBearerAllowedIPsEnforced(t *testing.T) {
+	f := newUIFixture(t, nil)
+	key := f.mintKey(t, "office", "viewer", "192.0.2.0/24")
+
+	// Allowed IP: 200.
+	resp := f.do(t, http.MethodGet, "/topics", key, nil, "192.0.2.9")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /topics from allowed IP: want 200, got %d", resp.StatusCode)
+	}
+
+	// Disallowed IP: 403 with ip-not-allowed refusal.
+	resp = f.do(t, http.MethodGet, "/topics", key, nil, "198.51.100.7")
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("GET /topics from disallowed IP: want 403, got %d", resp.StatusCode)
+	}
+}

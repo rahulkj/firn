@@ -67,11 +67,19 @@ func NewMemStore(budget int64) *Store {
 func (s *Store) SetBudget(bytes int64) { s.budget = bytes }
 
 // BudgetExceeded reports whether the store refuses further appends.
-func (s *Store) BudgetExceeded() bool { return s.exceeded.Load() }
+func (s *Store) BudgetExceeded() bool {
+	if s == nil {
+		return false
+	}
+	return s.exceeded.Load()
+}
 
 // BytesWritten reports total bytes committed to the __audit topic by this
 // process. (Replication from other nodes is not included; the budget is per-node.)
 func (s *Store) BytesWritten() int64 {
+	if s == nil {
+		return 0
+	}
 	return s.used
 }
 

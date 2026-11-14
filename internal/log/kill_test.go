@@ -99,3 +99,95 @@ func killChildMode(t *testing.T) {
 		time.Sleep(time.Millisecond)
 	}
 }
+
+const killWindowEnv = "FIRN_LOG_KILL_WINDOW"
+
+// TestFlushWindowSurvivesKill9 is the same fault injection for the group
+// commit path (ADR-014): a child with a flush window is killed mid-window
+// and possibly between fsync and the ack delivery. After reopen the log
+// must contain only complete batches: no torn window, no half-applied
+// frames, no gap in offsets.
+func TestFlushWindowSurvivesKill9(t *testing.T) {
+	if os.Getenv(killChildEnv) == "1" {
+		killChildWindowMode(t)
+		return
+	}
+
+	const killAfter = 37
+	dir := t.TempDir()
+
+	cmd := exec.Command(os.Args[0], "-test.run", "^TestFlushWindowSurvivesKill9$", "-test.v")
+	cmd.Env = append(os.Environ(), killChildEnv+"=1", killDirEnv+"="+dir, killWindowEnv+"=1")
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatalf("stdout pipe: %v", err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start child: %v", err)
+	}
+
+	acks := 0
+	scanner := bufio.NewScanner(stdout)
+	for scanner.Scan() {
+		if strings.HasPrefix(scanner.Text(), "ACK ") {
+			acks++
+			if acks == killAfter {
+				_ = cmd.Process.Signal(syscall.SIGKILL)
+				break
+			}
+		}
+	}
+	_ = cmd.Wait()
+
+	if acks < killAfter {
+		t.Fatalf("child acknowledged only %d records before kill, want >= %d", acks, killAfter)
+	}
+
+	l, err := Open(filepath.Join(dir), WithFlushWindow(50*time.Millisecond), WithMaxBatchBytes(1<<20))
+	if err != nil {
+		t.Fatalf("reopen after kill: %v", err)
+	}
+	defer func() { _ = l.Close() }()
+
+	hw := l.HighWatermark()
+	recs, err := l.Fetch(0, int(hw))
+	if err != nil {
+		t.Fatalf("fetch recovered log: %v", err)
+	}
+	for i, r := range recs {
+		if r.Offset != int64(i) {
+			t.Fatalf("record %d: offset = %d (gap in recovered window log)", i, r.Offset)
+		}
+		want := fmt.Sprintf("v%d", i)
+		if string(r.Value) != want {
+			t.Fatalf("record %d: value = %q, want %q", i, string(r.Value), want)
+		}
+	}
+	// Unflushed window loss is allowed; torn frames are not.
+	// If HWM is larger than the acks received by the client we cannot
+	// verify frame-level contents of the tail — but offsets must be
+	// contiguous, which the per-record check above already enforces.
+	t.Logf("recovered %d records from kill-window (acks=%d)", len(recs), acks)
+}
+
+// killChildWindowMode is the SIGKILL target: a child that opens a flush-window
+// log, produces constantly, and prints each ACK as the produce returns.
+func killChildWindowMode(t *testing.T) {
+	if os.Getenv(killDirEnv) == "" {
+		os.Exit(2)
+	}
+	dir := os.Getenv(killDirEnv)
+	fl, err := Open(dir, WithFlushWindow(50*time.Millisecond), WithMaxBatchBytes(1<<20))
+	if err != nil {
+		_, _ = os.Stderr.WriteString("open " + err.Error() + "\n")
+		os.Exit(3)
+	}
+	for i := 0; i < 5000; i++ {
+		v := fmt.Sprintf("v%d", i)
+		_ = fl.Append(nil, []byte(v))
+		fmt.Printf("ACK %d\n", i)
+		_ = time.Millisecond
+	}
+	_ = fl.Close()
+	os.Exit(0)
+}

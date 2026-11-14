@@ -65,9 +65,15 @@ func WithOpenBootstrap(on bool) AuthOption { return func(a *auth) { a.allowOpen 
 func WithBootstrapToken(token string) AuthOption { return func(a *auth) { a.bootstrapToken = token } }
 
 // WithAnonRate caps anonymous traffic (pre-auth requests and refused-key
-// attempts) to `max` hits per `window` per source IP. Zero max disables.
+// attempts) to `max` hits per `window` per source IP. Zero (or negative) max disables the window entirely.
 func WithAnonRate(max int, window time.Duration) AuthOption {
-	return func(a *auth) { a.anon = ratelimit.NewSlidingWindow(max, window) }
+	return func(a *auth) {
+		if max <= 0 {
+			a.anon = nil
+			return
+		}
+		a.anon = ratelimit.NewSlidingWindow(max, window)
+	}
 }
 
 // NewAuthorizer returns an authenticator wired to these dependencies.
