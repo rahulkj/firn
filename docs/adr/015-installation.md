@@ -68,7 +68,7 @@ Root-only bash. Steps, in order, all prompted (defaults in brackets):
 5. Ask: enable TLS on both listeners (y/N); if yes, cert/key paths (must exist).
 6. Ask: **single node or 3-node cluster?**
    - Cluster: node-id (`n1`/`n2`/`n3`), peer list *including self*
-     (e.g. `n1=192.0.2.11:9471,…`), then the mesh CA:
+     (e.g. `n1=192.0.2.11:9461,…`), then the mesh CA:
      generate a fresh one into `<data-dir>/mesh-ca` via the product's own
      `firn-cli mesh-ca init` (single-block ECDSA PEM) **or** use an existing shared CA
      via `-mesh-ca-bundle`/`-mesh-ca-key`. Copy instructions for the other
@@ -93,7 +93,7 @@ Helm chart with `helm lint`/`helm template`:
   probes on `/healthz`, uid 10001, `readOnlyRootFilesystem`, mem/cpu
   requests and limits. Single RWO volume means `Recreate` is mandatory.
 - **Cluster (GA envelope)** — StatefulSet 3/3, headless mesh service
-  (`publishNotReadyAddresses`), stable pod DNS (`firn-{0..2}.firn-mesh.ns`),
+  (`publishNotReadyAddresses`), stable pod DNS (`firn-{0..2}.firn-mesh.<ns>.svc.cluster.local`),
   node-id derived from pod hostname matching the `-peers` map, peers passed
   as one static arg (fixed membership), mesh CA copied from a pre-created
   `firn-mesh-ca` Secret by an initContainer (CA generated outside the
