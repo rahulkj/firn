@@ -63,9 +63,22 @@ type Option func(*FileLog)
 // The metrics package registers it at process start (ADR-006).
 var FsyncObserver func(time.Duration)
 
+// FlushWindowObserver, if set, is called once per group-commit window:
+// when a staged batch is either fsynced successfully (outcome == nil) or
+// rolled back because of an fsync failure (outcome != nil). Used by the
+// metrics package to export ADR-014 counters/gauges without prometheus
+// escaping storage code.
+var FlushWindowObserver func(records int, bytes int64, wait time.Duration, outcome error)
+
 func observeFsync(start time.Time) {
 	if FsyncObserver != nil {
 		FsyncObserver(time.Since(start))
+	}
+}
+
+func observeFlushWindow(records int, bytes int64, wait time.Duration, outcome error) {
+	if FlushWindowObserver != nil {
+		FlushWindowObserver(records, bytes, wait, outcome)
 	}
 }
 
@@ -129,6 +142,7 @@ type FileLog struct {
 	maxBatchBytes int64
 	pending       []pendingFrame // staged, unwritten, unflushed
 	stagingBytes  int64
+	pendingSince  time.Time      // when the first frame of the current window staged
 	flushTimer    *time.Timer
 
 	// Test-only hooks. Untouched in production builds (always nil).
@@ -805,6 +819,7 @@ func (l *FileLog) appendWindowed(key, value []byte, ts int64) int64 {
 	full := l.stagingBytes >= l.maxBatchBytes
 	if len(l.pending) == 1 {
 		l.armFlushTimerLocked()
+		l.pendingSince = time.Now()
 	}
 	l.mu.Unlock()
 	if full {
@@ -837,9 +852,14 @@ func (l *FileLog) flush() {
 func (l *FileLog) flushLocked() {
 	l.stopFlushTimerLocked()
 	if len(l.pending) == 0 || l.flushPoisoned {
+		if l.flushPoisoned {
+			observeFlushWindow(0, 0, 0, fmt.Errorf("flush window poisoned"))
+		}
 		return
 	}
 	staged := l.pending
+	pending := l.pendingSince
+	bytes := l.stagingBytes
 	flushStartHWM := l.hwm
 	n := int64(len(staged))
 	l.hwm += n // reserve offsets for the window; rolled back on failure
@@ -900,6 +920,9 @@ func (l *FileLog) flushLocked() {
 		l.hwm = flushStartHWM
 		l.pending = nil
 		l.stagingBytes = 0
+		l.pendingSince = time.Time{}
+		wait := time.Since(pending)
+		observeFlushWindow(len(staged), bytes, wait, backErr)
 		for _, fr := range staged {
 			fr.wait <- flushResult{err: backErr}
 		}
@@ -954,6 +977,9 @@ func (l *FileLog) flushLocked() {
 	l.visibleHWM = l.hwm
 	l.pending = nil
 	l.stagingBytes = 0
+	l.pendingSince = time.Time{}
+	wait := time.Since(pending)
+	observeFlushWindow(len(staged), bytes, wait, nil)
 	for i, fr := range staged {
 		fr.wait <- flushResult{off: flushStartHWM + int64(i)}
 	}

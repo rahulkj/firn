@@ -369,7 +369,18 @@ func (b *Broker) Close() error {
 // Produce appends value to the partition for key (or the next partition in
 // round-robin order when key is empty/nil) and returns the assigned
 // partition and offset.
-func (b *Broker) Produce(ctx context.Context, topic string, key, value []byte) (int32, int64, error) {
+// Produce routes key across the topic's partitions and appends it.
+// A fsync-failure inside the produce path is recovered and returned as an
+// error rather than crashing the process for unrelated producers — the
+// FileLog convention otherwise panics on I/O failure.
+func (b *Broker) Produce(ctx context.Context, topic string, key, value []byte) (partition int32, offset int64, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			partition = 0
+			offset = 0
+			err = fmt.Errorf("firn/broker: produce: %v", r)
+		}
+	}()
 	if err := ctx.Err(); err != nil {
 		return 0, 0, err
 	}
@@ -381,7 +392,7 @@ func (b *Broker) Produce(ctx context.Context, topic string, key, value []byte) (
 		return 0, 0, fmt.Errorf("produce: %w", err)
 	}
 
-	partition := b.assign(t.Partitions, key)
+	partition = b.assign(t.Partitions, key)
 
 	if b.federationFence != nil && b.federationFence(topic, partition) {
 		return 0, 0, fmt.Errorf("%w: %s partition %d", ErrFederatedPassive, topic, partition)
@@ -401,7 +412,7 @@ func (b *Broker) Produce(ctx context.Context, topic string, key, value []byte) (
 	if err != nil {
 		return 0, 0, fmt.Errorf("produce: %w", err)
 	}
-	offset := logs[partition].Append(key, value)
+	offset = logs[partition].Append(key, value)
 	return partition, offset, nil
 }
 

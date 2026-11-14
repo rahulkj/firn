@@ -334,6 +334,28 @@ func main() {
 		slog.Error("storage permissions check failed", "dir", *dataDir, "err", err, "hint", "chmod -R go-rwx "+*dataDir+", or restart with -dir-mode-check=false (logs a loud warning)")
 		os.Exit(1)
 	}
+	if *dev || *allowOpen {
+		slog.Warn("INSECURE BOOTSTRAP ENABLED: authentication DISABLED (set -dev=false / -allow-open-bootstrap=false to re-enable)")
+	}
+	var bootstrapToken string
+	switch {
+	case *dev || *allowOpen:
+		// open mode chosen deliberately; no token needed
+	case keysStore == nil:
+		bootstrapToken = hexToken(32)
+	case !keysStore.HasAnyKey():
+		bootstrapToken = hexToken(32)
+	}
+	if bootstrapToken != "" {
+		slog.Warn("BOOTSTRAP MODE: broker is locked down until the first API key exists; create one with the printed BOOTSTRAP TOKEN")
+		fmt.Fprintf(os.Stderr, "BOOTSTRAP TOKEN: %s\n", bootstrapToken)
+	} else if !*dev && !*allowOpen {
+		slog.Info("security: bearer auth enforced on all endpoints except /healthz")
+	}
+	authorizer := api.NewAuthorizer(keysStore, ratelimit.New(*tokenBucketRate, *tokenBucketRate), auditStore,
+		api.WithOpenBootstrap(*dev || *allowOpen),
+		api.WithBootstrapToken(bootstrapToken),
+		api.WithAnonRate(*anonRate, *anonWindow))
 
 	// Queue manager (slice 5): builds state for queue-mode topics and the
 	// __queue_attempts internal store.
@@ -402,7 +424,7 @@ func main() {
 		os.Exit(1)
 	}
 	slogEnv("mesh: mTLS enabled", "addr", *meshAddr, "ca_fingerprint", meshBundle.Fingerprint())
-	meshServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(meshBundle.ServerTLSConfig())), grpc.MaxRecvMsgSize(80<<20))
+	meshServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(meshBundle.ServerTLSConfig())), grpc.MaxRecvMsgSize(80<<20), grpc.UnaryInterceptor(authorizer.MeshUnaryInterceptor()))
 	firnpb.RegisterReplicaServiceServer(meshServer, api.NewReplicaServer(b))
 	firnpb.RegisterRoutedBrokerServiceServer(meshServer, api.NewRoutedBrokerServer(b))
 
@@ -689,36 +711,20 @@ func main() {
 
 	// ADR-011 secure-by-default: with zero keys the broker is not serveable
 	// until the operator mints one via the printed bootstrap token (or
-	// explicitly opts into an open broker with -dev/-allow-open-bootstrap).
-	if *dev || *allowOpen {
-		slog.Warn("INSECURE BOOTSTRAP ENABLED: authentication DISABLED (set -dev=false / -allow-open-bootstrap=false to re-enable)")
-	}
-	var bootstrapToken string
-	switch {
-	case *dev || *allowOpen:
-		// open mode chosen deliberately; no token needed
-	case keysStore == nil:
-		// no key store at all → bootstrap required anyway
-		bootstrapToken = hexToken(32)
-	case !keysStore.HasAnyKey():
-		bootstrapToken = hexToken(32)
-	}
-	if bootstrapToken != "" {
-		slog.Warn("BOOTSTRAP MODE: broker is locked down until the first API key exists; create one with the printed BOOTSTRAP TOKEN")
-		fmt.Fprintf(os.Stderr, "BOOTSTRAP TOKEN: %s\n", bootstrapToken)
-	} else if !*dev && !*allowOpen {
-		slog.Info("security: bearer auth enforced on all endpoints except /healthz")
-	}
-	authorizer := api.NewAuthorizer(keysStore, ratelimit.New(*tokenBucketRate, *tokenBucketRate), auditStore,
-		api.WithOpenBootstrap(*dev || *allowOpen),
-		api.WithBootstrapToken(bootstrapToken),
-		api.WithAnonRate(*anonRate, *anonWindow))
-
 	// HTTP admin + health + metrics + admin UI.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok", "version": version})
+		cfg := map[string]string{
+			"status":  "ok",
+			"version": version,
+		}
+		if *flushWindow > 0 {
+			cfg["flushWindow"] = flushWindow.String()
+		} else {
+			cfg["flushWindow"] = "off"
+		}
+		_ = json.NewEncoder(w).Encode(cfg)
 	})
 	if *metricsAuth {
 		mux.Handle("/metrics", authorizer.Wrap(met.Handler()))

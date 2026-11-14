@@ -240,8 +240,23 @@ var grpcRoles = map[string]apikeys.Role{
 	"/firn.v1.FederationService/FederationReport": apikeys.RoleFederation,
 }
 
-// GRPCInterceptor enforces bearer authentication and rate limiting on every
-// unary RPC. ReplicaService and FirnService both use it.
+// MeshUnaryInterceptor is the mesh-listener analogue of GRPCInterceptor,
+// scoped to what the mesh actually carries: ReplicaService/QuorumService
+// (mTLS is the auth — nothing else is needed and nothing can call them
+// anyway), plus FederationService, which additionally requires a
+// federation-scoped API key exactly like the public path. Without this,
+// any mesh cert (any node, anything with a pinned peer CA) could walk off
+// with arbitrary frames — the federation key's entire documented purpose.
+func (a *auth) MeshUnaryInterceptor() grpc.UnaryServerInterceptor {
+	interceptor := a.GRPCInterceptor()
+	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
+		if !strings.HasPrefix(info.FullMethod, "/firn.v1.FederationService/") {
+			// ReplicaService/QuorumService: the mTLS handshake is the authz.
+			return handler(ctx, req)
+		}
+		return interceptor(ctx, req, info, handler)
+	}
+}
 func (a *auth) GRPCInterceptor() grpc.UnaryServerInterceptor {
 	return func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
 		// No auth configured: either explicitly open (dev), or a misconfigured

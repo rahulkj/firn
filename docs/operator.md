@@ -76,6 +76,15 @@ Cluster mode is **GA as of v0.5.0**, scope honestly bounded. Net-new in v0.5.0 o
 
 **Not in GA (still out of scope):** multi-region quorum, dynamic membership, rolling upgrades without a restart window, automatic unsealed-tail recovery, wire compatibility with Kafka/Redpanda.
 
+## Consistency & acknowledgement model (whole product, v0.5.0)
+
+- **There is no `acks` knob.** Do not reach for one in another broker's documentation; match firn's knobs, which are all about durability scope and batching, not wire flags.
+- **Default durability**: one fsync per partition-log append (`acks=1` semantics in other brokers, same meaning, different spelling).
+- **`-flush-window` (ADR-014)**: one fsync per window of appends; the ack returns after the fsync of the batch that covers the record, not after the record's own flush. If you enable it, you've opted into bounded loss on hard crash (messages acknowledged but unflushed are redelivered by the caller's at-least-once retry). Read `docs/adr/014-group-commit.md` before flipping it on.
+- **Replication (cluster mode)**: a record's *block* is committed via the quorum once a majority holds a copy; individual produce paths still ack on the local disk before that commit lands (the at-least-once window is the same shape as the unsealed-tail caveat in ADR-007; replication raises durability further but does not make produce-side acks causally dependent on quorum commit in this release).
+- **At-least-once only.** Messages may be redelivered; design consumers to be idempotent (compare-and-set on a business key, dedupe table, deterministic IDs). Consumer-group offsets advance monotonically unless an operator explicitly resets them.
+- **No `acks=all` flag, no transactions, no read-your-writes across partitions.** If you need one of those, you need a different broker — not a flag here.
+
 ## Sizing — how big a machine do I need?
 
 Measured on Apple M3 Pro, darwin/arm64, local NVMe (`go test -bench=. -benchmem -benchtime=2000x ./bench/...`):
