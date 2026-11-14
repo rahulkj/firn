@@ -23,7 +23,7 @@ Legend: ✅ implemented & verified · 🟡 implemented but partial/unsafe at sca
 | Capability | Status | Evidence |
 |---|---|---|
 | Segmented append-only log per partition, CRC frames | ✅ | `internal/log/filelog.go`; `filelog_test.go`, `retention_test.go`, `compact_test.go`, `kill_test.go` |
-| Crash recovery: torn-tail truncation, CRC validation, index rebuild | ✅ | `TestFileLogSurvivesKill9` (SIGKILL re-exec child) + `TestFileLogRecoveryTruncatesTornTail/CRCCorruption`; verified live (kill -9 → restart → re-read identical bytes) |
+| Crash recovery: torn-tail truncation, CRC validation, index rebuild | ✅ | `TestFileLogSurvivesKill9` (SIGKILL re-exec child) + `TestFileLogRecoveryTruncatesTornTail` and `TestFileLogRecoveryTruncatesCRCCorruption`; verified live (kill -9 → restart → re-read identical bytes) |
 | Topic metadata on disk (`topics.json`, atomic rename, fsync) | ✅ | `internal/meta/meta.go`; `meta_persist_test.go`; verified across kill -9 restart |
 | `__consumer_offsets` + `__queue_attempts` internal topics on disk | ✅ | The same `FileLog` via `internal/groups/offset_store.go` and `internal/queue/attempts.go`; broker-owned shared handles since phase F; replicated block-byte-identical across cluster nodes; commit/fetch/DLQ round-trip verified live |
 | `__api_keys` + `__audit` internal topics | ✅ (phase E) | Same broker-owned shared FileLog model; SHA-256-hashed keys, plaintext shown once; every admin mutation + authz refusal audited; replicated since phase F |

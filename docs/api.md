@@ -44,7 +44,7 @@ curl localhost:9460/healthz
 
 ### `GET /metrics`
 
-Prometheus text exposition format (ADR-006). Rate-limited counters, group/queue depth gauges, partition watermarks. Unauthenticated by design (scrape from a private network).
+Prometheus text exposition format (ADR-006). Rate-limited counters, group/queue depth gauges, partition watermarks. `/metrics` requires a viewer key by default (`-metrics-auth=true`; see `docs/configuration.md` / `docs/adr/011-secure-mode.md`); set `-metrics-auth=false` only if scraping from a private network.
 
 ### `POST /topics`
 
