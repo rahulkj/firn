@@ -996,4 +996,117 @@ func (l *FileLog) rebuildSegmentStateLocked(seg *segment, boundary int64) error 
 	return nil
 }
 
-// ---------------- end of ADR-014 flush window ----------------
+// AppendBatch appends many records in order and fsyncs once at the end.
+// Rollback on failure is identical in contract to the flush window:
+// every segment the batch wrote into is truncated to its pre-batch
+// position (segments created by the batch are deleted; digests/indexes
+// rebuilt from disk), so no partial batch can become visible.
+func (l *FileLog) AppendBatch(recs []BatchRecord) ([]int64, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(recs) == 0 {
+		return nil, nil
+	}
+	hwmStart := l.hwm
+
+	type touchedSeg struct {
+		seg          *segment
+		origWritePos int64
+		origSealed   bool
+		created      bool
+	}
+	touched := []touchedSeg{}
+	markTouched := func(seg *segment, created bool) {
+		for i := range touched {
+			if touched[i].seg == seg {
+				return
+			}
+		}
+		touched = append(touched, touchedSeg{seg: seg, origWritePos: seg.writePos, origSealed: seg.sealed, created: created})
+	}
+
+	snapshotRoll := func(active *segment, off int64, sealDue bool) (*segment, error) {
+		markTouched(active, false)
+		if err := l.syncSegmentLocked(active); err != nil {
+			return nil, fmt.Errorf("firn/log: sync before segment seal: %w", err)
+		}
+		active.sealed = true
+		seg, err := l.createSegment(off)
+		if err != nil {
+			return nil, fmt.Errorf("firn/log: create segment: %w", err)
+		}
+		markTouched(seg, true)
+		l.segments = append(l.segments, seg)
+		return seg, nil
+	}
+
+	writeErr := error(nil)
+	type placement struct {
+		frame []byte
+		off   int64
+		ts    int64
+		key   []byte
+		value []byte
+	}
+	placed := make([]placement, 0, len(recs))
+	nowTs := time.Now().UnixMilli()
+	for i, r := range recs {
+		off := hwmStart + int64(i)
+		frame := encodeFrame(off, nowTs, r.Key, r.Value)
+		p := placement{frame: frame, off: off, ts: nowTs, key: r.Key, value: r.Value}
+		// Decide the segment for this frame before writing: rolls happen
+		// exactly as in the flush path so segment accounting stays local.
+		active := l.segments[len(l.segments)-1]
+		sealDue := l.sealAge > 0 && time.Since(active.createdAt) >= l.sealAge
+		if active.writePos > 0 && (active.writePos+int64(len(frame)) > l.maxSegmentBytes || sealDue) {
+			var err error
+			if active, err = snapshotRoll(active, off, sealDue); err != nil {
+				writeErr = err
+				break
+			}
+			_ = sealDue
+		}
+		markTouched(active, false)
+		l.writeFrameLocked(active, p.frame, p.off, p.ts, p.key, p.value)
+		l.hwm++
+		placed = append(placed, p)
+	}
+	if writeErr == nil {
+		active := l.segments[len(l.segments)-1]
+		if err := l.syncSegmentLocked(active); err != nil {
+			writeErr = fmt.Errorf("firn/log: fsync batch: %w", err)
+		}
+	}
+	if writeErr != nil {
+		backErr := writeErr
+		for i := len(touched) - 1; i >= 0; i-- {
+			t := touched[i]
+			if t.created {
+				_ = t.seg.file.Close()
+				_ = os.Remove(t.seg.path)
+				if n := len(l.segments); n > 0 && l.segments[n-1] == t.seg {
+					l.segments = l.segments[:n-1]
+				}
+				continue
+			}
+			if err := t.seg.file.Truncate(t.origWritePos); err != nil {
+				backErr = fmt.Errorf("%w (rollback truncate %s: %v)", backErr, t.seg.path, err)
+				continue
+			}
+			t.seg.writePos = t.origWritePos
+			t.seg.sealed = t.origSealed
+			_ = t.seg.file.Sync()
+			_ = l.rebuildSegmentStateLocked(t.seg, hwmStart)
+		}
+		l.hwm = hwmStart
+		return nil, backErr
+	}
+	l.visibleHWM = l.hwm
+	offs := make([]int64, 0, len(placed))
+	for _, p := range placed {
+		offs = append(offs, p.off)
+	}
+	return offs, nil
+}
+
+// ---------------- end of AppendBatch ----------------

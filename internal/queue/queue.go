@@ -24,6 +24,7 @@ package queue
 import (
 	"context"
 	"crypto/rand"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -31,6 +32,7 @@ import (
 	"time"
 
 	"github.com/rahulkj/firn/internal/broker"
+	"github.com/rahulkj/firn/internal/log"
 	"github.com/rahulkj/firn/internal/meta"
 )
 
@@ -238,24 +240,33 @@ func (m *Manager) Pull(ctx context.Context, queue string, maxMessages int, visib
 	now := m.now()
 	m.expireLocked(now)
 
-	out := make([]Delivery, 0, maxMessages)
+	type claimPlan struct {
+		partition int32
+		offset    int64
+		key       []byte
+		value     []byte
+		attempts  int32
+	}
+	plans := make([]claimPlan, 0, maxMessages)
 
 	// 1. Redeliver lease-expired messages first.
-	for len(out) < maxMessages && len(q.requeue) > 0 {
+	for len(plans) < maxMessages && len(q.requeue) > 0 {
 		item := q.requeue[0]
-		d, ok, err := m.claim(q, queue, item.partition, item.offset, item.key, item.value, item.attempts, now, visibilityTimeout)
-		if err != nil {
-			return out, err
+		next := item.attempts + 1
+		if next > maxDeliveries {
+			m.divertToDLQ(queue, item.partition, item.offset, item.key, item.value, uint32(next))
+			m.accumulateAckLocked(queue, q, item.partition, item.offset)
+			m.commitAckLocked(queue, q, item.partition)
+			q.requeue = q.requeue[1:]
+			continue
 		}
+		plans = append(plans, claimPlan{partition: item.partition, offset: item.offset, key: item.key, value: item.value, attempts: next})
 		q.requeue = q.requeue[1:]
-		if ok {
-			out = append(out, d)
-		}
 	}
 
 	// 2. Fresh fetches, round-robin across partitions.
 	emptyRounds := 0
-	for len(out) < maxMessages && emptyRounds < q.partitions {
+	for len(plans) < maxMessages && emptyRounds < q.partitions {
 		p := int32(q.rr % q.partitions)
 		q.rr++
 		pos := q.nextFetch[p]
@@ -265,51 +276,53 @@ func (m *Manager) Pull(ctx context.Context, queue string, maxMessages int, visib
 			continue
 		}
 		rec := recs[0]
-		current := m.attempts.Attempts(queue, p, rec.Offset)
-		d, ok, err := m.claim(q, queue, p, rec.Offset, rec.Key, rec.Value, int32(current), now, visibilityTimeout)
-		if err != nil {
-			return out, err
+		next := int32(m.attempts.Attempts(queue, p, rec.Offset)) + 1
+		if next > maxDeliveries {
+			m.divertToDLQ(queue, p, rec.Offset, rec.Key, rec.Value, uint32(next))
+			m.accumulateAckLocked(queue, q, p, rec.Offset)
+			m.commitAckLocked(queue, q, p)
+			q.nextFetch[p] = rec.Offset + 1
+			emptyRounds = 0
+			continue
 		}
+		plans = append(plans, claimPlan{partition: p, offset: rec.Offset, key: rec.Key, value: rec.Value, attempts: next})
 		q.nextFetch[p] = rec.Offset + 1
-		if ok {
-			out = append(out, d)
-		}
 		emptyRounds = 0
 	}
 
+	if len(plans) == 0 {
+		return nil, nil
+	}
+	// 3. Persist attempts for ALL claimed deliveries in ONE fsync before
+	// any of them becomes visible — strictly at-least-once.
+	batch := make([]log.BatchRecord, 0, len(plans))
+	for _, pl := range plans {
+		batch = append(batch, log.BatchRecord{
+			Key:   attemptKey(queue, pl.partition, pl.offset),
+			Value: binary.BigEndian.AppendUint32(nil, uint32(pl.attempts)),
+		})
+	}
+	if err := m.attempts.PutBatch(batch); err != nil {
+		return nil, err
+	}
+	// 4. Register deliveries.
+	out := make([]Delivery, 0, len(plans))
+	for _, pl := range plans {
+		id := newDeliveryID()
+		deadline := now.Add(visibilityTimeout)
+		q.pending[id] = &pending{partition: pl.partition, offset: pl.offset, attempts: pl.attempts, deadline: deadline, key: pl.key, value: pl.value}
+		out = append(out, Delivery{
+			DeliveryID: id,
+			Queue:      queue,
+			Partition:  pl.partition,
+			Offset:     pl.offset,
+			Key:        pl.key,
+			Value:      pl.value,
+			Attempts:   pl.attempts,
+			DeadlineMs: deadline.UnixMilli(),
+		})
+	}
 	return out, nil
-}
-
-// claim validates the attempt budget, diverts to the DLQ when exhausted, or
-// registers the delivery as pending and returns it. An error means the
-// message was NOT delivered and NOT consumed: the caller must back off
-// instead of silently dropping it.
-func (m *Manager) claim(q *queueState, queue string, partition int32, offset int64, key, value []byte, priorAttempts int32, now time.Time, visibilityTimeout time.Duration) (Delivery, bool, error) {
-	attempts := priorAttempts + 1
-	if attempts > maxDeliveries {
-		m.divertToDLQ(queue, partition, offset, key, value, uint32(attempts))
-		m.accumulateAckLocked(queue, q, partition, offset)
-		m.commitAckLocked(queue, q, partition)
-		return Delivery{}, false, nil
-	}
-	if err := m.attempts.Put(queue, partition, offset, uint32(attempts)); err != nil {
-		// Persisting attempts failed (fenced internal topic, or store
-		// I/O). Do NOT advance the cursor or create pending state —
-		// the caller surfaces the error and retries.
-		return Delivery{}, false, err
-	}
-	id := newDeliveryID()
-	q.pending[id] = &pending{partition: partition, offset: offset, attempts: attempts, deadline: now.Add(visibilityTimeout), key: key, value: value}
-	return Delivery{
-		DeliveryID: id,
-		Queue:      queue,
-		Partition:  partition,
-		Offset:     offset,
-		Key:        key,
-		Value:      value,
-		Attempts:   attempts,
-		DeadlineMs: now.Add(visibilityTimeout).UnixMilli(),
-	}, true, nil
 }
 
 // Ack consumes a delivered message: it is removed from the pending set and

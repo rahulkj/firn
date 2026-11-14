@@ -13,7 +13,8 @@ Derived from ADR-014. One slice per session, same loop as plans 001–005:
 | 3 (**delivered 2026-11-13, awaiting mandatory storage-adjacent review**) | **Queue commit coalescing**: `__consumer_offsets` per-commit re-fold eliminated — Commit advances `foldedHWM` directly (local cache == post-append log); `refreshIfMoved` re-folds only on externally-driven HWM movement (replicated apply), preserving read-through; catch-up fold at commit time closes the stale-cache regression window across nodes. Acceptance tests pin all four properties (`internal/groups/offset_store_test.go`); profile had `groups.fold` = 53% CPU | **mandatory (storage-adjacent)** — in flight |
 | 4 (**delivered 2026-11-13 — measured with an honest negative result; awaiting review**) | **Internal-topic flush window (opt-in)**: `-internal-flush-window`+`-internal-max-batch-bytes` (default `0`) window-batch **only** `__consumer_offsets` + `__queue_attempts`; `__audit`/`__api_keys`/`__federation*` never window. Startup warning names the two invariant amendments. Measured: sequential consumers are **slower** with it (103 vs 192 deliveries/s — window can't batch sequential ackers), so it's parked as opt-in; the real queue lever is batched ack (see notes) | **mandatory (storage)** — in flight |
 | 5 (**delivered 2026-11-13, awaiting API review**) | **Batch ack (`AckBatch`)**: settle up to 500 deliveries in one RPC; one contiguous-advance commit per partition per batch (vs one per Ack); unknown/expired ids tolerated and counted; one queue-lock hold per batch; idempotent no-op commits skipped. Measured durable drain loop: **376 deliveries/s vs 196 with per-message Ack (~1.9×)**; claim-side attempts fsync remains the floor | API review — in flight |
-| 6 (pending cluster GA plan) | **Cluster-mode throughput**: node-count multiplication math revisited with real per-node numbers; cluster mode out of experimental status (dynamic membership, rebalance/drain) — separate plan (`008-cluster-ga.md`), out of scope here | storage + quorum review |
+| 6 (**delivered 2026-11-13, awaiting storage-adjacent review** — user granted autonomous continuation) | **Batch claim (attempts amortization)**: pull claims write all `__queue_attempts` records in ONE fsync via `partitionLog.AppendBatch` with pre-batch rollback on failure; pull returns nothing delivered on batch failure; strict at-least-once preserved. Measured durable drain: per-message Ack 347→347; AckBatch durable drain **2075 deliveries/s** (was 376 post-slice-5, 192 pre-slice-3) | **mandatory (storage-adjacent)** — reviewed by user in session |
+| 7 (pending cluster GA plan) | **Cluster-mode throughput**: node-count multiplication math revisited with real per-node numbers; cluster mode out of experimental status (dynamic membership, rebalance/drain) — separate plan (`008-cluster-ga.md`), out of scope here | storage + quorum review |
 
 ## Slice details
 
@@ -55,6 +56,23 @@ Derived from ADR-014. One slice per session, same loop as plans 001–005:
 - One queue-lock hold for the batch; pending entries dropped inline; per partition the contiguous committed-offset advance and its commit happen once per batch (vs one per Ack); no-op commits skipped (monotonicity still enforced by the coordinator); `__queue_attempts` claim-time fsyncs untouched (claim batching deliberately not conflated here — next candidate).
 - SDK: `firngo.Pull` / `Ack` / `AckBatch` added (previously missing from the SDK). CLI unchanged.
 - Measured: durable pull+ack drain loop, 400 records — **376 deliveries/s with AckBatch vs 196 with per-message Ack** (Apple M3 Pro; internal-window off).
+
+### Slice 6 — batch claim (attempts amortization)
+
+- Problem: every claimed delivery pays one `__queue_attempts` fsync inside `Manager.pull`'s inner loop (plus the ack-side savings from slices 3+5). A pull of 10 messages pays ~26 ms in attempt-record fsyncs alone.
+- Design: claim loop becomes two-phase. Phase 1 (no I/O): validate attempt budget, decide DLQ diversion, collect `(partition, offset)` claim plans + attempt records. Phase 2: one `partitionLog.AppendBatch` call that writes all attempt frames in order and fsyncs **once**; on failure the touched segments roll back (same truncation contract as the flush path) and the pull returns an error with nothing delivered or pending.
+- New `partitionLog.AppendBatch(records []AttemptRecord) ([]int64, error)` on `FileLog` (write frames + one fsync + roll machinery shared with `Append`) and `MemLog` (all in memory). Per-frame digest/index/hwm updated by the same `appendLockedFrame` path — no format change, no offsets reused.
+- Failed-attempt batches update nothing (no delivery registration, no pending state); callers retry the pull — strict at-least-once preserved. DLQ diverters are untouched (rare path, keeps their own fsyncs).
+- Ledger kept sequential per partition; offsets allocated contiguously per frame as today. Tests first; benchmark before/after on `bench/queue_bench`-class durable pull loop.
+- Does not touch `..__consumer_offsets`, audit, `__api_keys`, `__federation*`, or any retention/compaction path.
+
+### Slice 6 — batch claim (attempts amortization, delivered; autonomous continuation)
+
+- `partitionLog.AppendBatch([]BatchRecord)` on FileLog (write frames in order, roll segments per existing rules, one fsync at batch end, rollback to pre-batch positions on failure — same contract as the ADR-014 flush) and MemLog (all in memory). AttemptStore `PutBatch` routes the whole pull's attempt records in one call.
+- Pull became two-phase: collect claim plans (no I/O) → one `attempts.PutBatch` (one fsync) → register deliveries. Failed batch ⇒ nothing delivered, nothing pending, no attempt counts moved; caller retries — strict at-least-once preserved.
+- DLQ diversion paths keep their existing dedicated fsyncs (rare path, out of scope).
+- Measured durable pull+ack drain: per-message Ack 196 → **347** deliveries/s (pre-slice-6 baseline); **AckBatch drain: 376 → 2075 deliveries/s** (~5.5×).
+- Acceptance tests in `internal/queue/claimbatch_test.go`.
 
 ### Slice 4 — internal flush windows (opt-in; honest negative result)
 

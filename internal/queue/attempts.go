@@ -23,6 +23,7 @@ import (
 
 type attemptLog interface {
 	Append(key, value []byte) int64
+	AppendBatch(recs []log.BatchRecord) ([]int64, error)
 	Fetch(offset int64, max int) ([]log.Record, error)
 	HighWatermark() int64
 }
@@ -110,6 +111,41 @@ func attemptKey(queue string, partition int32, offset int64) []byte {
 func (s *AttemptStore) Attempts(queue string, partition int32, offset int64) uint32 {
 	s.refreshIfMoved()
 	return s.cache[string(attemptKey(queue, partition, offset))]
+}
+
+// PutBatch records attempts for many messages and fsyncs once at the end.
+// Used by the pull path to claim a whole batch in one fsync instead of one
+// per claimed message. Fenced (cluster-mode) stores fail closed and never
+// compact — the replicated log must stay byte-identical across the cluster.
+func (s *AttemptStore) PutBatch(recs []log.BatchRecord) error {
+	if len(recs) == 0 {
+		return nil
+	}
+	if err := s.gate.Allow("__queue_attempts"); err != nil {
+		return err
+	}
+	if _, err := s.inner.AppendBatch(recs); err != nil {
+		return err
+	}
+	for _, r := range recs {
+		if len(r.Value) == 4 {
+			s.cache[string(r.Key)] = binary.BigEndian.Uint32(r.Value)
+		}
+	}
+	s.foldedHWM = s.inner.HighWatermark()
+	s.commitsSinceCompact += len(recs)
+	if s.gate == nil || s.gate.Allowed() {
+		if s.dir != "" && s.commitsSinceCompact >= compactEveryCommits {
+			if fl, ok := s.inner.(*log.FileLog); ok {
+				if err := fl.Compact(); err != nil {
+					return fmt.Errorf("firn/queue: compact attempts store: %w", err)
+				}
+				s.commitsSinceCompact = 0
+				s.foldedHWM = s.inner.HighWatermark()
+			}
+		}
+	}
+	return nil
 }
 
 // Put records attempts for the message and opportunistically compacts.

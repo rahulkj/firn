@@ -20,6 +20,13 @@ type Record struct {
 	Value  []byte
 }
 
+// BatchRecord is one (key, value) pair in an AppendBatch call. No offset is
+// assigned here; offsets are assigned sequentially at batch load time.
+type BatchRecord struct {
+	Key   []byte
+	Value []byte
+}
+
 // MemLog is the in-memory slice-1 log. It is not durable and not
 // concurrency-safe until the broker layer serializes access.
 type MemLog struct {
@@ -57,3 +64,14 @@ func (l *MemLog) Fetch(offset int64, max int) ([]Record, error) {
 
 // HighWatermark returns the offset of the next record to be written.
 func (l *MemLog) HighWatermark() int64 { return int64(len(l.records)) }
+
+// AppendBatch appends all records in order and returns their offsets.
+// In-memory, so there is nothing to amortize; no partial-batch atomicity
+// is promised (matches MemLog's no-durability contract).
+func (l *MemLog) AppendBatch(recs []BatchRecord) ([]int64, error) {
+	offs := make([]int64, 0, len(recs))
+	for _, r := range recs {
+		offs = append(offs, l.Append(r.Key, r.Value))
+	}
+	return offs, nil
+}
