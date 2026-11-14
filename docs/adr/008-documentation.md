@@ -14,13 +14,20 @@ Create three developer-facing documents under `docs/`, covering install/config/u
 2. **`docs/configuration.md`** — every `firnd` flag with defaults, types, and effects; cluster peer format; retention horizon rules (deletion never touches the active segment, never rewrites offsets); startup sequence and crash recovery order.
 3. **`docs/api.md`** — every network surface: HTTP admin (`POST /topics`, `GET /topics`, `GET /groups`, `GET /groups/{name}/offsets`, `GET /metrics`, `GET /healthz`), gRPC `FirnService` (`Produce`, `Fetch`, `JoinGroup`, `SyncGroup`, `Heartbeat`, `LeaveGroup`, `CommitOffset`, `FetchOffset`, `Pull`, `Ack`, `GetMetadata`), internal replication service (`ReplicaService`), quorum transport service (`QuorumService`), with JSON and protobuf request/response examples and an error-codes table.
 
+4. Since v0.4.0 the set above is extended to all seven persona-facing docs — `docs/install.md`, `docs/configuration.md`, `docs/api.md`, **`docs/operator.md`**, **`docs/developer.md`**, **`docs/sre.md`**, **`docs/personas.md`** — plus `docs/adr/012-architecture.md` (system map) and `docs/federation-cutover.md`. The delivery section lists each doc, its audience and coverage.
+
+   **Maintenance rule** (unchanged): any change to flags, routes, RFCs, or screens updates those docs in the same commit as the code change.
+
+5. Measured performance numbers are required in `docs/operator.md`'s sizing section; they are reproduced by `bench/baseline.md` with each release.
+
 Maintenance rule: any change to flags, routes, or RPCs updates these docs in the same commit as the code. The CI lint gate stays green.
 
 ### Out of scope
 
-- SDK ergonomics (the `firn-cli` is the reference client; Go SDK lands with ADR-007 phase D-adjacent work).
+- SDK ergonomics: the `firn-cli` is the reference client; Go SDK ships under `sdk/firngo` (ADR-013). Other-language SDKs remain unbuilt (ADR-013).
 - Rendered/published docs site; everything ships as markdown in the repo, one read away from the code.
-- Benchmarks beyond `bench/baseline.md`.
+- Language SDK training documentation for non-Go/Python/Java clients until SDKs materialize.
+- Per-persona runbooks beyond what shipped in `docs/sre.md` and `docs/operator.md` (e.g. compliance certification playbooks) until a customer asks.
 
 ## Validation
 

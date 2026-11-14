@@ -572,6 +572,11 @@ Where to find the operator-facing companions to each plane:
 | API reference | `docs/api.md` | All endpoints, authn/authz rules, error codes, federation surface, `firn-cli` ↔ API map |
 | Federation cutover | `docs/federation-cutover.md` | Operator procedure: passive sink → writable (active-active flip or standalone decommission) |
 | Distribution / release | `docs/distribution.md` | Multi-arch tarballs, SBOM (syft), grype `fail-on-critical`, cosign sign-blob (manual) |
+| SRE / observability | `docs/sre.md` | Metrics catalog, alert rules, DR drill, runbook |
+| Platform operator | `docs/operator.md` | Install, network segments, sizing, backup, lifecycle |
+| Developer / apps | `docs/developer.md` | Publish/consume from Python/Java/.NET with examples |
+| RPC + CLI reference | `docs/api.md` | Endpoints, error codes, CLI↔API map |
+| Persona matrix | `docs/personas.md` | Who does what with UI + CLI |
 | Metrics | `docs/adr/006-metrics.md` | Prometheus metric definitions incl. `firn_federation_cursor_lag_seconds` |
 | Migration | `docs/migration-v0.3-to-v0.4.md` | v0.3 → v0.4 breaking changes & upgrade ordering |
 | HA design | `docs/adr/007-scaled-deployment.md` | Quorum, leases, block replication, client routing |
