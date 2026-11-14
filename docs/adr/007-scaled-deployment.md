@@ -1,6 +1,6 @@
 # ADR-007: Scaled-out deployment — the block log
 
-Status: accepted · 2026-11-13 · **Delivered — phases A–F + H shipped as v0.2.0 (2026-11-13); storage semantics reviewed and approved by human 2026-11-13.** Phase G (S3 archive tier) and dynamic membership are explicitly deferred with their own plans; each delivered slice landed with its own review gate.
+Status: accepted · 2026-11-13 · **GA as of v0.5.0 (2026-11-14).** The cluster path is production-supported inside the documented envelope (single-region, fixed-membership, ≥3 voting nodes for fault tolerance, full-restart upgrades, unsealed-tail RPO ≈ `-lease-ttl`). Not supported for production: dynamic membership, rolling upgrades, split-brain quorums, exactly-once. Live evidence for the GA claim: topics/quorum/produce/fetch replication catch-up after node rejoin, kill -9 + restart round-trip, queue lifecycle incl. mesh-routed DLQ diversion, internal-topic fencing (fail-closed on non-holders). v0.5.0 also fixes two defects found during live validation: the replication agent dialed the client gRPC listener with plaintext (no block was ever replicated in v0.4.0), and the DLQ diverter silently dropped poison messages on multi-node clusters (fixed via quorum-created DLQ topic + `RoutedBrokerService` on the mesh listener). See `CHANGELOG.md` § v0.5.0.
 
 ## Why not a narrow broker with the other semantics bolted on
 

@@ -54,6 +54,28 @@ firnd -tls-cert /etc/firn/tls.crt -tls-key /etc/firn/tls.key \
 
 ---
 
+## Cluster mode (v0.5.0) — what GA means
+
+Cluster mode is **GA as of v0.5.0**, scope honestly bounded. Net-new in v0.5.0 over v0.4.0:
+
+- **Replication actually worked** — the replication agent dialed the *client* gRPC listener with insecure credentials while `ReplicaService` lives only on the mesh mTLS listener, so no blocks were ever replicated in v0.4.0. Fixed: the agent now dials the mesh address with the cluster mesh CA (mirroring the quorum transport's identity).
+- **DLQ diversion no longer silently drops poison messages** in multi-node: auto-created `<queue>.dlq` topics now go through the quorum (every node has the topic), and when this node isn't the DLQ partition's lease holder the record is delivered via a new mesh-only `RoutedBrokerService` (`RoutedProduce`). A divert failure now fails the claim and leaves the source offset unconsumed — **at-least-once is preserved** (previously: silently drop).
+- `ErrNotLeaseHolder` now maps to `FAILED_PRECONDITION` (was `INTERNAL`).
+- Live validation: 2-node and 3-node clusters; topic create/produce/fetch, replication catch-up after a node rejoin, kill -9 + restart round-trip, queue lifecycle incl. DLQ divert through the mesh path, internal-topic fencing (non-holder writes fail closed with 503/FailedPrecondition and `firn-cli` retries the holder).
+
+**The GA envelope (unchanged from v0.4.0's experimental caveats — these are structural, not bugs):**
+
+1. **Single-region, fixed membership.** No dynamic join/leave. Adding/removing nodes = full restart window.
+2. **3+ voting nodes for HA.** A 2-node cluster can lose nothing — one node down = no quorum = **writes blocked** (fetches still serve). 2-node is dev/test only.
+3. **Full-restart upgrades**, not in-place rolling (storage-adjacent; rolling upgrades not supported — blast radius is all nodes).
+4. **Lease re-grants land on the quorum leader**, not the original owner — expect topic/partition leader affinity to cluster movement; ADR-007 documents the lease model and the re-grant limitation.
+5. **Unsealed tails (≤ `--lease-ttl`, default 5s) are the at-risk window** — a killed holder can lose the unsealed tail; mitigate with `-block-seal-interval` (documented flag) or by treating `-lease-ttl` as your RPO knob.
+6. **Internal topics are single-writer-fenced** via the internal lease (`__consumer_offsets`, `__queue_attempts`, `__audit`, `__api_keys`): non-holder nodes fail closed on their writes. Reads open everywhere.
+7. **Client routing** rides `GetMetadata` + the CLI's retry-on-`FailedPrecondition`/`Unavailable` with a 2 s metadata cache; stale entries converge on retry.
+8. **No exactly-once.** Consumer groups and queue mode are at-least-once. At-least-once offset semantics for groups holds (commit offsets monotonic unless explicit reset).
+
+**Not in GA (still out of scope):** multi-region quorum, dynamic membership, rolling upgrades without a restart window, automatic unsealed-tail recovery, wire compatibility with Kafka/Redpanda.
+
 ## Sizing — how big a machine do I need?
 
 Measured on Apple M3 Pro, darwin/arm64, local NVMe (`go test -bench=. -benchmem -benchtime=2000x ./bench/...`):
@@ -138,16 +160,16 @@ The block engine (ADR-007) and content-addressed sealed blocks were designed for
 
 Two supported paths.
 
-### From the release tarballs (v0.4.0)
+### From the release tarballs (v0.5.0)
 
 ```sh
 # pick one; verify against SHA256SUMS from the release
-tar -xzf firn-v0.4.0-linux-amd64.tar.gz
+tar -xzf firn-v0.5.0-linux-amd64.tar.gz
 sudo install -m 0755 firnd /usr/local/bin/firnd
 sudo install -m 0755 firn-cli /usr/local/bin/firn-cli
 ```
 
-Binaries are static, no libc dependency. Download at <https://github.com/rahulkj/firn/releases/tag/v0.4.0> (verify with `shasum -a 256 -c SHA256SUMS`; see [`docs/distribution.md`](distribution.md)).
+Binaries are static, no libc dependency. Download at <https://github.com/rahulkj/firn/releases/tag/v0.5.0> (verify with `shasum -a 256 -c SHA256SUMS`; see [`docs/distribution.md`](distribution.md)).
 
 ### From source
 

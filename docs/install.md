@@ -110,7 +110,7 @@ Key details (all verified live):
 - **CLI env vars:** `FIRN_ADDR`, `FIRN_HTTP_ADDR`, `FIRN_PEERS`, `FIRN_HTTP_PEERS`, `FIRN_API_KEY`, `FIRN_CA_CERT` — so `firn-cli` works in scripts without repeating flags.
 - Audit records for every admin mutation and refused request go to the replicated `__audit` topic. See [`docs/configuration.md`](configuration.md) and the `__audit` segment format in [`docs/api.md`](api.md).
 
-## Three-node cluster (experimental, ADR-007)
+## Three-node cluster (v0.5.0+, GA — ADR-007)
 
 ```sh
 # 0. provision the mesh CA once for all three nodes

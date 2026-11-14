@@ -2,7 +2,7 @@
 
 A from-scratch event broker in Go providing **streaming** (topics, partitions, offsets, consumer groups) and **queue** (ack, redelivery, DLQ) semantics over a shared append-only log.
 
-Status: **v0.4.0 — Firn, the durable event broker (secure by default, MIT).** See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/adr/`](docs/adr/). License: [MIT](LICENSE).
+Status: **v0.5.0 — Firn, the durable event broker (secure by default, MIT; cluster mode GA).** See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/adr/`](docs/adr/). License: [MIT](LICENSE).
 
 ## Documentation
 
@@ -57,17 +57,22 @@ Unacked messages are redelivered after the visibility lease expires; after 3 del
 buf generate internal/api --template buf.gen.yaml   # needs buf + protoc-gen-go + protoc-gen-go-grpc
 ```
 
-## Running a 3-node cluster (ADR-007, experimental)
+## Running a 3-node cluster (v0.5.0+, GA)
+
+Cluster mode is **generally available** as of v0.5.0 — validated live on 2-node and 3-node clusters (topics, produce/fetch, consumer groups, queue lifecycle incl. DLQ diversion, internal-topic fencing, replication catch-up, kill -9 + restart round-trip). See [`docs/install.md`](docs/install.md#three-node-cluster) for the full guide.
 
 ```sh
+# 0. provision a mesh CA once for all three nodes (REQUIRED in cluster mode)
+firn-cli mesh-ca init -out mesh-ca
+for d in n1 n2 n3; do mkdir -p data-$d/mesh-ca && cp mesh-ca/ca.crt mesh-ca/ca.key data-$d/mesh-ca/ && chmod 0600 data-$d/mesh-ca/*; done
+
 # terminal 1
 go run ./cmd/firnd -node-id n1 -peers n1=127.0.0.1:9538,n2=127.0.0.1:9540,n3=127.0.0.1:9542 \
   -http-addr 127.0.0.1:9537 -grpc-addr 127.0.0.1:9538 -data-dir ./data-n1
 # terminal 2 / 3: same with n2/n3 and ports 9540/9542 + 9539/9541, -data-dir ./data-n2 / ./data-n3
 ```
 
-Topics and their blocks replicate via an embedded Raft quorum (no ZK/etcd). The client
-(`firn-cli`) needs the node list:
+Topics and their blocks replicate via an embedded Raft quorum (no ZK/etcd). The client (`firn-cli`) needs the node list:
 
 ```sh
 firn-cli -peers 127.0.0.1:9538,127.0.0.1:9540,127.0.0.1:9542 \
@@ -77,11 +82,11 @@ firn-cli -peers ... produce --topic orders --key k --value hello
 firn-cli -peers ... fetch --topic orders --partition 0
 ```
 
+**Honesty box, unchanged in kind:** cluster mode is GA for the documented envelope — single-region, **fixed membership** (no dynamic join/leave; changes = full restart), **3+ voting nodes for HA** (a 2-node cluster cannot lose a node; use it for dev/test only), no rolling upgrade without a restart window, lease re-grants land on the quorum leader (leader affinity after failovers), unsealed tails (≤ `--lease-ttl`/`SealInterval`) are the at-risk window, and block replication makes a single-copy-per-node durability story. Envelope details: [`docs/operator.md`](docs/operator.md#cluster-mode-v050).
+
 Design: [`docs/adr/007-scaled-deployment.md`](docs/adr/007-scaled-deployment.md) — block log, lease tails, embedded metadata quorum.
 
-**Status: cluster mode (ADR-007) is experimental and lives behind `-node-id`/`-peers`. Caveats:** (1) lease re-grants land on the current quorum leader, not a re-balanced owner — expect leader affinity after failovers; (2) unsealed tails (≤ `--lease-ttl`/`SealInterval`) are the at-risk window; (3) membership is currently fixed at startup — no dynamic join/leave; (4) `GetMetadata` serves routing hints but the CLI still tolerates stale hints with retry; (5) internal-topic writes (`__consumer_offsets`/`__queue_attempts`/`__audit`/`__api_keys`) are single-writer-fenced by the internal lease — non-holder nodes fail closed (HTTP 503 / gRPC FailedPrecondition) and apps/CLI retry the holder.
-
-## Secure by default (v0.4.0)
+## Secure by default (since v0.4.0)
 
 **A fresh broker serves only `/healthz` until you mint the first API key** via the one-time bootstrap token printed on stderr (or restart with `-dev` to re-enable open dev mode, which is loud). /metrics is keyed; mesh RPCs live on a dedicated mTLS listener; data dirs are 0700/files 0600; anonymous traffic is rate-limited per IP; audit logging is bounded and append-only. See [`docs/migration-v0.3-to-v0.4.md`](docs/migration-v0.3-to-v0.4.md).
 

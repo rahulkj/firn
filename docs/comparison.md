@@ -1,11 +1,11 @@
 # Firn vs. the field — messaging & streaming comparison (2026-11-13)
 
-Scope: Firn v0.4.0 (this repo) compared against Apache Kafka, Redpanda, Apache Pulsar, RabbitMQ, NATS JetStream, Redis Streams, AWS Kinesis Data Streams, Google Pub/Sub, and AWS SQS.
+Scope: Firn v0.5.0 (this repo) compared against Apache Kafka, Redpanda, Apache Pulsar, RabbitMQ, NATS JetStream, Redis Streams, AWS Kinesis Data Streams, Google Pub/Sub, and AWS SQS.
 
 Honesty box, read this first:
 
 - **This document is written by the project.** It is as objective as we could make it, but self-assessment bias is real; treat every "Firn wins" row as a claim to verify, not a conclusion.
-- **Firn is v0.4.0** from a single maintainer, with no production deployments outside this repo, an experimental cluster mode, laptop-scale benchmarks (~350–500 msg/s durable produce, measured 2026-11-13 on an Apple M3 Pro; no scaling across partitions), and a preview federation feature. Competitors below are million-hours-in-production systems. If you need a broker to run the business by, buy or self-host Kafka/Redpanda/Pulsar — or use a managed service.
+- **Firn is v0.5.0** from a single maintainer, with no production deployments outside this repo, a GA-but-single-region cluster mode, laptop-scale benchmarks (~350–500 msg/s durable produce by default — or ~186,000 msg/s with `-flush-window=2ms` — measured 2026-11-13/14 on an Apple M3 Pro), and a preview federation feature. Competitors below are million-hours-in-production systems. If you need a broker to run the business by, buy or self-host Kafka/Redpanda/Pulsar — or use a managed service.
 - Competitor facts below are from their public documentation as of 2026-11-13. Performance numbers for competitors are **vendor/community claims**, not independent measurements. Firn's numbers are measured; theirs are cited. Treat both accordingly.
 - Azure Event Hubs / Azure Service Bus are not included (insufficient verified data in this pass); they are comparable to Kinesis/SQS in the managed tier.
 
@@ -36,7 +36,7 @@ Marks: ✅ full · ◐ partial/scoped · ❌ no · 💰 paid-tier only · — n/
 
 ### Self-hosted / open source
 
-| Capability | Firn v0.4.0 | Apache Kafka 4.x | Redpanda | Apache Pulsar | RabbitMQ | NATS JetStream | Redis Streams |
+| Capability | Firn v0.5.0 | Apache Kafka 4.x | Redpanda | Apache Pulsar | RabbitMQ | NATS JetStream | Redis Streams |
 |---|---|---|---|---|---|---|---|
 | License | MIT | Apache-2.0 | BSL (core), Enterprise paid | Apache-2.0 | MPL | Apache-2.0 | Tri-license incl. AGPLv3 (Redis 8) |
 | Single static binary, no external deps | ✅ | ❌ (JVM; KRaft built in — no ZK, but JVM + config) | ✅ (C++, no JVM/ZK) | ❌ (brokers + BookKeeper + ZK metadata, config-heavy) | ◐ (Erlang VM) | ✅ (Go) | ❌ (needs Redis server; often paired with Sentinel/Cluster) |
@@ -60,7 +60,7 @@ Marks: ✅ full · ◐ partial/scoped · ❌ no · 💰 paid-tier only · — n/
 | Persisted state format / recoverability | ✅ CRC frames, torn-tail truncation, `kill -9` tested | ✅ battle-tested, snapshots + ISR | ✅ battle-tested | ✅ BookKeeper, battle-tested | ✅ battle-tested | ✅ battle-tested | ◐ (forks vary; RDB/AOF) |
 | Throughput (claimed, same class of hw) | ~350–500 msg/s produce (measured 2026-11-13, fsync/append, M3 Pro; no partition scaling) † | ~1M+ msg/s/broker (vendor/community) | ~1M+ msg/s/broker (vendor, C++) | ~1M+ msg/s/cluster (vendor) | ~50–100k msg/s/node (community) | ~100k–1M+ msg/s (vendor, small payloads) | ~100k–1M ops/s (memory-bound) |
 | Operational complexity | **low** (one binary) | **high** (JVM, ISR, KRaft, partitions/ISR tuning) | low–medium (no JVM, but cluster ops) | **high** (brokers + bookies + ZK + tenants) | medium (Erlang, vhosts, quorum tuning) | low–medium | low (if Redis already run) |
-| Production maturity / community | ❌ zero users outside repo; v0.4.0 | ✅ massive, CNCF-adjacent, decades | ◐ real users, large community | ◐ real users (Yahoo/WeChat/etc.) | ✅ massive, decades | ✅ real users (many cloud-native stacks) | ✅ massive (as a database) |
+| Production maturity / community | ❌ zero users outside repo; v0.5.0 | ✅ massive, CNCF-adjacent, decades | ◐ real users, large community | ◐ real users (Yahoo/WeChat/etc.) | ✅ massive, decades | ✅ real users (many cloud-native stacks) | ✅ massive (as a database) |
 
 ### Cloud-managed (serverless / managed)
 
@@ -130,7 +130,7 @@ Marks: ✅ full · ◐ partial/scoped · ❌ no · 💰 paid-tier only · — n/
 - **Multi-tenancy / quotas**: none. Pulsar and NATS have real tenant models; Kafka has quotas.
 - **Retention/tiering**: whole-segment deletion only; no tiered storage, no compaction for user topics (internal `__` topics compact only at clean shutdown).
 - **Ops tooling**: read-only UI and decent metrics, but no control plane, no cluster-wide rebalance tooling, no partition re-assignment, no broker draining.
-- **Maturity**: zero production hours outside this repo; v0.4.0; single maintainer; docs are unusually thorough but that is not the same as battle-tested.
+- **Maturity**: zero production hours outside this repo; v0.5.0; single maintainer; docs are unusually thorough but that is not the same as battle-tested.
 - **Multi-AZ/quorum semantics for streamed data at scale**: experimental; Kafka/Pulsar/RabbitMQ are done here.
 
 ## When you'd actually pick Firn
@@ -163,7 +163,7 @@ For essentially every other scenario, pick the incumbents:
 
 ## Sources & verification notes
 
-- Firn: this repo at `v0.4.0` — `CHANGELOG.md`, `docs/adr/003-storage.md`, `docs/adr/005-mvp.md`, `bench/baseline.md` (incl. the 2026-11-13 capacity re-run), `bench/capacity_bench_test.go`, `docs/plans/005-security.md`, `docs/adr/010-federation.md`, `docs/federation-cutover.md`. Measured 2026-11-13: ~370 msg/s durable produce (~2.7 ms/op), ~374 msg/s durable produce aggregated over 3 partitions with parallel writers (no scaling), ~4.0M msg/s in-memory produce, ~1.05M records/s fetch (128-record batch), ~44k deliveries/s queue software path at N=1,000 (commit-path re-fold visible at larger N). Non-generated Go ≈ 12k LOC (`find . -name '*.go' | xargs wc -l`); binary ≈ 14 MB (`-trimpath -ldflags "-s -w"`). `bench/fetch_bench_test.go` latent offset bug fixed in the same pass (test-only). Self-found defect disclosed rather than benchmarked away: `__consumer_offsets` O(N²) commit re-fold — see "Defects found by our own benchmark pass".
+- Firn: this repo at `v0.5.0` — `CHANGELOG.md`, `docs/adr/003-storage.md`, `docs/adr/005-mvp.md`, `bench/baseline.md` (incl. the 2026-11-13 capacity re-run), `bench/capacity_bench_test.go`, `docs/plans/005-security.md`, `docs/adr/010-federation.md`, `docs/federation-cutover.md`. Measured 2026-11-13: ~370 msg/s durable produce (~2.7 ms/op), ~374 msg/s durable produce aggregated over 3 partitions with parallel writers (no scaling), ~4.0M msg/s in-memory produce, ~1.05M records/s fetch (128-record batch), ~44k deliveries/s queue software path at N=1,000 (commit-path re-fold visible at larger N). Non-generated Go ≈ 12k LOC (`find . -name '*.go' | xargs wc -l`); binary ≈ 14 MB (`-trimpath -ldflags "-s -w"`). `bench/fetch_bench_test.go` latent offset bug fixed in the same pass (test-only). Self-found defect disclosed rather than benchmarked away: `__consumer_offsets` O(N²) commit re-fold — see "Defects found by our own benchmark pass".
 - Kafka: Apache Kafka docs (4.x, KRaft-only); KIP-98 (transactions/EOS); KIP-405 (tiered storage); community throughput figures are vendor/community claims.
 - Redpanda: redpanda.com/docs — Community Edition under BSL; Enterprise adds SSO/audit/tiered storage; Kafka-API compatible.
 - Pulsar: pulsar.apache.org — native geo-replication (data only, not subscriptions), tenants/namespaces, tiered storage (S3/GCS/Azure); StreamNative distribution.
