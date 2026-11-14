@@ -227,7 +227,7 @@ func NewNode(id string, peers []string, dir string, tr Transport, opts *NodeOpti
 	if id == "" || len(peers) < 1 {
 		return nil, errors.New("firn/quorum: id and at least one peer are required")
 	}
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("firn/quorum: mkdir %s: %w", dir, err)
 	}
 	baseOpts := opts.withDefaults()

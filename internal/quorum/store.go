@@ -95,7 +95,7 @@ func appendLogEntry(dir string, e Entry) error {
 	binary.BigEndian.PutUint32(frame[4:8], crc32.ChecksumIEEE(payload))
 	copy(frame[8:], payload)
 
-	f, err := os.OpenFile(logPath(dir), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(logPath(dir), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0o600)
 	if err != nil {
 		return fmt.Errorf("firn/quorum: open log: %w", err)
 	}
@@ -115,7 +115,7 @@ func appendLogEntry(dir string, e Entry) error {
 // torn tail, and returns the recovered entries.
 func recoverLog(dir string) ([]Entry, int64, error) {
 	path := logPath(dir)
-	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o644)
+	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, 0, fmt.Errorf("firn/quorum: open log: %w", err)
 	}
@@ -171,7 +171,7 @@ func recoverLog(dir string) ([]Entry, int64, error) {
 func rewriteLog(dir string, entries []Entry) error {
 	path := logPath(dir)
 	tmp := path + ".tmp"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return fmt.Errorf("firn/quorum: rewrite log: %w", err)
 	}
