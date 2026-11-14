@@ -266,7 +266,7 @@ Example scrape config and alerts: [`docs/sre.md`](sre.md).
 
 ## What's deliberately not built
 
-- Client SDKs (Go/Python/Java/.NET) — use your language's gRPC tooling with `internal/api/firn.proto` (see [`docs/developer.md`](developer.md)) or `firn-cli`.
+- Client SDKs for non-Go languages (Python/Java/.NET) — Go SDK ships (`sdk/firngo`, ADR-013); other languages use gRPC + `internal/api/firn.proto` (see [`docs/developer.md`](developer.md)) or `firn-cli`.
 - Object storage / S3 — by design (see [Storage integrations](#object-storage--s3--blob)).
 - Encryption at rest — OS-level permissions only; no KMS integration.
 - Browser-native login to `/ui/` — browsers can't set `Authorization` headers; use a proxy with a pinned viewer key or `firn-cli`.

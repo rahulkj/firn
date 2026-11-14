@@ -65,3 +65,7 @@ Additional maintenance-rule extensions:
 - The `adminui` inline `<style>` was externalized to `/ui/style.css` so the UI renders in strict-CSP browsers.
 
 Remaining gap (carried forward, honestly): **no client SDK is shipped** — `firn-cli` is the reference client; see ADR-013 addendum for the register of unbuilt features and their plans.
+
+## Addendum (2026-11-13): SDK closure
+
+The "SDK still absent" note is superseded: `sdk/firngo` delivered (connect/produce/fetch/subscribe/commit/Group). Developer docs include a Go SDK section; Python/Java/.NET docs remain stub-generation instructions until demand appears (see ADR-013).

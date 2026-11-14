@@ -131,3 +131,7 @@ The decision record sketched some values as defaults; what shipped differs:
 - Roles shipped as coarse grants (`viewer` < `operator` < `admin`, plus a `federation` peer role) — not the resource-scoped permission strings (`topic:read`, `queue:ack`, `dlq:manage`, `group:reset`, …) sketched in the Security section. No per-resource ACLs exist; the admin UI is read-only.
 - The implicit "thin Go SDK" reference was never built (see ADR-002/SDK notes); clients hand-roll gRPC or use `firn-cli`.
 - Security shipped on top as ADR-011 (fail-closed boot, mesh mTLS, keyed metrics/UI, anon rate limit, per-key allowlists, dir-mode check, bounded audit) — this ADR's security sketch predates it and is the historical vision, not the mechanism.
+
+## Addendum (2026-11-13): SDK closure
+
+"The implicit thin Go SDK reference" noted in the implementation notes is now built: `sdk/firngo` (TLS `DialProduction`, `DialInsecure` for dev, produce/fetch/subscribe, group membership via `JoinGroup`). See ADR-013.

@@ -600,7 +600,7 @@ Audit of this ADR against the tree (house style: original text unchanged; this a
 - **Security architecture section** was added to this ADR on 2026-11-13 after writing it (transport layers incl. mandatory mesh mTLS for 2 clusters, per-surface authN/authZ table, bootstrap token flow, end-to-end client sequence, federation trust-boundary diagram).
 - **Port defaults** moved under ADR-011 discipline to `:9460` (HTTP admin) / `:9461` (client gRPC) / `:9471` (mesh = grpc+10) in the v0.4.0 breaking window; every default in this file was renumbered and the examples were walked through once against a live broker (healthz → mint key → create topic → produce → fetch; bootstrap token flow re-verified).
 - **Federation** shipped in v0.4.0 (plan 004, slices 1–6): passive byte-identical one-way import, active-active re-origin import, both-ways attempts mirror, client-visible cursors (`federation_hwm`, `firn_federation_cursor_lag_seconds`, `/ui/federation`), and the cutover runbook (`docs/federation-cutover.md`) — the operator path this ADR references uses those artifacts.
-- **Consistency vs this file**: every component path, RPC name, internal topic, flag, and default in this document was checked against `internal/**` at this commit; nothing listed here is aspirational. Two previously misdocumented claims were fixed during the audit pass (`.index sidecar`, `metrics unauthenticated`). The SDK gap is recorded in ADR-001/002/007/008 addenda.
+- **Consistency vs this file**: every component path, RPC name, internal topic, flag, and default in this document was checked against `internal/**` at this commit; nothing listed here is aspirational. Two previously misdocumented claims were fixed during the audit pass (`.index sidecar`, `metrics unauthenticated`). The SDK gap was closed in v0.4.0 with `sdk/firngo` (see addendum below).
 - **Known and documented flakes** (not defects in this ADR): `TestInternalTopicSingleWriter` and `TestClusterElectsSingleLeader` are time-sensitive and fail intermittently under `-race` (~1-in-12); both are tracked for separate investigation.
 - **Diagrams verified syntactically**: all Mermaid blocks pass structural checks (paired fences, balanced quotes, standardized arrows, quoted labels) as of this commit; GitHub's renderer is the final oracle.
 
@@ -608,3 +608,7 @@ Audit of this ADR against the tree (house style: original text unchanged; this a
 
 - Keep component tables sorted within their plane.
 - `federation_hwm`, `-federation-self`, and the `/ui/federation` page are all post-v0.3.0 additions; earlier releases of this file may lack them — this doc tracks the current tree, not any tag.
+
+## Addendum (2026-11-13): SDK delivery in the map
+
+Component catalog row above (Clients) is stale as of v0.4.0: a Go SDK now exists at `sdk/firngo` (verified against a real broker, `-race` clean). The SDK is the only in-tree client artifact; firn-cli remains the operator reference client.

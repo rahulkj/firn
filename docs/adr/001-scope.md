@@ -29,3 +29,7 @@ Replication beyond one cluster; exactly-once semantics/transactions; wire compat
 ## Implementation notes (2026-11-13): client SDKs
 
 ADR-001 says client compatibility comes from SDKs we write, not wire compatibility. No client SDK has shipped — `firn-cli` remains the reference client (and is not a library). SDK extraction is unscheduled as of this date. Consumers hand-roll gRPC calls or use `firn-cli` for ops paths; a Go SDK (proto wrapper + connection pooling + auth helpers) remains a valid future milestone and was scoped here but never built.
+
+## Addendum (2026-11-13): Go SDK delivered
+
+ADR-001 named client SDKs as the compatibility vehicle. As of v0.4.0 only Go exists — `sdk/firngo` (Connect, TLS or plaintext for dev, produce/fetch/subscribe with auth). Python/Java/.NET SDKs remain unbuilt; consumers use `firn-cli` or proto-generated stubs. The register of all client-facing gaps lives in ADR-013.
