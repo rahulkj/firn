@@ -243,7 +243,7 @@ func main() {
 	dev := flag.Bool("dev", false, "DEVELOPMENT ONLY: serve without any keys (alias for -allow-open-bootstrap). WARNING: broker is open to anyone who can reach the port.")
 	allowOpen := flag.Bool("allow-open-bootstrap", false, "DEVELOPMENT ONLY: serve without any keys (alias for -dev). WARNING: broker is open to anyone who can reach the port.")
 	tokenBucketRate := flag.Float64("rate", 100, "per-key rate limit in operations per second")
-	auditBudgetBytes := flag.Int64("audit-max-bytes", 64<<20, "max on-disk bytes for the __audit topic across this process; refuses writes past budget (fail-closed; set 0 for unlimited). Operators must rotate logs with -routation-retention or mount a fresh --data-dir.")
+	auditBudgetBytes := flag.Int64("audit-max-bytes", 64<<20, "max on-disk bytes for the __audit topic across this process; refuses writes past budget (fail-closed; set 0 for unlimited). Operators rotate the log manually (stop the broker, rename the segment, restart) or mount a fresh -data-dir.")
 	adminHTML := flag.Bool("admin-ui", true, "serve the read-only admin UI at / on the HTTP listener")
 	metricsAuth := flag.Bool("metrics-auth", true, "require a viewer key on /metrics (set false for Prometheus scrape without credentials; not recommended)")
 	anonRate := flag.Int("anon-rate", 20, "max anonymous ops per -anon-window per source IP on unauthenticated endpoints (healthz, refusal attempts). 0 = unlimited.")
