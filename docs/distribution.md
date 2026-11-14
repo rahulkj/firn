@@ -1,6 +1,6 @@
 # Distribution & release hardening (ADR-011, slice 6)
 
-Releases of Firn ship as reproducible artifacts attached to GitHub releases — never as a `git clone` and hope. This page describes what the release pipeline guarantees and what the operator must do manually.
+Releases of Firn ship as reproducible artifacts with Sigstore-backed build provenance attached to GitHub releases — never as a `git clone` and hope. This page describes what the release pipeline guarantees and what the operator must do manually.
 
 ## What CI gives you on every push to `main`
 
@@ -18,14 +18,32 @@ Tagging `v*` (or running the **release** workflow manually via `workflow_dispatc
 2. Builds static `firnd`/`firn-cli` for `darwin-arm64`, `darwin-amd64`, `linux-amd64`, `linux-arm64` (`CGO_ENABLED=0`, `-trimpath -ldflags "-s -w"`).
 3. Packages `firn-vX.Y.Z-<target>.tar.gz` (top-level `firnd`, `firn-cli`, `README.md`, `LICENSE` — exactly the layout `docs/operator.md` tells operators to extract) and generates a `SHA256SUMS` over the tarballs.
 4. Generates `dist/sbom.spdx.json` via anchore/sbom-action.
-5. Creates the GitHub release with notes taken from `CHANGELOG.md`. Re-running on an existing release re-uploads assets with `--clobber`.
+5. **Attests build provenance** via `actions/attest@v4` with `subject-checksums: dist/SHA256SUMS` — a [SLSA v1.0 build provenance](https://slsa.dev/spec/v1.0/provenance) predicate bound to each tarball's SHA-256, signed with a short-lived Sigstore certificate minted from this workflow's OIDC identity (public repo ⇒ public good Sigstore instance). The attestation is persisted to the repository attestation store and the Sigstore bundle (`provenance.sigstore.jsonl`) is attached to the release for offline verification.
+6. Creates the GitHub release with notes taken from `CHANGELOG.md`. Re-running on an existing release re-uploads assets with `--clobber`.
 
-The workflow has `contents: write` only (creating the release and uploading assets). It does **not** sign artifacts — see below. The `distribution` job in `ci.yml` continues to run the dependency gate (SBOM + grype critical) on every push to `main`.
+The workflow has `contents: write` (release + asset upload), `id-token: write` (Sigstore certificate), `attestations: write` (persist the attestation), and `artifact-metadata: write` (artifact storage metadata). Cosign sign-blob remains a human step (see below). The `distribution` job in `ci.yml` continues to run the dependency gate (SBOM + grype critical) on every push to `main`.
+
+## Verifying build provenance (SLSA v1.0)
+
+```sh
+# Verify a tarball against the repository attestation store:
+gh attestation verify firn-vX.Y.Z-linux-amd64.tar.gz --repo rahulkj/firn
+
+# Or fully offline, using the bundle attached to the release:
+gh release download vX.Y.Z --repo rahulkj/firn --pattern 'firn-vX.Y.Z-*.tar.gz' --pattern 'provenance.sigstore.jsonl'
+gh attestation verify firn-vX.Y.Z-linux-amd64.tar.gz \
+  --bundle provenance.sigstore.jsonl --repo rahulkj/firn
+
+# Expected: a "valid signature" line naming the workflow that built it,
+# .github/workflows/release.yml, signed by GitHub's Sigstore instance.
+```
+
+The attestation binds: artifact digest ⇒ builder (this repo, `release.yml`), source ref (`refs/tags/vX.Y.Z`), and the workflow run that produced it. It does **not** certify the contents are malware-free; it certifies they were built by this pipeline from this source. To tie that back to the source, check that the tag points at the commit you expect and that `SHA256SUMS` matches the downloaded tarballs.
 
 ## What CI does **not** do (and why)
 
-- **Cosign sign-blob** remains a human step (see below), deliberately: wiring `id-token: write` inside the workflow without an owner-owned OIDC identity / trust policy is a security posture we decline to take unilaterally. Artifacts upload unsigned; operators who need signed provenance should verify SHA256SUMS and, once signatures are produced, sign the release tarballs themselves.
-- **SLSA attestation of the build pipeline itself**. Goreleaser-style attestation would require importing goreleaser; that's an ADR of its own.
+- **Cosign sign-blob** remains a human step (see below), deliberately: cosign certifies with a long-lived offline key an operator controls; the provenance attestations cover the "built by this pipeline from this source" claim, and remain valid for anyone verifying without that key. If you hold the vault key, sign too; it's belt and suspenders.
+- **SLSA L3 isolated builders** (slsa-github-generator's generic builder) are not wired: the build runs inside this repo's workflow like every other CI job. The provenance attests faithfully where the build ran; it does not claim isolation from the runner. Upgrading to a hermetic builder would be its own ADR.
 
 ## Manual post-release steps (owner, optional)
 
@@ -47,17 +65,18 @@ cosign sign-blob --keyless --output-signature vX.Y.Z.sig firn-vX.Y.Z-linux-amd64
 
 ## Operator's verification checklist (before upgrade in any environment)
 
-1. `sha256sum -c SHA256SUMS` from the tarball attachment
-2. `cosign verify-blob --key <public-key> --signature <artifact>.sig <artifact>`
-3. Inspect `sbom.spdx.json` (`spdx-tools` or `jq`): expect golang + grpc + prometheus client
-4. Bootstrap a fresh broker in an isolated network segment **without** mesh CA yet; observe that MTLS peers are rejected on the mesh listener (matches F-2)
-5. Run `firn-cli list-apikeys` against the bootstrapped instance; expect refusal of anonymous traffic
-6. Wipe scratch dirs
+1. `shasum -a 256 -c SHA256SUMS` from the download directory
+2. `gh attestation verify firn-vX.Y.Z-linux-amd64.tar.gz --repo rahulkj/firn` (or `--bundle provenance.sigstore.jsonl` for offline verification)
+3. (Optional, if the operator signed) `cosign verify-blob --key <public-key> --signature <artifact>.sig <artifact>`
+4. Inspect `sbom.spdx.json` (`spdx-tools` or `jq`): expect golang + grpc + prometheus client
+5. Bootstrap a fresh broker in an isolated network segment **without** mesh CA yet; observe that MTLS peers are rejected on the mesh listener (matches F-2)
+6. Run `firn-cli list-apikeys` against the bootstrapped instance; expect refusal of anonymous traffic
+7. Wipe scratch dirs
 
 ## What we explicitly **did not** add
 
-- No Cosign in CI (no OIDC)
-- No SLSA provenance of the build pipeline
+- No cosign keyless in CI (the repo attestations use GitHub's Sigstore flow; self-signed keyless cosign with your own identity is still out of scope)
+- No hermetic/isolated SLSA builder (the attestation records the real build environment)
 - No image signing (no registry yet — future ADR)
 
 ## Additions pending, not blocking

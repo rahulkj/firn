@@ -131,3 +131,7 @@ Storage semantics are unchanged for single-node default (`-flush-window=0`).
 
 Security posture during this release: every mutation path continues to audit-record in every mode; `ProduceBatch`/`AckBatch` are metered as one RPC per call (not per record — their value *is* the batching); no new dependencies; SBOM/cosign/grype unchanged; `-flush-window` defaults to `0` (v0.4.0 behavior for anyone upgrading).
 
+## Unreleased — release pipeline (2026-11-14)
+
+- Release pipeline: tag pushes (`v*`) and manual `workflow_dispatch` now attest **SLSA v1.0 build provenance** via `actions/attest@v4`, binding each tarball's SHA-256 to the workflow that built it (Sigstore-signed with the workflow's OIDC identity; persisted to the repository attestation store). The Sigstore bundle is attached to each release as `provenance.sigstore.jsonl` for offline verification. Additive to the existing SHA256SUMS + SBOM + grype gate; cosign sign-blob remains a human step. See `docs/distribution.md` for verification instructions (`gh attestation verify …`).
+

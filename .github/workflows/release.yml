@@ -8,6 +8,8 @@ name: release
 #
 # Notes are extracted with the tag as literal text (no eval). Signing with
 # cosign stays manual, by design — see docs/distribution.md.
+# Build provenance is generated for every release (SLSA v1.0 predicate,
+# Sigstore-backed); see docs/distribution.md for how to verify.
 
 on:
   push:
@@ -20,8 +22,13 @@ on:
         type: string
         default: ''
 
+# actions/attest needs id-token: write (Sigstore signing) and attestations: write (persist
+# to the repo attestation store). contents: write creates the release/uploads assets.
 permissions:
-  contents: write # create the release and upload assets; nothing else
+  contents: write # create the release and upload assets
+  id-token: write # Sigstore short-lived certificate for provenance
+  attestations: write # push the attestation to the repository attestation store
+  artifact-metadata: write # artifact storage metadata record
 
 concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
@@ -85,6 +92,21 @@ jobs:
           output-file: dist/sbom.spdx.json
           upload-artifact: true
 
+      - name: Attest build provenance (SLSA)
+        id: attest
+        # SLSA v1.0 build provenance for every tarball listed in SHA256SUMS,
+        # signed with a short-lived Sigstore certificate from this workflow's
+        # OIDC identity. Public repo → public Good Sigstore. Verifiable with:
+        #   gh attestation verify dist/firn-<tag>-<target>.tar.gz --repo rahulkj/firn
+        # or offline with the attached provenance.sigstore.jsonl bundle:
+        #   gh attestation verify <tarball> --bundle provenance.sigstore.jsonl --repo rahulkj/firn
+        uses: actions/attest@v4
+        with:
+          subject-checksums: dist/SHA256SUMS
+
+      - name: Attach attestation bundle for offline verification
+        run: cp "${{ steps.attest.outputs.bundle-path }}" dist/provenance.sigstore.jsonl
+
       - name: Extract release notes from CHANGELOG.md
         run: |
           set -euo pipefail
@@ -106,8 +128,8 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "release $TAG exists — re-uploading assets (--clobber)"
             gh release upload "$TAG" --clobber \
-              dist/firn-"$TAG"-*.tar.gz dist/SHA256SUMS dist/sbom.spdx.json
+              dist/firn-"$TAG"-*.tar.gz dist/SHA256SUMS dist/sbom.spdx.json dist/provenance.sigstore.jsonl
           else
             gh release create "$TAG" --title "$TAG" --notes-file dist/RELEASE_NOTES.md \
-              dist/firn-"$TAG"-*.tar.gz dist/SHA256SUMS dist/sbom.spdx.json
+              dist/firn-"$TAG"-*.tar.gz dist/SHA256SUMS dist/sbom.spdx.json dist/provenance.sigstore.jsonl
           fi
