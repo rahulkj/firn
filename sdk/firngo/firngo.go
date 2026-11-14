@@ -1,0 +1,195 @@
+// Package firngo is the Go client SDK for Firn (ADR-013 slice A).
+//
+// Wrap your program around this package instead of the raw protobuf stubs:
+//
+//	c, err := firngo.DialInsecure(ctx, "localhost:9461")            // dev only
+//	c, err := firngo.DialProduction(ctx, "firn.example.com:9461", "ev-xxx") // TLS via system roots
+//	_, _, err = c.Produce(ctx, "orders", key, value)
+//	recs, err := c.Fetch(ctx, "orders", 0, 0, 100)
+//	c.SubscribeInPartition(ctx, "orders", 0, 0, 100, func(r Record) error {
+//	    fmt.Printf("%s %s\n", r.Key, r.Value)
+//	    return nil
+//	})
+package firngo
+
+import (
+	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
+	"fmt"
+	"time"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
+
+	"github.com/rahulkj/firn/internal/api/firnpb"
+)
+
+// Record is one message.
+type Record struct {
+	Offset int64
+	Key    []byte
+	Value  []byte
+}
+
+// Client is a connected SDK handle. Safe to use from multiple goroutines.
+type Client struct {
+	conn *grpc.ClientConn
+	fc   firnpb.FirnServiceClient
+	key  string // empty = broker -dev (no auth)
+}
+
+// DialInsecure dials plaintext (development brokers started with -dev, no keys).
+// Never use this for real traffic.
+func DialInsecure(ctx context.Context, addr string) (*Client, error) {
+	if addr == "" {
+		addr = "localhost:9461"
+	}
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("firngo: dial %s: %w", addr, err)
+	}
+	return &Client{conn: conn, fc: firnpb.NewFirnServiceClient(conn)}, nil
+}
+
+// DialProduction dials with TLS and pins the server certificate to one or more CAs.
+// caPool must contain the CA that signed the broker's server cert.
+func DialProduction(ctx context.Context, addr, apiKey string, caPool *x509.CertPool) (*Client, error) {
+	if addr == "" || apiKey == "" {
+		return nil, errors.New("firngo: addr and apiKey are required")
+	}
+	cfg := &tls.Config{RootCAs: caPool, MinVersion: tls.VersionTLS12}
+	creds := credentials.NewTLS(cfg)
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(creds))
+	if err != nil {
+		return nil, fmt.Errorf("firngo: dial %s: %w", addr, err)
+	}
+	return &Client{conn: conn, fc: firnpb.NewFirnServiceClient(conn), key: apiKey}, nil
+}
+
+// DialWithTLS is a convenience for clients that already have a tls.Config.
+func DialWithTLS(ctx context.Context, addr, apiKey string, cfg *tls.Config) (*Client, error) {
+	creds := credentials.NewTLS(cfg)
+	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(creds))
+	if err != nil {
+		return nil, fmt.Errorf("firngo: dial %s: %w", addr, err)
+	}
+	return &Client{conn: conn, fc: firnpb.NewFirnServiceClient(conn), key: apiKey}, nil
+}
+
+func (c *Client) Close() error { return c.conn.Close() }
+
+func (c *Client) authCtx(ctx context.Context) context.Context {
+	if c.key == "" {
+		return ctx
+	}
+	return metadata.AppendToOutgoingContext(ctx, "authorization", "Bearer "+c.key)
+}
+
+func timeAdd(d time.Duration) <-chan time.Time { return time.After(d) }
+
+// Produce appends a record under key-based routing, or round-robin when key is nil.
+func (c *Client) Produce(ctx context.Context, topic string, key, value []byte) (partition int32, offset int64, err error) {
+	resp, err := c.fc.Produce(c.authCtx(ctx), &firnpb.ProduceRequest{Topic: topic, Key: key, Value: value})
+	if err != nil {
+		return 0, 0, fmt.Errorf("firngo: produce: %w", err)
+	}
+	return resp.Partition, resp.Offset, nil
+}
+
+// Fetch reads up to max records starting at offset.
+func (c *Client) Fetch(ctx context.Context, topic string, partition int32, offset int64, max int) ([]Record, error) {
+	resp, err := c.fc.Fetch(c.authCtx(ctx), &firnpb.FetchRequest{Topic: topic, Partition: partition, Offset: offset, MaxRecords: int32(max)})
+	if err != nil {
+		return nil, fmt.Errorf("firngo: fetch: %w", err)
+	}
+	out := make([]Record, 0, len(resp.Records))
+	for _, r := range resp.Records {
+		out = append(out, Record{Offset: r.Offset, Key: append([]byte(nil), r.Key...), Value: append([]byte(nil), r.Value...)})
+	}
+	return out, nil
+}
+
+// TopicMetadata returns the broker's view of the topic.
+func (c *Client) TopicMetadata(ctx context.Context, topic string) (*firnpb.TopicMetadata, error) {
+	resp, err := c.fc.GetMetadata(c.authCtx(ctx), &firnpb.GetMetadataRequest{Topics: []string{topic}})
+	if err != nil {
+		return nil, fmt.Errorf("firngo: get metadata: %w", err)
+	}
+	for _, t := range resp.Topics {
+		if t.Name == topic {
+			return t, nil
+		}
+	}
+	return nil, fmt.Errorf("firngo: topic %q not on broker", topic)
+}
+
+// Health reports whether the broker can serve reads (metadata call round-trips).
+func (c *Client) Health(ctx context.Context) error {
+	_, err := c.fc.GetMetadata(c.authCtx(ctx), &firnpb.GetMetadataRequest{})
+	return err
+}
+
+// SubscribePartition is a simple at-least-once poll loop over one partition.
+// handlers returning errors stop the subscriber; skipped records are reported by handler.
+// For durable progress, use CommitOffset — this loop is intentionally minimal.
+func (c *Client) SubscribePartition(ctx context.Context, topic string, partition int32, startOffset int64, maxBatch int, handler func(Record) error) error {
+	off := startOffset
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+		recs, err := c.Fetch(ctx, topic, partition, off, maxBatch)
+		if err != nil {
+			return err
+		}
+		if len(recs) == 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-timeAdd(200):
+			}
+			continue
+		}
+		for _, r := range recs {
+			if err := handler(r); err != nil {
+				return err
+			}
+			off = r.Offset + 1
+		}
+	}
+}
+
+// CommitOffset commits a group offset (idempotent under consumer-group rebalance).
+func (c *Client) CommitOffset(ctx context.Context, groupID, topic string, partition int32, offset int64) error {
+	_, err := c.fc.CommitOffset(c.authCtx(ctx), &firnpb.CommitOffsetRequest{
+		GroupId:      groupID,
+		Topic:        topic,
+		Partition:    partition,
+		Offset:       offset,
+		GenerationId: 1,
+	})
+	if err != nil {
+		return fmt.Errorf("firngo: commit offset: %w", err)
+	}
+	return nil
+}
+
+// JoinGroup asks the broker to rebalance; the response includes the member's assignment.
+func (c *Client) JoinGroup(ctx context.Context, groupID, memberID string, topics []string) (*firnpb.JoinGroupResponse, error) {
+	resp, err := c.fc.JoinGroup(c.authCtx(ctx), &firnpb.JoinGroupRequest{
+		GroupId:  groupID,
+		MemberId: memberID,
+		Topics:   topics,
+		Protocol: "range",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("firngo: join group: %w", err)
+	}
+	return resp, nil
+}

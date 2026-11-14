@@ -18,3 +18,13 @@ bar is met in memory by construction; it is not met with fsync-per-append and
 will never be claimed as met.
 
 Reproduce: `make bench`.
+
+## Re-run 2026-11-13 (v0.4.0, same hardware)
+
+| Benchmark | ns/op | B/op | allocs/op |
+|---|---|---|---|
+| Produce (durable, fsync/append) | 2,846,323 | 350 | 3 |
+| Produce (in-memory) | 249 | 472 | 4 |
+| Fetch (128-record batch) | 133,210 | 153,481 | 797 |
+
+Same conclusion: fsync-per-append dominates; ~350–500 msg/s per partition range is the honest production number. v0.1.0 baseline kept for history above.

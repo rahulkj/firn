@@ -56,20 +56,30 @@ firnd -tls-cert /etc/firn/tls.crt -tls-key /etc/firn/tls.key \
 
 ## Sizing — how big a machine do I need?
 
-Starting points, measured on a developer machine (Apple silicon, local NVMe); validate with `go test -bench=. -benchmem ./bench/...` for your hardware.
+Measured on Apple M3 Pro, darwin/arm64, local NVMe (`go test -bench=. -benchmem -benchtime=2000x ./bench/...`):
+
+| Operation | ns/op | Rate | Notes |
+|---|---|---|---|
+| Produce (durable, fsync per append) | ~2.0–2.8 ms | **~350–500 msg/s per partition range** | includes full fsync — this is the honest number, not in-memory |
+| Produce (in-memory `MemLog`, dev only) | ~250 ns | ~4M msg/s | slice-1 path only; never production |
+| Fetch (128-record batch, durable log) | ~133 μs | ~960k records/s read | sequential scan from offset |
+
+These are per-partition-range numbers — the fsync cost does not amortize across partitions, only across a single partition's append path. Horizontal concurrency scales with partitions and nodes (lease-parallelism), not with tuning.
+
+**Rules of thumb (validate with `go test -bench=. ./bench/...` on your hardware — NVMe vs. SATA vs. network storage matters enormously):**
 
 | Workload | CPU / RAM | Disk | Expected |
 |---|---|---|---|
-| Dev/test (single node) | 1 vCPU / 1 GiB | 5–20 GiB | full feature set; fsync-bound produce ~500 msg/s |
-| Small prod (single node, low rate) | 2 vCPU / 2–4 GiB | ≥ 2× retention window (e.g. 100 GiB) | correct, not fast; partition count small (1–4) |
-| Medium prod (3-node cluster) | 4 vCPU / 8 GiB per node | ≥ 2× retention × replication factor | hinted failover; ~500 msg/s per partition range, concurrent partitions scale with CPU |
-| Large (many partitions/topics) | 8+ vCPU / 16–32 GiB per node, NVMe | sized by retention math | high parallelism; watch `firn_fsync_seconds` |
+| Dev/test (single node) | 1 vCPU / 1 GiB | 5–20 GiB | full feature set; ~350–500 msg/s per partition |
+| Small prod (single node, low rate) | 2 vCPU / 2–4 GiB | ≥ 2× retention window (e.g. 100 GiB) | correct, not fast; partitions 1–4 |
+| Medium prod (3-node cluster) | 4 vCPU / 8 GiB per node | ≥ 2× retention × replication factor | failover; ~350–500 msg/s per partition range; concurrency scales with partitions × nodes |
+| Large (many partitions/topics) | 8+ vCPU / 16–32 GiB per node, NVMe | sized by retention math | parallelism-bound; watch `firn_fsync_seconds` |
 
 **Retention math.** `firn` deletes *whole segments* only — it never rewrites offsets — so sizing is: bytes that must stay live = `target_retention_window` × `produce rate ÷ compression`. Example: 2 MiB/s of writes, 7-day retention ⇒ ~1.2 TiB per partition across the cluster (×3 replicas ⇒ plan 3.6 TiB raw). Set `-retention-ttl 168h` and/or `-retention-max-bytes 137438953472` (128 GiB). Use `-segment-bytes` smaller than your max retention deletion unit (default 64 MiB is fine).
 
-**CPU is mostly fsync + CRC.** Produce throughput is ~500 msg/s per partition range with fsync-per-append (ADR-003; measured ~1.97 ms/produce op). Batching/throughput beyond that requires a different storage policy — not available — so scale by partitions and nodes, not by message rate tuning.
+**CPU is mostly fsync + CRC.** Produce throughput is ~350–500 msg/s per partition range with fsync-per-append (ADR-003; measured ~2 ms/op). Batching/throughput beyond that requires a different storage policy — not available — so scale by partitions and nodes, not by message rate tuning.
 
-**Memory.** In-memory index is proportional to record count, not bytes (a sparse index entry per segment roll, rebuilt on open). Keep partition counts modest (hundreds, not tens of thousands).
+**Memory.** In-memory index is proportional to record count, not bytes; keep partition counts modest (hundreds, not tens of thousands).
 
 ---
 

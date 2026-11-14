@@ -45,35 +45,31 @@ firn-cli -api-key $FIRN_API_KEY fetch --topic orders --offset 0 --max 10
 
 All client verbs are on the gRPC `FirnService` (`internal/api/firn.proto`). HTTP is admin-only — it does **not** carry produce/fetch traffic.
 
-### Go (hand-rolled, no SDK required)
+### Go — the official SDK (delivered 2026-11-13)
 
-Generate stubs from the proto and call with any gRPC client:
-
-```sh
-go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-protoc -I internal/api --go_out=. --go_opt=paths=source_relative \
-       --go-grpc_out=. --go-grpc_opt=paths=source_relative firn.proto
-```
+`sdk/firngo` ships with the module: connect once, produce/fetch/subscribe with auth wired in.
 
 ```go
-conn, err := grpc.NewClient("localhost:9461",
-    grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg))) // or NewCredentials() for plaintext dev
+import "github.com/rahulkj/firn/sdk/firngo"
+
+sdk, err := firngo.DialProduction(ctx, "firn.internal:9461", "ev-...", caCertPool)
 if err != nil { panic(err) }
-client := firnpb.NewFirnServiceClient(conn)
+defer sdk.Close()
 
 // publish
-resp, err := client.Produce(ctx, &firnpb.ProduceRequest{
-    Topic: "orders",
-    Key:   []byte("order-42"),
-    Value: []byte(`{"item":"book","qty":1}`),
-})
+_, offset, err := sdk.Produce(ctx, "orders", []byte("order-42"), []byte(`{"item":"book"}`))
 
 // consume
-fr, err := client.Fetch(ctx, &firnpb.FetchRequest{
-    Topic: "orders", Partition: 0, Offset: 0, MaxRecords: 100,
+recs, err := sdk.Fetch(ctx, "orders", 0, 0, 100)
+
+// subscribe
+_ = sdk.SubscribePartition(ctx, "orders", 0, 0, 100, func(r firngo.Record) error {
+    fmt.Printf("%s %s\n", r.Key, r.Value)
+    return nil
 })
 ```
+
+If you prefer raw gRPC: generate stubs from `internal/api/firn.proto` (protoc + `protoc-gen-go` + `protoc-gen-go-grpc`) and call `FirnServiceClient` directly — same wire format, no wrapper.
 
 ### Python (verified against the running broker)
 

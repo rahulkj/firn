@@ -40,3 +40,28 @@ Maintenance rule: any change to flags, routes, or RPCs updates these docs in the
 Two notes vs this record:
 - "Go SDK lands with ADR-007 phase D-adjacent work" — phase D shipped (v0.2.0) without an SDK; nothing shipped since. `firn-cli` remains the reference client.
 - Listener defaults moved from `:9092`/`:9093` to **`:9460`/`:9461`** (v0.4.0 BREAKING change); all cited examples in docs were switched to the new defaults; single-node `GetMetadata` now advertises unknown ("") instead of a hardcoded `localhost:9093`.
+
+## Addendum (2026-11-13): full documentation set — all personas delivered
+
+This ADR is expanded from three docs to the complete reference set, per the same decision record extended post-v0.4.0. **Every document below exists and is maintained under the same rule (update in the same commit as the code change):**
+
+| Document | Audience | Covers |
+|---|---|---|
+| `docs/install.md` | everyone | tarball + from-source builds, secure bootstrap, single-node + 3-node + federated quickstarts |
+| `docs/configuration.md` | operator | every flag, env vars, retention horizon rules, startup/recovery order |
+| `docs/api.md` | developer + operator | every endpoint, request/response examples, error tables, CLI↔API map |
+| `docs/operator.md` | **platform operator** | install paths, network segments + firewall matrix, sizing with measured benchmarks, storage integrations (local fs, disk sizing math, in-memory limits, S3 explicitly absent), all `firn-cli` commands, UI walkthroughs (real screenshots), secure-bootstrap , backup/restore runbook, upgrade notes |
+| `docs/developer.md` | **application developer** | concepts, auth patterns for apps (keys, `allowed_ips`, bearer), verified publish/consume in Go, Python, Java (executed against a live broker), .NET shape documented, best practices, troubleshooting |
+| `docs/sre.md` | **SRE / on-call** | metrics catalog with targets, Prometheus scrape, alert rules, dashboard spec, log drill-down, federation lag, backup/restore runbook |
+| `docs/personas.md` | leadership/enablement | roles ↔ surfaces matrix (operator, SRE, dev, auditor, incident commander, release manager, data owner) |
+| `docs/adr/012-architecture.md` | everyone | system map: component catalog, interactions, deployment topologies (standalone/HA/federated), security architecture, threat model |
+| `docs/migration-v0.3-to-v0.4.md` | operator | upgrade notes for the v0.3 → v0.4 breaking window (ports, fail-closed boot) |
+| `docs/distribution.md` | release manager | build, SBOM, grype, signing, verification checklist |
+| `docs/federation-cutover.md` | operator | passive→active cutover procedure |
+
+Additional maintenance-rule extensions:
+- Benchmarks: `bench/baseline.md` carries the current numbers (v0.1.0 baseline preserved; v0.4.0 re-run appended below it).
+- Screenshots: `docs/images/ui-dashboard.png` and `docs/images/ui-federation.png` are re-captured from a live demo cluster whenever `internal/adminui` changes.
+- The `adminui` inline `<style>` was externalized to `/ui/style.css` so the UI renders in strict-CSP browsers.
+
+Remaining gap (carried forward, honestly): **no client SDK is shipped** — `firn-cli` is the reference client; see ADR-013 addendum for the register of unbuilt features and their plans.
