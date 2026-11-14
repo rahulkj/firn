@@ -201,3 +201,34 @@ func TestCrossCAHandshakeRejected(t *testing.T) {
 		t.Logf("verify error (ok, just must not accept): %v", err)
 	}
 }
+
+func TestEnsureAcceptsOpenSSLStyleMultiBlockCAKey(t *testing.T) {
+	// openssl ecparam -genkey emits "EC PARAMETERS" + "EC PRIVATE KEY" in one
+	// file. firnd must accept that bundle — it is what the install docs used
+	// to tell operators to generate.
+	dir := t.TempDir()
+	caDir := filepath.Join(dir, "mesh-ca")
+	if _, err := Generate(caDir, "firn-0"); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	keyPEM, err := os.ReadFile(filepath.Join(caDir, "ca.key"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// P-256 named-curve parameters block, exactly as openssl writes it.
+	params := []byte("-----BEGIN EC PARAMETERS-----\nBggqhkjOPQMBBw==\n-----END EC PARAMETERS-----\n")
+	if err := os.WriteFile(filepath.Join(caDir, "ca.key"), append(params, keyPEM...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Remove the node cert so Ensure must reissue it — the exact code path
+	// that rejected multi-block CA keys.
+	_ = os.Remove(filepath.Join(caDir, "node.crt"))
+	_ = os.Remove(filepath.Join(caDir, "node.key"))
+	b, err := Ensure(caDir, "firn-0", false)
+	if err != nil {
+		t.Fatalf("Ensure with openssl-style multi-block CA key: %v", err)
+	}
+	if err := b.VerifyClientCert(pemDecodeNodeCert(t, nodeCertOf(t, caDir))); err != nil {
+		t.Fatalf("reissued node cert does not verify against its CA: %v", err)
+	}
+}

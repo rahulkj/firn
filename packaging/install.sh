@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # firn installer — interactive setup of firnd as a system service.
 # Linux (systemd) and macOS (launchd). Windows: use WSL2 or the OCI image.
-# Usage:  sudo ./install.sh [--version v0.5.2] [--unattended] [--help]
+# Usage:  sudo ./install.sh [--version v0.5.3] [--unattended] [--help]
 set -euo pipefail
 
-FIRN_VERSION="${FIRN_VERSION:-v0.5.2}"
+FIRN_VERSION="${FIRN_VERSION:-v0.5.3}"
 UNATTENDED=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -103,9 +103,15 @@ if [ "$MODE" = cluster ]; then
   mkdir -p "$DATA_DIR/mesh-ca"
   ask_yn GEN_CA "Generate a shared mesh CA now into $DATA_DIR/mesh-ca? (choose n to copy an existing CA yourself)" y
   if [ "$GEN_CA" = y ]; then
-    openssl ecparam -genkey -name prime256v1 -out "$DATA_DIR/mesh-ca/ca.key" >/dev/null 2>&1
-    openssl req -x509 -new -nodes -key "$DATA_DIR/mesh-ca/ca.key" -days 3650 \
-      -subj "/CN=firn-mesh-ca" -out "$DATA_DIR/mesh-ca/ca.crt" >/dev/null 2>&1
+    if command -v firn-cli >/dev/null; then
+      firn-cli mesh-ca init -out "$DATA_DIR/mesh-ca" >/dev/null || die "firn-cli mesh-ca init failed"
+    else
+      # -noout: suppress the two-block PEM (EC PARAMETERS + EC PRIVATE KEY) —
+      # firnd needs the single-block form; firn-cli always emits it.
+      openssl ecparam -genkey -name prime256v1 -noout -out "$DATA_DIR/mesh-ca/ca.key" >/dev/null 2>&1
+      openssl req -x509 -new -nodes -key "$DATA_DIR/mesh-ca/ca.key" -days 3650 \
+        -subj "/CN=firn-mesh-ca" -out "$DATA_DIR/mesh-ca/ca.crt" >/dev/null 2>&1
+    fi
     chmod 600 "$DATA_DIR/mesh-ca/ca.key"; chmod 644 "$DATA_DIR/mesh-ca/ca.crt"
     [ "$OS" = Linux ] && chown -R firn:firn "$DATA_DIR/mesh-ca"
     ok "mesh CA written to $DATA_DIR/mesh-ca — copy ca.crt + ca.key (mode 600) to the other nodes"

@@ -3,7 +3,7 @@
 # Requires a mesh CA secret BEFORE first start (see step A below).
 #
 # A) Create the mesh CA secret once (do not commit these files):
-#    mkdir -p mesh-ca && openssl ecparam -genkey -name prime256v1 -out mesh-ca/ca.key
+#    firn-cli mesh-ca init -out mesh-ca       # preferred; or: openssl ecparam -genkey -name prime256v1 -noout -out mesh-ca/ca.key
 #    openssl req -x509 -new -nodes -key mesh-ca/ca.key -days 3650 \
 #      -subj "/CN=firn-mesh-ca" -out mesh-ca/ca.crt
 #    kubectl create namespace firn
@@ -102,13 +102,14 @@ spec:
               readOnly: true
       containers:
         - name: firnd
-          image: ghcr.io/rahulkj/firn:v0.5.2
+          image: ghcr.io/rahulkj/firn:v0.5.3
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:
-            - exec firnd -data-dir /var/lib/firn -http-addr :9460 -grpc-addr :9461 \
-                -node-id "$HOSTNAME" \
-                -peers firn-0=firn-0.firn-mesh.firn:9471,firn-1=firn-1.firn-mesh.firn:9471,firn-2=firn-2.firn-mesh.firn:9471
+            # single-line: YAML plain scalars fold newlines to spaces but keep
+            # backslashes LITERAL — multi-line commands with \ continuations
+            # mangle into wrong arguments (flag parser stops at first positional)
+            - exec firnd -data-dir /var/lib/firn -http-addr :9460 -grpc-addr :9461 -node-id "$HOSTNAME" -peers firn-0=firn-0.firn-mesh.firn:9471,firn-1=firn-1.firn-mesh.firn:9471,firn-2=firn-2.firn-mesh.firn:9471
           ports:
             - name: http
               containerPort: 9460

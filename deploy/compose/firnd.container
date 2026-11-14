@@ -13,7 +13,7 @@ Description=firn event broker (firnd)
 After=network-online.target
 
 [Container]
-Image=ghcr.io/rahulkj/firn:v0.5.2
+Image=ghcr.io/rahulkj/firn:v0.5.3
 ContainerName=firnd
 User=10001
 Volume=%h/.local/share/firn:/var/lib/firn:Z

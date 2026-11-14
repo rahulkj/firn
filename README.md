@@ -2,7 +2,7 @@
 
 A from-scratch event broker in Go providing **streaming** (topics, partitions, offsets, consumer groups) and **queue** (ack, redelivery, DLQ) semantics over a shared append-only log.
 
-Status: **v0.5.2 — Firn, the durable event broker (secure by default, MIT; cluster mode GA).** See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/adr/`](docs/adr/). License: [MIT](LICENSE).
+Status: **v0.5.3 — Firn, the durable event broker (secure by default, MIT; cluster mode GA).** See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/adr/`](docs/adr/). License: [MIT](LICENSE).
 
 **Website:** [rahulkj.github.io/firn](https://rahulkj.github.io/firn/) — product docs, full API reference, architecture diagrams, comparison matrix, release notes. Built from this repo, deployed on GitHub Pages.
 

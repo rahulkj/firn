@@ -10,7 +10,7 @@
 
 services:
   firnd:
-    image: ghcr.io/rahulkj/firn:v0.5.2
+    image: ghcr.io/rahulkj/firn:v0.5.3
     # local source build instead:
     # build: { context: ../.., dockerfile: packaging/Dockerfile }
     container_name: firnd
@@ -30,7 +30,7 @@ services:
   # --- 3-node cluster profile (optional) -----------------------------------
   firn-n1: &firn-node
     profiles: ["cluster"]
-    image: ghcr.io/rahulkj/firn:v0.5.2
+    image: ghcr.io/rahulkj/firn:v0.5.3
     container_name: firn-n1
     user: "10001:10001"
     restart: unless-stopped
@@ -89,7 +89,7 @@ volumes:
 
 # Cluster mesh CA first:
 #   mkdir -p mesh-ca
-#   openssl ecparam -genkey -name prime256v1 -out mesh-ca/ca.key
+#   firn-cli mesh-ca init -out mesh-ca          # preferred; or: openssl ecparam -genkey -name prime256v1 -noout -out mesh-ca/ca.key
 #   openssl req -x509 -new -nodes -key mesh-ca/ca.key -days 3650 \
 #     -subj "/CN=firn-mesh-ca" -out mesh-ca/ca.crt && chmod 600 mesh-ca/ca.key
 # then: docker compose --profile cluster up -d

@@ -68,7 +68,7 @@ spec:
               mountPath: /data
       containers:
         - name: firnd
-          image: ghcr.io/rahulkj/firn:v0.5.2
+          image: ghcr.io/rahulkj/firn:v0.5.3
           imagePullPolicy: IfNotPresent
           args: ["-data-dir", "/var/lib/firn"]
           ports:

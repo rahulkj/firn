@@ -60,9 +60,9 @@ spec:
           {{- if eq .Values.mode "cluster" }}
           command: ["/bin/sh", "-c"]
           args:
-            - exec firnd -data-dir /var/lib/firn -http-addr :{{ .Values.service.httpPort }} -grpc-addr :{{ .Values.service.grpcPort }} \
-                -node-id "$HOSTNAME" \
-                -peers {{ include "firn.peers" . }}{{ if .Values.existingConfig }} {{ .Values.existingConfig }}{{ end }}
+            # single-line: YAML plain scalars fold newlines to spaces but keep
+            # backslashes LITERAL — never use \ continuations here
+            - exec firnd -data-dir /var/lib/firn -http-addr :{{ .Values.service.httpPort }} -grpc-addr :{{ .Values.service.grpcPort }} -node-id "$HOSTNAME" -peers {{ include "firn.peers" . }}{{ if .Values.existingConfig }} {{ .Values.existingConfig }}{{ end }}
           {{- else }}
           args: ["-data-dir", "/var/lib/firn", "-http-addr", ":{{ .Values.service.httpPort }}", "-grpc-addr", ":{{ .Values.service.grpcPort }}"{{ if .Values.existingConfig }}{{ range $a := splitList " " .Values.existingConfig }}, "{{ $a }}"{{ end }}{{ end }}]
           {{- end }}

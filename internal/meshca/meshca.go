@@ -334,23 +334,31 @@ func randomSerial() (*big.Int, error) {
 	return serial, nil
 }
 
+// mustParseECKey accepts any PEM bundle that contains an EC private key,
+// not necessarily in the first block. openssl's `ecparam -genkey` emits a
+// leading "EC PARAMETERS" block before "EC PRIVATE KEY" — a perfectly legal
+// CA file that must not be rejected.
 func mustParseECKey(pemBytes []byte) *ecdsa.PrivateKey {
-	block, _ := pem.Decode(pemBytes)
-	if block == nil {
-		return nil
-	}
-	// Support both "EC PRIVATE KEY" (SEC1) and "PRIVATE KEY" (PKCS8) encodings.
-	if block.Type == "EC PRIVATE KEY" {
-		key, err := x509.ParseECPrivateKey(block.Bytes)
-		if err == nil {
-			return key
+	rest := pemBytes
+	for len(rest) > 0 {
+		block, tail := pem.Decode(rest)
+		if block == nil {
+			return nil
 		}
-	}
-	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err == nil {
-		if ec, ok := key.(*ecdsa.PrivateKey); ok {
-			return ec
+		// Support both "EC PRIVATE KEY" (SEC1) and "PRIVATE KEY" (PKCS8) encodings.
+		if block.Type == "EC PRIVATE KEY" {
+			if key, err := x509.ParseECPrivateKey(block.Bytes); err == nil {
+				return key
+			}
 		}
+		if block.Type == "PRIVATE KEY" || block.Type == "EC PRIVATE KEY" {
+			if key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+				if ec, ok := key.(*ecdsa.PrivateKey); ok {
+					return ec
+				}
+			}
+		}
+		rest = tail
 	}
 	return nil
 }

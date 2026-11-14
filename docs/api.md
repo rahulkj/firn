@@ -39,7 +39,7 @@ Everything in this document was cross-checked against `internal/api/firn.proto` 
 curl localhost:9460/healthz
 ```
 ```json
-{"status":"ok","version":"0.5.2"}
+{"status":"ok","version":"0.5.3"}
 ```
 
 ### `GET /metrics`

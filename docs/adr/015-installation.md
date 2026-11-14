@@ -69,8 +69,8 @@ Root-only bash. Steps, in order, all prompted (defaults in brackets):
 6. Ask: **single node or 3-node cluster?**
    - Cluster: node-id (`n1`/`n2`/`n3`), peer list *including self*
      (e.g. `n1=192.0.2.11:9471,…`), then the mesh CA:
-     generate a fresh one into `<data-dir>/mesh-ca` (openssl, service-local
-     copy for step-by-step bootstrapping) **or** use an existing shared CA
+     generate a fresh one into `<data-dir>/mesh-ca` via the product's own
+     `firn-cli mesh-ca init` (single-block ECDSA PEM) **or** use an existing shared CA
      via `-mesh-ca-bundle`/`-mesh-ca-key`. Copy instructions for the other
      nodes are printed in both branches.
 7. Ask: retention TTL (`0` = disabled).
@@ -96,7 +96,7 @@ Helm chart with `helm lint`/`helm template`:
   (`publishNotReadyAddresses`), stable pod DNS (`firn-{0..2}.firn-mesh.ns`),
   node-id derived from pod hostname matching the `-peers` map, peers passed
   as one static arg (fixed membership), mesh CA copied from a pre-created
-  `firn-mesh-ca` Secret by an initContainer (`openssl`-generated outside the
+  `firn-mesh-ca` Secret by an initContainer (CA generated outside the
   cluster, `0600`, mounted read-only), readiness gates staggered-boot
   tolerance (`failureThreshold: 6`), PDB `minAvailable: 2` (quorum majority),
   same security context. The chart renders the identical shape with a
@@ -164,7 +164,7 @@ divergence between "the released tarball" and "the released image".
 
 - `shellcheck -S warning packaging/install.sh` — clean.
 - Image built from a clean checkout and run: `/healthz` →
-  `{"status":"ok","version":"0.5.2"}` as uid 10001, bootstrap-locked as
+  `{"status":"ok","version":"0.5.3"}` as uid 10001, bootstrap-locked as
   expected.
 - `docker compose -f deploy/compose/compose.yaml config` — valid; runtime
   path (image, ports, volumes) identical to the verified `docker run` flow.
@@ -174,5 +174,13 @@ divergence between "the released tarball" and "the released image".
   `meshCA.existingSecret`, and cluster without it — the latter fails loudly
   with the intended message).
 - Client-side schema pass of the rendered chart against the same API.
-- Live-cluster smoke (create namespace, apply standalone, healthz, delete):
-  available on request — not executed unattended on a shared cluster.
+- **Live 3-node test on the production homelab cluster** (v0.5.3): namespace
+  `firn`, mesh CA Secret from a locally generated CA. The first deploys
+  surfaced and fixed three real defects: NFS subdir provisioner's mode-0777
+  PVCs (dir-mode-check crash — fixed with an initContainer `chmod -R go-rwx`),
+  multi-line YAML args mangling the flag list (`sh` swallowed the
+  continuations; every pod silently booted single-node — fixed with
+  single-line args), and the mesh CA loader rejecting openssl's two-block
+  PEM (`EC PARAMETERS` + `EC PRIVATE KEY` — fixed by iterating all PEM
+  blocks in `mustParseECKey`; regression test added). Post-fix: all three
+  pods Ready, mesh mTLS, produce → seal → cross-pod fetch verified.

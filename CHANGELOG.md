@@ -131,6 +131,17 @@ Storage semantics are unchanged for single-node default (`-flush-window=0`).
 
 Security posture during this release: every mutation path continues to audit-record in every mode; `ProduceBatch`/`AckBatch` are metered as one RPC per call (not per record — their value *is* the batching); no new dependencies; SBOM/cosign/grype unchanged; `-flush-window` defaults to `0` (v0.4.0 behavior for anyone upgrading).
 
+## v0.5.3 — 2026-11-14 — mesh CA boot fix + manifest install fixes
+
+**Boot-breaking defect fixed** (found by deploying the manifests to a real 3-node cluster). The mesh CA loader only parsed the first PEM block, so a CA generated with `openssl ecparam -genkey` (PEM order: `EC PARAMETERS`, then `EC PRIVATE KEY`) was rejected and **cluster nodes crash-looped at boot** with `mesh: cannot ensure mesh CA: firn/meshca: no mesh CA found …` — even though the files were present with correct modes. The parser (`internal/meshca`) now accepts any PEM bundle containing an EC private key; regression test added (`TestEnsureAcceptsOpenSSLStyleMultiBlockCAKey`).
+
+Also fixed in this tag:
+
+- k8s and Helm manifests: the cluster command is now a **single-line string**. YAML plain scalars fold newlines but keep backslashes literal, so `\` line continuations were mangled into positional arguments — Go's flag parser stopped at the first positional and every pod silently booted as a **single-node** broker (produce/fetch "worked"; nothing sealed, leased, or replicated, with no clue in the logs).
+- k8s/Helm: `chmod -R go-rwx` on the data dir in the init container — NFS provisioners hand out mode-0777 PVCs, which firnd's startup dir-mode-check (correctly) refuses. Also covers subdirectories (`mesh-ca` at 755 crash-looped the same way).
+- Docs/scripts: mesh CA generation now recommends `firn-cli mesh-ca init`; openssl examples pass `-noout` (single-block PEM).
+- Docs: ADR-015 verification notes updated (live cluster test).
+
 ## v0.5.2 — 2026-11-14 — OCI image + service installers (no broker behavior change)
 
 **No broker behavior change** — the Go sources are identical to v0.5.1 except the version constant. This tag exists so the release pipeline ships inside the tagged tree and the multi-arch image can be pushed from it.
