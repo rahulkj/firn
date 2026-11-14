@@ -11,7 +11,7 @@ Derived from ADR-014. One slice per session, same loop as plans 001–005:
 | 1 (**delivered 2026-11-13, awaiting mandatory storage review — do not merge**) | **Group commit / flush window** (`-flush-window`, `-max-batch-bytes`, default off): stage frames in memory; write+fsync the staged batch per window; produce acks only after the window flushes; deterministic rollback of a failed batch (truncate touched segments); `kill -9`-style torn-tail coverage in window_test.go; broker-wide produce mutex no longer held across the blocking append (it serialized every produce behind the window); `bench/baseline.md` re-run with ~186k msg/s windowed produce (256 in-flight producers) vs ~370 msg/s default | **mandatory (storage)** — in flight |
 | 2 (**delivered 2026-11-13, awaiting API review**) | **Producer batching**: `ProduceBatch` RPC (one RPC per batch vs per record; hard cap 500; not atomic — records before a failure are durable; retry may duplicate earlier records); `firn-cli produce --batch-file events.jsonl` (JSONL, auto-chunked to 500-record calls); SDK `ProduceBatch`/`KeyValue`/`BatchResult`; docs synced (`api.md`, `developer.md`) | API review — in flight |
 | 3 (**delivered 2026-11-13, awaiting mandatory storage-adjacent review**) | **Queue commit coalescing**: `__consumer_offsets` per-commit re-fold eliminated — Commit advances `foldedHWM` directly (local cache == post-append log); `refreshIfMoved` re-folds only on externally-driven HWM movement (replicated apply), preserving read-through; catch-up fold at commit time closes the stale-cache regression window across nodes. Acceptance tests pin all four properties (`internal/groups/offset_store_test.go`); profile had `groups.fold` = 53% CPU | **mandatory (storage-adjacent)** — in flight |
-| 4 (pending slice 3 + slice 1 evidence) | **Flush window on internal topics** if evidence says fsync-on-commit dominates (`__consumer_offsets`, `__queue_attempts`, `__audit`, `__api_keys`) — may reuse slice 1 mechanism with a tighter window or remain fsync-per-append; decided by measurement | **mandatory (storage)** |
+| 4 (**delivered 2026-11-13 — measured with an honest negative result; awaiting review**) | **Internal-topic flush window (opt-in)**: `-internal-flush-window`+`-internal-max-batch-bytes` (default `0`) window-batch **only** `__consumer_offsets` + `__queue_attempts`; `__audit`/`__api_keys`/`__federation*` never window. Startup warning names the two invariant amendments. Measured: sequential consumers are **slower** with it (103 vs 192 deliveries/s — window can't batch sequential ackers), so it's parked as opt-in; the real queue lever is batched ack (see notes) | **mandatory (storage)** — in flight |
 | 5 (pending cluster GA plan) | **Cluster-mode throughput**: node-count multiplication math revisited with real per-node numbers; cluster mode out of experimental status (dynamic membership, rebalance/drain) — separate plan (`008-cluster-ga.md`), out of scope here | storage + quorum review |
 
 ## Slice details
@@ -41,9 +41,15 @@ Derived from ADR-014. One slice per session, same loop as plans 001–005:
 
 
 
-### Slice 4 — internal-topic flush windows
+### Slice 4 — internal flush windows (opt-in; honest negative result)
 
-- Decided by measurement after slice 3, likely reusing slice 1's machinery with a much tighter default window or fsync-per-append retained on audit/keys for paranoid writes. Do not slip into this slice silently.
+- `-internal-flush-window` (default `0`) + `-internal-max-batch-bytes` (default 1 MiB): applies ADR-014 windows to **`__consumer_offsets` and `__queue_attempts` only**. `__audit`, `__api_keys`, `__federation_*` never window (invariant untouched).
+- Invariants amended (ADR-003): with the flag, committed offsets may rewind up to the window on hard crash (redelivery; at-least-once preserved); DLQ-after-3 may trigger late (delivery-attempt counts may be lost). Flag-off preserves both invariants verbatim.
+- **Measured verdict — do not enable for sequential consumers.** Same machine, same drain loop, 400 durable messages: window-off **192 deliveries/s**, window-on **104 deliveries/s** — sequential ackers can't accumulate a window, so they pay the timer latency with zero batching benefit. The two fsyncs per message (attempts + contiguous-ack commit) remain the floor for sequential ack traffic.
+- The honest lever for queue throughput is a **batch ack** (`AckBatch`): one window flush would amortize both fsyncs over N deliveries — candidate for the next slice, pending measurement.
+- Clean-close durability covered by `TestInternalFlushWindowCommitSurvivesCleanReopen` (commit → Close → reopen → offset intact).
+
+
 
 ## Open items
 

@@ -23,7 +23,13 @@ Both streaming and queue semantics need one thing: an ordered, durable, replayab
 4. High watermark = next offset to assign; durable across restarts.
 5. Segment files are append-only between checkpoint boundaries; deletes are whole-segment.
 
-(2026-11-13 note, ADR-014): no amendment of these invariants was required for group commit / flush windows. Unflushed staged frames never reach the segment, so invariant 2 holds verbatim and invariant 4 is flush-aligned at durability time; offsets are allocated at flush time in staging order, preserving invariant 1 exactly.
+(2026-11-13 note, ADR-014): no amendment of these invariants was required for group commit / flush windows on partition logs. Staged frames never reach the segment before flush, so the fetch-watermark invariant holds verbatim and the high-watermark invariant is flush-aligned at durability time; offsets are allocated at flush time in staging order, preserving monotonic-assignment exactly.
+
+(2026-11-13 note, ADR-014 slice 4, opt-in `-internal-flush-window`): the flush window MAY be applied to `__consumer_offsets` and `__queue_attempts` as an explicit operator choice. Consequences, valid only outside the flag:
+- **monotone committed offsets**: committed offsets may rewind up to `-internal-flush-window` on hard crash (offsets in the lost window are redelivered — at-least-once, but not strict monotonicity until the next commit);
+- **DLQ after N attempts**: delivery-attempt counts may be lost in the window, so the DLQ diversion may trigger later than N attempts for a message whose counts it lost; the at-least-once redelivery guarantee itself is unchanged;
+- `__audit`, `__api_keys`, `__federation_*` are never windowed regardless of the flag.
+Default (0) preserves all invariants exactly as written.
 
 ## Consequences
 

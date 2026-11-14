@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/rahulkj/firn/internal/meta"
 )
@@ -76,5 +77,54 @@ func TestBrokerWithDirSurvivesReopen(t *testing.T) {
 	}
 	if off != counts[p0] {
 		t.Fatalf("post-restart offset = %d, want %d (recovered high watermark)", off, counts[p0])
+	}
+}
+
+// ADR-014 slice 4: with -internal-flush-window, committed offsets are only
+// durable after the window flushes — but a clean Close drains the window,
+// so a clean restart sees every commit. (Crash-loss of up to the window is
+// the documented, deliberate trade of the opt-in flag.)
+func TestInternalFlushWindowCommitSurvivesCleanReopen(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	reg1 := meta.NewRegistry()
+	if err := reg1.Create("events", 1); err != nil {
+		t.Fatalf("create topic: %v", err)
+	}
+	b1, err := NewWithDir(reg1, dir, WithInternalFlushWindow(20*time.Millisecond, 1<<20))
+	if err != nil {
+		t.Fatalf("broker: %v", err)
+	}
+	for i := 0; i < 17; i++ {
+		if _, _, err := b1.Produce(ctx, "events", nil, []byte("v")); err != nil {
+			t.Fatalf("produce %d: %v", i, err)
+		}
+	}
+	if err := b1.Groups().CommitOffset("g", "events", 0, 42, 0, false); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+	// Commit happened long enough ago for its window to flush — but the
+	// proof must not depend on timing: Close() drains the window.
+	if err := b1.Close(); err != nil {
+		t.Fatalf("close: %v", err)
+	}
+
+	reg2 := meta.NewRegistry()
+	if err := reg2.Create("events", 1); err != nil {
+		t.Fatalf("recreate topic: %v", err)
+	}
+	b2, err := NewWithDir(reg2, dir, WithInternalFlushWindow(20*time.Millisecond, 1<<20))
+	if err != nil {
+		t.Fatalf("broker reopen: %v", err)
+	}
+	defer func() { _ = b2.Close() }()
+
+	got, found, err := b2.Groups().FetchOffset("g", "events", 0)
+	if err != nil {
+		t.Fatalf("fetch offset: %v", err)
+	}
+	if !found || got.Offset != 42 {
+		t.Fatalf("offset = %+v, found=%v; want 42", got, found)
 	}
 }

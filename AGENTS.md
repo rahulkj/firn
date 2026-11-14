@@ -38,6 +38,8 @@ Firn is a from-scratch event broker in Go providing **streaming** (topics/partit
 4. Committed group offsets advance monotonically unless explicitly reset
 5. Unacked queue messages are redelivered (at-least-once); DLQ after N attempts
 
+(Note, ADR-014 slice 4): `-internal-flush-window > 0` is an explicit operator opt-in that may rewind commits by up to the window on hard crash and may delay DLQ diversion (attempts lost in the window). At-least-once redelivery still holds. Default off preserves 4 and 5 exactly; `__audit`/`__api_keys`/`__federation*` never window.
+
 ## Rules for agents working in this repo
 
 - **Storage code (`internal/log`, `internal/meta`, anything touching disk or offsets):** generate, then STOP and request human review. Never merge storage diffs unreviewed, even if tests pass.

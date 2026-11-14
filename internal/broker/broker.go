@@ -77,6 +77,10 @@ type Broker struct {
 	sealAge         time.Duration
 	flushWindow     time.Duration
 	maxBatchBytes   int64
+	// ADR-014 slice 4: opt-in flush window for __consumer_offsets and
+	// __queue_attempts only (never __audit/__api_keys/__federation*).
+	internalFlushWindow     time.Duration
+	internalMaxBatchBytes   int64
 	groupOpts       []groups.Option
 	closed          bool
 	cluster         ClusterView
@@ -146,6 +150,19 @@ func WithBlockSealing(d time.Duration) Option {
 // maxBytes bounds the staged bytes per partition window (1 MiB default).
 func WithFlushWindow(d time.Duration, maxBytes int64) Option {
 	return func(b *Broker) { b.flushWindow, b.maxBatchBytes = d, maxBytes }
+}
+
+// WithInternalFlushWindow additionally applies the flush window to the
+// __consumer_offsets and __queue_attempts internal logs (opt-in; never
+// affects __audit/__api_keys/__federation*, which always fsync-per-append).
+//
+// Trade-off (documented loudly at startup; see ADR-003 amendments):
+// a hard crash may lose up to `d` of committed offsets (consumers rewind —
+// at-least-once is preserved) and of delivery-attempt counts (DLQ-after-3
+// may trigger late for messages whose attempts it lost). Zero (default)
+// preserves stock semantics exactly.
+func WithInternalFlushWindow(d time.Duration, maxBytes int64) Option {
+	return func(b *Broker) { b.internalFlushWindow, b.internalMaxBatchBytes = d, maxBytes }
 }
 
 // FederationHWM computes the advisory federation watermark for
@@ -246,7 +263,11 @@ func NewWithDir(reg *meta.Registry, dir string, opts ...Option) (*Broker, error)
 	b.gateBox = fence.NewGateBox()
 	internalLogs := map[string]*log.FileLog{}
 	for _, name := range InternalLogNames {
-		fl, err := log.Open(filepath.Join(dir, name+"-0"))
+		opts := []log.Option{}
+		if b.internalFlushWindow > 0 && (name == "__consumer_offsets" || name == "__queue_attempts") {
+			opts = append(opts, log.WithFlushWindow(b.internalFlushWindow), log.WithMaxBatchBytes(b.internalMaxBatchBytes))
+		}
+		fl, err := log.Open(filepath.Join(dir, name+"-0"), opts...)
 		if err != nil {
 			return nil, fmt.Errorf("open internal log %q: %w", name, err)
 		}

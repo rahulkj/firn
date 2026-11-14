@@ -44,6 +44,10 @@ firnd \
 | `-federation-batch` | `1024` | int | Max frames per federation pull window. |
 | `-federation-max-range` | `1048576` | bytes | Max bytes per federation pull window. |
 | `-federation-self` | `""` | name | This cluster's identity as federation peers register it; sent as `requesting_peer` so the serving side can filter the echo out of frame windows (active-active). Required for active-active federation; empty disables the echo filter. |
+| `-flush-window` | `0` | duration | Group commit (ADR-014): batch partition-log appends into windows; produce acks only after the window's fsync. `0` = default fsync-per-append. Example `2ms`. Trade: up to the window of **unacknowledged** produce data may be lost on hard crash (never acked). |
+| `-max-batch-bytes` | `1048576` | bytes | Byte cap on a staged flush-window batch per partition; only used with `-flush-window > 0`. |
+| `-internal-flush-window` | `0` | duration | **Opt-in, never default.** Also apply the flush window to `__consumer_offsets` and `__queue_attempts`. On hard crash, up to the window of committed offsets may rewind (redelivered; at-least-once holds) and delivery-attempt counts may be lost (DLQ-after-3 may trigger late). `__audit`/`__api_keys`/`__federation*` are never windowed. Measured to be slower for sequential consumers (see `bench/baseline.md`); consider for pipelined ack-heavy traffic only. |
+| `-internal-max-batch-bytes` | `1048576` | bytes | Byte cap on staged internal-log windows; only used with `-internal-flush-window > 0`. |
 
 Federation is a **preview** (ADR-010): one-way `passive` mode replicates byte-identical blocks from a source cluster to a sink; the sink stays read-fenced until cutover. Peers authenticate with **federation-scoped keys** over mTLS; both clusters must share a mesh CA (or the sink can pin the peer's CA with a peer-specific `ca_crt_pem`). Internal topics `__federation_peers`/`__federation_cursors` are cluster-local. `__queue_attempts` is mirrored byte-identically when a queue is in scope. See `docs/plans/004-federation.md`; active-active (full) mode lands in slice 4.
 

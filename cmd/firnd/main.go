@@ -232,6 +232,8 @@ func main() {
 	blockSealInterval := flag.Duration("block-seal-interval", 0, "seal (roll) a partition's active segment once it has outlived this duration, even with no size pressure (0 = size-only sealing)")
 	flushWindow := flag.Duration("flush-window", 0, "group commit (ADR-014): batch partition-log appends into windows and ack only after the window's fsync. 0 = default fsync-per-append. Example: -flush-window=2ms. Trade: up to flush-window of unacknowledged data may be lost on hard crash (never acked, but retry-until-ack is required); throughput scales with batch size")
 	maxBatchBytes := flag.Int64("max-batch-bytes", 1<<20, "byte cap on a staged flush-window batch per partition (ADR-014); only used when -flush-window > 0")
+	internalFlushWindow := flag.Duration("internal-flush-window", 0, "OPT-IN (never default): also apply the flush window to __consumer_offsets and __queue_attempts internal logs. On hard crash, up to this window of committed offsets may rewind (redelivery; at-least-once preserved) and delivery-attempt counts may be lost (DLQ-after-3 may trigger late). __audit/__api_keys/__federation* are NEVER windowed. Example: -internal-flush-window=2ms")
+	internalMaxBatchBytes := flag.Int64("internal-max-batch-bytes", 1<<20, "byte cap on staged internal-log windows; only used when -internal-flush-window > 0")
 	sessionTimeout := flag.Duration("session-timeout", 10*time.Second, "consumer group member lease; silent members are expired after this")
 	nodeID := flag.String("node-id", "", "cluster mode: this node's id (cluster disabled if empty)")
 	peersFlag := flag.String("peers", "", "cluster mode: comma-separated id=addr pairs, including self (e.g. n1=127.0.0.1:9301,n2=127.0.0.1:9302,n3=127.0.0.1:9303)")
@@ -292,6 +294,10 @@ func main() {
 	if *flushWindow > 0 {
 		brokerOpts = append(brokerOpts, broker.WithFlushWindow(*flushWindow, *maxBatchBytes))
 		slog.Warn("group commit enabled (-flush-window): up to that window of unacknowledged produce data is at risk on hard crash; acknowledged data is always durable (ADR-014)", "flush_window", *flushWindow, "max_batch_bytes", *maxBatchBytes)
+	}
+	if *internalFlushWindow > 0 {
+		brokerOpts = append(brokerOpts, broker.WithInternalFlushWindow(*internalFlushWindow, *internalMaxBatchBytes))
+		slog.Warn("OPT-IN internal flush window enabled (-internal-flush-window): up to that window of committed offsets may rewind on hard crash (redelivery; at-least-once) and delivery-attempt counts may be lost (DLQ-after-3 may trigger late). __audit/__api_keys/__federation* remain fsync-per-append (ADR-014 slice 4)", "internal_flush_window", *internalFlushWindow, "internal_max_batch_bytes", *internalMaxBatchBytes)
 	}
 	if *dataDir == "" {
 		registry = meta.NewRegistry()
