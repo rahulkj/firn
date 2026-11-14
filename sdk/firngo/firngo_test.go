@@ -18,6 +18,7 @@ import (
 	"github.com/rahulkj/firn/internal/api/firnpb"
 	"github.com/rahulkj/firn/internal/broker"
 	"github.com/rahulkj/firn/internal/meta"
+	"github.com/rahulkj/firn/internal/queue"
 	"github.com/rahulkj/firn/sdk/firngo"
 )
 
@@ -257,5 +258,80 @@ func TestSDKProduceBatchValidatesInput(t *testing.T) {
 	}
 	if _, err := sdk.ProduceBatch(ctx, "events", tooMany); err == nil {
 		t.Fatal(">500 records must be rejected")
+	}
+}
+
+func TestSDKPullAckBatchRoundTrip(t *testing.T) {
+	ln, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+	srv := grpc.NewServer()
+	reg := meta.NewRegistry()
+	if err := reg.CreateWithMode("jobs", 1, meta.ModeQueue); err != nil {
+		t.Fatalf("create queue: %v", err)
+	}
+	b, err := broker.NewWithDir(reg, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Close() }()
+	qm, err := queue.NewManager(reg, b, t.TempDir())
+	if err != nil {
+		t.Fatalf("queue manager: %v", err)
+	}
+	firnpb.RegisterFirnServiceServer(srv, api.NewServer(b, qm))
+	go func() { _ = srv.Serve(ln) }()
+	defer srv.Stop()
+
+	ctx := context.Background()
+	sdk, err := firngo.DialInsecure(ctx, ln.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = sdk.Close() }()
+	// Register the same queue against an in-process queue manager: the SDK
+	// test needs a queue-mode topic with queue manager wired, like firnd.
+	// (The previous tests in this file dial with plain data-plane RPCs
+	// only; here we register the queue on the broker via the test broker.)
+
+	for i := 0; i < 10; i++ {
+		_, _, err := sdk.Produce(ctx, "jobs", nil, []byte(fmt.Sprintf("v-%d", i)))
+		if err != nil {
+			t.Fatalf("produce: %v", err)
+		}
+	}
+	deliveries, err := sdk.Pull(ctx, "jobs", 5, 30000)
+	if err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	if len(deliveries) != 5 {
+		t.Fatalf("pulled %d, want 5", len(deliveries))
+	}
+	ids := []string{deliveries[0].DeliveryID, "bogus-delivery-id"}
+	res, err := sdk.AckBatch(ctx, "jobs", ids)
+	if err != nil {
+		t.Fatalf("ack batch: %v", err)
+	}
+	if res.Acked != 1 || res.Unknown != 1 {
+		t.Fatalf("ack batch = %+v, want {Acked:1 Unknown:1}", res)
+	}
+	ids = ids[:0]
+	for _, d := range deliveries[1:] {
+		ids = append(ids, d.DeliveryID)
+	}
+	res, err = sdk.AckBatch(ctx, "jobs", ids)
+	if err != nil {
+		t.Fatalf("ack batch 2: %v", err)
+	}
+	if res.Acked != 4 || res.Unknown != 0 {
+		t.Fatalf("ack batch 2 = %+v, want {Acked:4 Unknown:0}", res)
+	}
+
+	// Validate input caps.
+	tooMany := make([]string, 501)
+	if _, err := sdk.AckBatch(ctx, "jobs", tooMany); err == nil {
+		t.Fatal("oversized batch must be rejected")
 	}
 }

@@ -233,3 +233,74 @@ func (c *Client) JoinGroup(ctx context.Context, groupID, memberID string, topics
 	}
 	return resp, nil
 }
+
+// Delivery is one claimed queue message with its opaque delivery id.
+type Delivery struct {
+	DeliveryID string
+	Queue      string
+	Partition  int32
+	Offset     int64
+	Key        []byte
+	Value      []byte
+	Attempts   int32
+	DeadlineMs int64
+}
+
+// Pull claims up to maxMessages deliveries from queue for the visibility
+// timeout. maxMessages == 0 selects the server default (10).
+func (c *Client) Pull(ctx context.Context, queue string, maxMessages int, visibilityTimeoutMs int64) ([]Delivery, error) {
+	resp, err := c.fc.Pull(c.authCtx(ctx), &firnpb.PullRequest{
+		Queue:               queue,
+		MaxMessages:         int32(maxMessages),
+		VisibilityTimeoutMs: visibilityTimeoutMs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("firngo: pull: %w", err)
+	}
+	out := make([]Delivery, 0, len(resp.Deliveries))
+	for _, d := range resp.Deliveries {
+		out = append(out, Delivery{
+			DeliveryID: d.DeliveryId,
+			Queue:      d.Queue,
+			Partition:  d.Partition,
+			Offset:     d.Offset,
+			Key:        append([]byte(nil), d.Key...),
+			Value:      append([]byte(nil), d.Value...),
+			Attempts:   d.Attempts,
+			DeadlineMs: d.DeadlineMs,
+		})
+	}
+	return out, nil
+}
+
+// Ack settles one delivery by id.
+func (c *Client) Ack(ctx context.Context, queue, deliveryID string) error {
+	_, err := c.fc.Ack(c.authCtx(ctx), &firnpb.AckRequest{Queue: queue, DeliveryId: deliveryID})
+	if err != nil {
+		return fmt.Errorf("firngo: ack: %w", err)
+	}
+	return nil
+}
+
+// AckBatchResult reports how many deliveries were settled and how many
+// ids were unknown/already-settled.
+type AckBatchResult struct {
+	Acked   int
+	Unknown int
+}
+
+// AckBatch settles up to 500 deliveries in one RPC. Unknown or
+// already-settled ids are counted, not failed.
+func (c *Client) AckBatch(ctx context.Context, queue string, deliveryIDs []string) (AckBatchResult, error) {
+	if len(deliveryIDs) == 0 {
+		return AckBatchResult{}, fmt.Errorf("firngo: ack batch requires at least 1 delivery id")
+	}
+	if len(deliveryIDs) > 500 {
+		return AckBatchResult{}, fmt.Errorf("firngo: ack batch is limited to 500 ids")
+	}
+	resp, err := c.fc.AckBatch(c.authCtx(ctx), &firnpb.AckBatchRequest{Queue: queue, DeliveryIds: deliveryIDs})
+	if err != nil {
+		return AckBatchResult{}, fmt.Errorf("firngo: ack batch: %w", err)
+	}
+	return AckBatchResult{Acked: int(resp.Acked), Unknown: int(resp.Unknown)}, nil
+}

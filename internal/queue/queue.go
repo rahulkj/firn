@@ -288,7 +288,8 @@ func (m *Manager) claim(q *queueState, queue string, partition int32, offset int
 	attempts := priorAttempts + 1
 	if attempts > maxDeliveries {
 		m.divertToDLQ(queue, partition, offset, key, value, uint32(attempts))
-		m.markAcked(queue, q, partition, offset)
+		m.accumulateAckLocked(queue, q, partition, offset)
+		m.commitAckLocked(queue, q, partition)
 		return Delivery{}, false, nil
 	}
 	if err := m.attempts.Put(queue, partition, offset, uint32(attempts)); err != nil {
@@ -314,6 +315,14 @@ func (m *Manager) claim(q *queueState, queue string, partition int32, offset int
 // Ack consumes a delivered message: it is removed from the pending set and
 // the internal queue group's committed offset advances over the contiguous
 // acked prefix.
+// AckBatchResult reports the outcome of an AckBatch call.
+type AckBatchResult struct {
+	Acked   int
+	Unknown int
+}
+
+// Ack settles a delivery (see Ack). Kept identical in behavior: one commit
+// per partition touched when the contiguous committed offset advanced.
 func (m *Manager) Ack(ctx context.Context, queue, deliveryID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -330,31 +339,80 @@ func (m *Manager) Ack(ctx context.Context, queue, deliveryID string) error {
 		return fmt.Errorf("%w: %s", ErrUnknownDelivery, deliveryID)
 	}
 	delete(q.pending, deliveryID)
-	m.markAcked(queue, q, p.partition, p.offset)
+	m.accumulateAckLocked(queue, q, p.partition, p.offset)
+	m.commitAckLocked(queue, q, p.partition)
 	return nil
 }
 
-// markAcked records offset as consumed for its partition and advances the
-// committed offset over the contiguously acked prefix. The committed value
-// advances monotonically (invariant 4).
-func (m *Manager) markAcked(queue string, q *queueState, partition int32, offset int64) {
+// AckBatch settles many deliveries in one pass: one queue-lock hold, one
+// contiguous-advance commit per touched partition (vs one per Ack). Unknown
+// or already-settled ids are tolerated and counted, never fail the call.
+func (m *Manager) AckBatch(ctx context.Context, queue string, deliveryIDs []string) (AckBatchResult, error) {
+	if len(deliveryIDs) == 0 {
+		return AckBatchResult{}, fmt.Errorf("%w: delivery_ids must not be empty", ErrInvalidRequest)
+	}
+	if len(deliveryIDs) > 500 {
+		return AckBatchResult{}, fmt.Errorf("%w: delivery_ids must contain at most 500 items", ErrInvalidRequest)
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	q, err := m.queueStateLocked(queue)
+	if err != nil {
+		return AckBatchResult{}, err
+	}
+	if m.fedFence != nil && m.fedFence(queue) {
+		return AckBatchResult{}, fmt.Errorf("%w: %s", ErrFederatedPassive, queue)
+	}
+	m.expireLocked(m.now())
+	partitions := map[int32]bool{}
+	res := AckBatchResult{}
+	for _, id := range deliveryIDs {
+		p, ok := q.pending[id]
+		if !ok {
+			res.Unknown++
+			continue
+		}
+		delete(q.pending, id)
+		m.accumulateAckLocked(queue, q, p.partition, p.offset)
+		partitions[p.partition] = true
+		res.Acked++
+	}
+	for partition := range partitions {
+		m.commitAckLocked(queue, q, partition)
+	}
+	return res, nil
+}
+
+// accumulateAckLocked records offset as consumed and advances the committed
+// offset over the contiguous acked prefix. The committed value advances
+// monotonically (invariant 4). It does NOT persist; call commitAckLocked
+// after the batch is complete.
+func (m *Manager) accumulateAckLocked(queue string, q *queueState, partition int32, offset int64) {
 	set := q.acked[partition]
 	if set == nil {
 		set = map[int64]bool{}
 		q.acked[partition] = set
 	}
 	set[offset] = true
-	advanced := false
 	for set[q.committed[partition]] {
 		delete(set, q.committed[partition])
 		q.committed[partition]++
-		advanced = true
 	}
-	if advanced {
-		// Persist via the internal queue group. Generation 0 = unchecked;
-		// allowReset=false enforces monotonic advancement.
-		_ = m.broker.Groups().CommitOffset("queue-"+queue, queue, partition, q.committed[partition], 0, false)
+}
+
+// commitAckLocked persists the committed offset if the contiguous prefix
+// was advanced. Calls are idempotent for equal values (monotonicity is
+// enforced by the coordinator), but skipping no-op commits keeps the
+// __consumer_offsets log small.
+func (m *Manager) commitAckLocked(queue string, q *queueState, partition int32) {
+	committed := q.committed[partition]
+	if got, found, err := m.broker.Groups().FetchOffset("queue-"+queue, queue, partition); err == nil && found {
+		if committed <= got.Offset {
+			return // nothing new to persist
+		}
 	}
+	// Generation 0 = unchecked; allowReset=false enforces monotonic advancement.
+	_ = m.broker.Groups().CommitOffset("queue-"+queue, queue, partition, committed, 0, false)
 }
 
 // divertToDLQ writes the message to <queue>.dlq (auto-created as a stream

@@ -286,6 +286,15 @@ message FetchGroupOffsetsRequest { string group_id = 1; }
 
 `Pull(queue, max_messages, visibility_timeout_ms)` → lease delivery. `Ack(queue, delivery_id)` settles it. Unacked messages are redelivered at lease expiry (at-least-once); after **3 delivery attempts** a message is diverted to `<queue>.dlq` (auto-created stream topic). DLQ recovery is manual: `firn-cli dlq list|redrive --queue <name>` — redrive re-produces records into the source queue.
 
+**AckBatch** (since Unreleased): settle up to **500** deliveries in one RPC — cheaper for high-volume consumers (one `__consumer_offsets` commit per contiguous advance, not one per Ack). Unknown/already-settled ids are tolerated and **counted**, never failed — retries after a crash are safe. Response reports `acked` and `unknown`.
+
+```proto
+message AckBatchRequest  { string queue = 1; repeated string delivery_ids = 2; } // 1..500 ids
+message AckBatchResponse { int32 acked = 1; int32 unknown = 2; }
+```
+
+Errors: `INVALID_ARGUMENT` (empty/oversized batch, wrong mode) · `NOT_FOUND` (queue) · `FAILED_PRECONDITION` (passively federated) · same role gates as `Ack`.
+
 ```proto
 message QueueDelivery {
   string delivery_id = 1; string queue = 2; int32 partition = 3; int64 offset = 4;

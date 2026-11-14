@@ -79,12 +79,12 @@ type Broker struct {
 	maxBatchBytes   int64
 	// ADR-014 slice 4: opt-in flush window for __consumer_offsets and
 	// __queue_attempts only (never __audit/__api_keys/__federation*).
-	internalFlushWindow     time.Duration
-	internalMaxBatchBytes   int64
-	groupOpts       []groups.Option
-	closed          bool
-	cluster         ClusterView
-	internalLogs    map[string]*log.FileLog
+	internalFlushWindow   time.Duration
+	internalMaxBatchBytes int64
+	groupOpts             []groups.Option
+	closed                bool
+	cluster               ClusterView
+	internalLogs          map[string]*log.FileLog
 
 	// gateBox is the internal-topic write fence (see internal/fence).
 	// Late-bound by the daemon after the quorum starts (cluster mode).

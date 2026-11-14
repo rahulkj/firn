@@ -35,6 +35,7 @@ const (
 	FirnService_FetchGroupOffsets_FullMethodName = "/firn.v1.FirnService/FetchGroupOffsets"
 	FirnService_Pull_FullMethodName              = "/firn.v1.FirnService/Pull"
 	FirnService_Ack_FullMethodName               = "/firn.v1.FirnService/Ack"
+	FirnService_AckBatch_FullMethodName          = "/firn.v1.FirnService/AckBatch"
 	FirnService_GetMetadata_FullMethodName       = "/firn.v1.FirnService/GetMetadata"
 )
 
@@ -54,6 +55,7 @@ type FirnServiceClient interface {
 	FetchGroupOffsets(ctx context.Context, in *FetchGroupOffsetsRequest, opts ...grpc.CallOption) (*FetchGroupOffsetsResponse, error)
 	Pull(ctx context.Context, in *PullRequest, opts ...grpc.CallOption) (*PullResponse, error)
 	Ack(ctx context.Context, in *AckRequest, opts ...grpc.CallOption) (*AckResponse, error)
+	AckBatch(ctx context.Context, in *AckBatchRequest, opts ...grpc.CallOption) (*AckBatchResponse, error)
 	GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error)
 }
 
@@ -185,6 +187,16 @@ func (c *firnServiceClient) Ack(ctx context.Context, in *AckRequest, opts ...grp
 	return out, nil
 }
 
+func (c *firnServiceClient) AckBatch(ctx context.Context, in *AckBatchRequest, opts ...grpc.CallOption) (*AckBatchResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AckBatchResponse)
+	err := c.cc.Invoke(ctx, FirnService_AckBatch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 func (c *firnServiceClient) GetMetadata(ctx context.Context, in *GetMetadataRequest, opts ...grpc.CallOption) (*GetMetadataResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetMetadataResponse)
@@ -211,6 +223,7 @@ type FirnServiceServer interface {
 	FetchGroupOffsets(context.Context, *FetchGroupOffsetsRequest) (*FetchGroupOffsetsResponse, error)
 	Pull(context.Context, *PullRequest) (*PullResponse, error)
 	Ack(context.Context, *AckRequest) (*AckResponse, error)
+	AckBatch(context.Context, *AckBatchRequest) (*AckBatchResponse, error)
 	GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error)
 	mustEmbedUnimplementedFirnServiceServer()
 }
@@ -257,6 +270,9 @@ func (UnimplementedFirnServiceServer) Pull(context.Context, *PullRequest) (*Pull
 }
 func (UnimplementedFirnServiceServer) Ack(context.Context, *AckRequest) (*AckResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Ack not implemented")
+}
+func (UnimplementedFirnServiceServer) AckBatch(context.Context, *AckBatchRequest) (*AckBatchResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AckBatch not implemented")
 }
 func (UnimplementedFirnServiceServer) GetMetadata(context.Context, *GetMetadataRequest) (*GetMetadataResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetMetadata not implemented")
@@ -498,6 +514,24 @@ func _FirnService_Ack_Handler(srv interface{}, ctx context.Context, dec func(int
 	return interceptor(ctx, in, info, handler)
 }
 
+func _FirnService_AckBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AckBatchRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(FirnServiceServer).AckBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: FirnService_AckBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(FirnServiceServer).AckBatch(ctx, req.(*AckBatchRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 func _FirnService_GetMetadata_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetMetadataRequest)
 	if err := dec(in); err != nil {
@@ -570,6 +604,10 @@ var FirnService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Ack",
 			Handler:    _FirnService_Ack_Handler,
+		},
+		{
+			MethodName: "AckBatch",
+			Handler:    _FirnService_AckBatch_Handler,
 		},
 		{
 			MethodName: "GetMetadata",

@@ -13,7 +13,6 @@ import (
 	"sort"
 	"time"
 
-
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -294,6 +293,22 @@ func (s *Server) Ack(ctx context.Context, req *firnpb.AckRequest) (*firnpb.AckRe
 		return nil, queueToStatus(err)
 	}
 	return &firnpb.AckResponse{}, nil
+}
+
+// AckBatch settles many deliveries in one RPC. Unknown or already-settled
+// ids are counted, not failed (crash-safe retries).
+func (s *Server) AckBatch(ctx context.Context, req *firnpb.AckBatchRequest) (*firnpb.AckBatchResponse, error) {
+	if s.q == nil {
+		return nil, status.Error(codes.Unimplemented, "queue manager not configured")
+	}
+	if req.Queue == "" || len(req.DeliveryIds) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "queue and delivery_ids are required")
+	}
+	res, err := s.q.AckBatch(ctx, req.Queue, req.DeliveryIds)
+	if err != nil {
+		return nil, queueToStatus(err)
+	}
+	return &firnpb.AckBatchResponse{Acked: int32(res.Acked), Unknown: int32(res.Unknown)}, nil
 }
 
 // GetMetadata returns topic/partition metadata and the advertised node

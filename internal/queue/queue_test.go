@@ -324,3 +324,68 @@ func TestAckAdvancesGroupOffsets(t *testing.T) {
 		t.Fatalf("committed offset = %d, want 1", off.Offset)
 	}
 }
+
+func TestAckBatchMixedKnownAndUnknown(t *testing.T) {
+	m, reg := newTestQueue(t, "")
+	ctx := context.Background()
+	if err := reg.CreateWithMode("jobs", 1, meta.ModeQueue); err != nil {
+		t.Fatalf("create queue: %v", err)
+	}
+	for i := 0; i < 5; i++ {
+		if _, _, err := m.broker.Produce(ctx, "jobs", nil, []byte(fmt.Sprintf("v-%d", i))); err != nil {
+			t.Fatalf("produce: %v", err)
+		}
+	}
+	deliveries, err := m.Pull(ctx, "jobs", 5, 30*time.Second)
+	if err != nil || len(deliveries) != 5 {
+		t.Fatalf("pull: n=%d err=%v", len(deliveries), err)
+	}
+	ids := []string{deliveries[0].DeliveryID, "bogus-id", deliveries[1].DeliveryID}
+	res, err := m.AckBatch(ctx, "jobs", ids)
+	if err != nil {
+		t.Fatalf("ack batch: %v", err)
+	}
+	if res.Acked != 2 || res.Unknown != 1 {
+		t.Fatalf("ack batch result = %+v, want {Acked:2 Unknown:1}", res)
+	}
+	if off, found, err := m.broker.Groups().FetchOffset("queue-jobs", "jobs", 0); err != nil || !found || off.Offset != 2 {
+		t.Fatalf("committed offset = %+v found=%v, want 2", off, found)
+	}
+	// Remaining deliveries stay pending; settling them works the same way.
+	res, err = m.AckBatch(ctx, "jobs", []string{deliveries[2].DeliveryID, deliveries[3].DeliveryID, deliveries[4].DeliveryID})
+	if err != nil {
+		t.Fatalf("ack batch 2: %v", err)
+	}
+	if res.Acked != 3 || res.Unknown != 0 {
+		t.Fatalf("ack batch 2 result = %+v, want {Acked:3 Unknown:0}", res)
+	}
+	if off, found, err := m.broker.Groups().FetchOffset("queue-jobs", "jobs", 0); err != nil || !found || off.Offset != 5 {
+		t.Fatalf("committed offset = %+v found=%v, want 5", off, found)
+	}
+}
+
+func TestAckBatchEmptyAndOversize(t *testing.T) {
+	m, reg := newTestQueue(t, "")
+	ctx := context.Background()
+	if err := reg.CreateWithMode("jobs", 1, meta.ModeQueue); err != nil {
+		t.Fatalf("create queue: %v", err)
+	}
+	if _, err := m.AckBatch(ctx, "jobs", nil); err == nil {
+		t.Fatal("empty batch must be rejected")
+	}
+	tooMany := make([]string, 501)
+	if _, err := m.AckBatch(ctx, "jobs", tooMany); err == nil {
+		t.Fatal(">500 ids must be rejected")
+	}
+}
+
+func TestAckBatchOnStreamTopicRejected(t *testing.T) {
+	m, reg := newTestQueue(t, "")
+	ctx := context.Background()
+	if err := reg.Create("plain", 1); err != nil {
+		t.Fatalf("create topic: %v", err)
+	}
+	if _, err := m.AckBatch(ctx, "plain", []string{"x"}); err == nil {
+		t.Fatal("AckBatch on a stream topic must be rejected")
+	}
+}

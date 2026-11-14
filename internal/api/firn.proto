@@ -22,6 +22,7 @@ service FirnService {
 
   rpc Pull(PullRequest) returns (PullResponse);
   rpc Ack(AckRequest) returns (AckResponse);
+  rpc AckBatch(AckBatchRequest) returns (AckBatchResponse);
 
   rpc GetMetadata(GetMetadataRequest) returns (GetMetadataResponse);
 }
@@ -215,6 +216,20 @@ message AckRequest {
 }
 
 message AckResponse {}
+
+// Settle up to 500 deliveries in one RPC. Unknown or already-settled
+// delivery ids are counted, not failed (retries after a crash are safe).
+// Not atomic: ids processed in request order; the response reports how many
+// were settled and how many were unknown.
+message AckBatchRequest {
+  string queue = 1;
+  repeated string delivery_ids = 2;  // 1..500 ids
+}
+
+message AckBatchResponse {
+  int32 acked = 1;    // deliveries settled by this call
+  int32 unknown = 2;  // ids that were not pending (unknown/already settled)
+}
 
 // --- ADR-007 phase C: internal broker-broker replication (not for clients) ---
 

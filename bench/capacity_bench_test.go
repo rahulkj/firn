@@ -84,9 +84,17 @@ func BenchmarkProduceFlushWindow(b *testing.B) {
 // throughput with the internal commit path at default (fsync-per-append) and
 // with -internal-flush-window. Reports deliveries/s drained.
 func BenchmarkQueuePullAckDurable(b *testing.B) {
-	for _, internalWindow := range []bool{false, true} {
-		name := map[bool]string{false: "internal-window-off", true: "internal-window-on"}[internalWindow]
-		b.Run(name, func(b *testing.B) {
+	variants := []struct {
+		name           string
+		batchAcks      bool
+		internalWindow bool
+	}{
+		{"internal-window-off", false, false},
+		{"internal-window-on", false, true},
+		{"ack-batch-off", true, false},
+	}
+	for _, v := range variants {
+		b.Run(v.name, func(b *testing.B) {
 			dir := b.TempDir()
 			reg := meta.NewRegistry()
 			if err := reg.CreateWithMode("jobs", 1, meta.ModeQueue); err != nil {
@@ -94,7 +102,7 @@ func BenchmarkQueuePullAckDurable(b *testing.B) {
 			}
 			var bk *broker.Broker
 			var err error
-			if internalWindow {
+			if v.internalWindow {
 				bk, err = broker.NewWithDir(reg, dir, broker.WithInternalFlushWindow(2*time.Millisecond, 1<<20))
 			} else {
 				bk, err = broker.NewWithDir(reg, dir)
@@ -127,6 +135,18 @@ func BenchmarkQueuePullAckDurable(b *testing.B) {
 				}
 				if len(deliveries) == 0 {
 					break
+				}
+				if v.batchAcks {
+					ids := make([]string, 0, len(deliveries))
+					for _, d := range deliveries {
+						ids = append(ids, d.DeliveryID)
+					}
+					res, err := q.AckBatch(ctx, "jobs", ids)
+					if err != nil {
+						b.Fatal(err)
+					}
+					processed += res.Acked
+					continue
 				}
 				for _, d := range deliveries {
 					if err := q.Ack(ctx, "jobs", d.DeliveryID); err != nil {

@@ -451,3 +451,49 @@ func TestProduceBatchGRPC(t *testing.T) {
 		t.Fatal("batch to unknown topic must fail")
 	}
 }
+
+func TestAckBatchGRPC(t *testing.T) {
+	cli, _, reg := newTestCluster(t)
+	if err := reg.CreateWithMode("jobs", 1, meta.ModeQueue); err != nil {
+		t.Fatalf("create queue: %v", err)
+	}
+	for i := 0; i < 5; i++ {
+		if _, err := cli.Produce(context.Background(), &firnpb.ProduceRequest{Topic: "jobs", Value: []byte(fmt.Sprintf("v-%d", i))}); err != nil {
+			t.Fatalf("produce: %v", err)
+		}
+	}
+	pull, err := cli.Pull(context.Background(), &firnpb.PullRequest{Queue: "jobs", MaxMessages: 5})
+	if err != nil {
+		t.Fatalf("pull: %v", err)
+	}
+	if len(pull.Deliveries) != 5 {
+		t.Fatalf("pulled %d, want 5", len(pull.Deliveries))
+	}
+	ids := make([]string, 0, 6)
+	for _, d := range pull.Deliveries {
+		ids = append(ids, d.DeliveryId)
+	}
+	ids = append(ids, "bogus")
+	resp, err := cli.AckBatch(context.Background(), &firnpb.AckBatchRequest{Queue: "jobs", DeliveryIds: ids})
+	if err != nil {
+		t.Fatalf("ack batch: %v", err)
+	}
+	if resp.Acked != 5 || resp.Unknown != 1 {
+		t.Fatalf("ack batch = {%d, %d}, want {5, 1}", resp.Acked, resp.Unknown)
+	}
+	resp2, err := cli.Pull(context.Background(), &firnpb.PullRequest{Queue: "jobs", MaxMessages: 1})
+	if err != nil {
+		t.Fatalf("pull of empty queue must not error: %v", err)
+	}
+	if len(resp2.Deliveries) != 0 {
+		t.Fatalf("empty queue returned %d deliveries, want 0", len(resp2.Deliveries))
+	}
+
+	// Unknown topic / invalid batch carry the right codes.
+	if _, err := cli.AckBatch(context.Background(), &firnpb.AckBatchRequest{Queue: "jobs"}); status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("empty ids: want InvalidArgument, got %v", err)
+	}
+	if _, err := cli.AckBatch(context.Background(), &firnpb.AckBatchRequest{Queue: "plain", DeliveryIds: []string{"x"}}); err == nil {
+		t.Fatal("AckBatch on a missing topic must fail")
+	}
+}

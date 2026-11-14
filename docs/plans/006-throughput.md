@@ -12,7 +12,8 @@ Derived from ADR-014. One slice per session, same loop as plans 001–005:
 | 2 (**delivered 2026-11-13, awaiting API review**) | **Producer batching**: `ProduceBatch` RPC (one RPC per batch vs per record; hard cap 500; not atomic — records before a failure are durable; retry may duplicate earlier records); `firn-cli produce --batch-file events.jsonl` (JSONL, auto-chunked to 500-record calls); SDK `ProduceBatch`/`KeyValue`/`BatchResult`; docs synced (`api.md`, `developer.md`) | API review — in flight |
 | 3 (**delivered 2026-11-13, awaiting mandatory storage-adjacent review**) | **Queue commit coalescing**: `__consumer_offsets` per-commit re-fold eliminated — Commit advances `foldedHWM` directly (local cache == post-append log); `refreshIfMoved` re-folds only on externally-driven HWM movement (replicated apply), preserving read-through; catch-up fold at commit time closes the stale-cache regression window across nodes. Acceptance tests pin all four properties (`internal/groups/offset_store_test.go`); profile had `groups.fold` = 53% CPU | **mandatory (storage-adjacent)** — in flight |
 | 4 (**delivered 2026-11-13 — measured with an honest negative result; awaiting review**) | **Internal-topic flush window (opt-in)**: `-internal-flush-window`+`-internal-max-batch-bytes` (default `0`) window-batch **only** `__consumer_offsets` + `__queue_attempts`; `__audit`/`__api_keys`/`__federation*` never window. Startup warning names the two invariant amendments. Measured: sequential consumers are **slower** with it (103 vs 192 deliveries/s — window can't batch sequential ackers), so it's parked as opt-in; the real queue lever is batched ack (see notes) | **mandatory (storage)** — in flight |
-| 5 (pending cluster GA plan) | **Cluster-mode throughput**: node-count multiplication math revisited with real per-node numbers; cluster mode out of experimental status (dynamic membership, rebalance/drain) — separate plan (`008-cluster-ga.md`), out of scope here | storage + quorum review |
+| 5 (**delivered 2026-11-13, awaiting API review**) | **Batch ack (`AckBatch`)**: settle up to 500 deliveries in one RPC; one contiguous-advance commit per partition per batch (vs one per Ack); unknown/expired ids tolerated and counted; one queue-lock hold per batch; idempotent no-op commits skipped. Measured durable drain loop: **376 deliveries/s vs 196 with per-message Ack (~1.9×)**; claim-side attempts fsync remains the floor | API review — in flight |
+| 6 (pending cluster GA plan) | **Cluster-mode throughput**: node-count multiplication math revisited with real per-node numbers; cluster mode out of experimental status (dynamic membership, rebalance/drain) — separate plan (`008-cluster-ga.md`), out of scope here | storage + quorum review |
 
 ## Slice details
 
@@ -40,6 +41,20 @@ Derived from ADR-014. One slice per session, same loop as plans 001–005:
 - Storage-adjacent review required; not merged.
 
 
+
+### Slice 5 — batch ack (`AckBatch`)
+
+- `AckBatch{queue, repeated string delivery_ids}` RPC; hard cap 500 ids per call; response `{acked, unknown}` counts — unknown/expired ids are tolerated and counted, never fail the batch (crash-safe retries).
+- One queue-lock hold for the whole batch; `pending` entries are deleted inline; per partition, the contiguous committed-offset advance happens once per batch (vs once per Ack); `__queue_attempts` unchanged (claim-time fsyncs remain — batching claims is a separate slice, deliberately not conflated here).
+- Error contract mirrors Ack: `ErrQueueNotFound` → NotFound, fenced/federated → FailedPrecondition, empty/oversize → InvalidArgument, `ErrNotAQueue` → InvalidArgument.
+- Tests first (queue unit + gRPC + SDK round trip), measurement in `bench/baseline.md` with durable queue traffic; default stays per-message Ack — AckBatch is additive API.
+
+### Slice 5 — batch ack (`AckBatch`, delivered, pending API review)
+
+- `AckBatch{queue, repeated string delivery_ids}` RPC — one call settles up to 500 ids; unknown/expired ids are tolerated and counted (response `acked`/`unknown`), never fail the batch; error contract mirrors Ack (`NOT_FOUND` queue / `INVALID_ARGUMENT` empty-or-oversize/wrong mode / `FAILED_PRECONDITION` passive-federated).
+- One queue-lock hold for the batch; pending entries dropped inline; per partition the contiguous committed-offset advance and its commit happen once per batch (vs one per Ack); no-op commits skipped (monotonicity still enforced by the coordinator); `__queue_attempts` claim-time fsyncs untouched (claim batching deliberately not conflated here — next candidate).
+- SDK: `firngo.Pull` / `Ack` / `AckBatch` added (previously missing from the SDK). CLI unchanged.
+- Measured: durable pull+ack drain loop, 400 records — **376 deliveries/s with AckBatch vs 196 with per-message Ack** (Apple M3 Pro; internal-window off).
 
 ### Slice 4 — internal flush windows (opt-in; honest negative result)
 
