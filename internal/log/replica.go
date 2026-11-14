@@ -21,8 +21,8 @@ func (l *FileLog) ReadRange(firstOffset, lastOffset int64) ([]byte, error) {
 	if firstOffset < 0 || lastOffset < firstOffset {
 		return nil, fmt.Errorf("firn/log: invalid range [%d, %d]", firstOffset, lastOffset)
 	}
-	if lastOffset >= l.hwm {
-		lastOffset = l.hwm - 1
+	if lastOffset >= l.visibleHWM {
+		lastOffset = l.visibleHWM - 1
 		if lastOffset < firstOffset {
 			return nil, nil
 		}
@@ -82,7 +82,7 @@ func (l *FileLog) Timestamp(offset int64) (int64, error) {
 	if offset < l.retentionHorizonLocked() {
 		return 0, ErrOffsetOutOfRange
 	}
-	if offset >= l.hwm {
+	if offset >= l.visibleHWM {
 		return 0, errors.New("firn/log: offset beyond end of log")
 	}
 	segIdx := l.segmentIndexFor(offset)

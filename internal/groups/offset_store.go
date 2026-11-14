@@ -42,6 +42,7 @@ type CommittedOffset struct {
 type OffsetStore struct {
 	inner partitionLog
 	dir   string
+	folds uint64
 	// sharedFl is true when the store borrows the broker's shared
 	// __consumer_offsets handle; ownership of that handle (and its
 	// lifecycle) belongs to the broker, never to this store.
@@ -131,8 +132,16 @@ func (s *OffsetStore) Commit(key []byte, o CommittedOffset) error {
 	if err := s.gate.Allow("__consumer_offsets"); err != nil {
 		return err
 	}
+	// Catch up on any cross-node writes before applying our own — without
+	// this, committing against a stale cache could regress an offset a
+	// replica already committed (fencing requires monotone commits).
+	s.refreshIfMoved()
 	s.inner.Append(key, encodeCommittedOffset(o))
 	s.cache[string(key)] = o
+	// Local commits advance foldedHWM to whatever the log now holds
+	// (us): our cache is exactly that state. Only an external (replicated)
+	// append can make Get re-fold.
+	s.foldedHWM = s.inner.HighWatermark()
 	s.commitsSinceCompact++
 	// Compaction renumbers records — byte-incompatible with replicated
 	// internal logs (plan 002 phase F completion). Only the keyless
@@ -194,6 +203,7 @@ func (s *OffsetStore) refreshIfMoved() {
 	if hw == s.foldedHWM {
 		return
 	}
+	s.folds++
 	fresh, err := fold(s.inner)
 	if err != nil {
 		return

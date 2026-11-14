@@ -30,10 +30,14 @@ func BenchmarkFetch(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
+	const perPartition = seeded / 3
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		off := int64(i % (seeded - 128))
+		// Per-partition seeded count is seeded/3; keep the offset inside the
+		// partition's high watermark (was: offset up to seeded-128 vs a
+		// per-partition watermark of ~3322 — out-of-watermark at large b.N).
+		off := int64(i % (perPartition - 128))
 		if _, err := bk.Fetch(ctx, "bench", int32(i%3), off, 128); err != nil {
 			b.Fatal(err)
 		}

@@ -75,6 +75,8 @@ type Broker struct {
 	advisor         LeaseAdvisor
 	maxSegmentBytes int64
 	sealAge         time.Duration
+	flushWindow     time.Duration
+	maxBatchBytes   int64
 	groupOpts       []groups.Option
 	closed          bool
 	cluster         ClusterView
@@ -136,6 +138,14 @@ func WithMaxSegmentBytes(n int64) Option {
 // on size only.
 func WithBlockSealing(d time.Duration) Option {
 	return func(b *Broker) { b.sealAge = d }
+}
+
+// WithFlushWindow enables group commit (ADR-014): produce appends are
+// staged and flushed to the file in windows; a produce acks only after
+// its window flushes. Zero (default) keeps fsync-per-append semantics.
+// maxBytes bounds the staged bytes per partition window (1 MiB default).
+func WithFlushWindow(d time.Duration, maxBytes int64) Option {
+	return func(b *Broker) { b.flushWindow, b.maxBatchBytes = d, maxBytes }
 }
 
 // FederationHWM computes the advisory federation watermark for
@@ -360,9 +370,13 @@ func (b *Broker) Produce(ctx context.Context, topic string, key, value []byte) (
 		return 0, 0, fmt.Errorf("%w: %s partition %d", ErrNotLeaseHolder, topic, partition)
 	}
 
+	// The map lookup is brief; the FileLog serializes its own frames. Holding
+	// b.mu across a blocking Append would serialize ALL producers on one
+	// mutex and defeat group commit (ADR-014) — every produce would wait
+	// out the whole window behind every other produce.
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	logs, err := b.partitionLogs(t)
+	b.mu.Unlock()
 	if err != nil {
 		return 0, 0, fmt.Errorf("produce: %w", err)
 	}
@@ -461,6 +475,9 @@ func logOptsFrom(b *Broker) []log.Option {
 	}
 	if b.sealAge > 0 {
 		opts = append(opts, log.WithBlockSealing(b.sealAge))
+	}
+	if b.flushWindow > 0 {
+		opts = append(opts, log.WithFlushWindow(b.flushWindow), log.WithMaxBatchBytes(b.maxBatchBytes))
 	}
 	return opts
 }

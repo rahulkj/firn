@@ -93,6 +93,29 @@ func WithBlockSealing(d time.Duration) Option {
 	return func(l *FileLog) { l.sealAge = d }
 }
 
+// WithFlushWindow switches the append path to group commit (ADR-014):
+// Append stages the frame in memory and returns only after the window
+// holding it has been written to the segment and fsynced. d must be > 0.
+// Default (flushWindow == 0) keeps the v0.4.0 fsync-per-append behavior.
+func WithFlushWindow(d time.Duration) Option {
+	return func(l *FileLog) {
+		if d > 0 {
+			l.flushWindow = d
+		}
+	}
+}
+
+// WithMaxBatchBytes bounds the staged-but-unflushed bytes per partition
+// window. Staging is byte-bounded; steady-state staged size ~= maxBatchBytes.
+// Ignored when WithFlushWindow is not set. Default 1 MiB.
+func WithMaxBatchBytes(n int64) Option {
+	return func(l *FileLog) {
+		if n > 0 {
+			l.maxBatchBytes = n
+		}
+	}
+}
+
 // FileLog is an append-only, segmented log stored in a directory. Segments
 // are named <baseOffset:020d>.log; the highest-numbered segment is active.
 type FileLog struct {
@@ -101,9 +124,39 @@ type FileLog struct {
 	syncOnAppend    bool
 	sealAge         time.Duration
 
-	mu       sync.Mutex
-	segments []*segment
-	hwm      int64
+	// ADR-014 (flush window). Only active when flushWindow > 0.
+	flushWindow   time.Duration
+	maxBatchBytes int64
+	pending       []pendingFrame // staged, unwritten, unflushed
+	stagingBytes  int64
+	flushTimer    *time.Timer
+
+	// Test-only hooks. Untouched in production builds (always nil).
+	flushWriteHook  func(off int64) // called per frame written during a flush
+	injectedSyncErr error           // non-nil: the batch fsync fails (fault injection)
+
+	// flushPoisoned latches true if a flush rollback ever fails; appends are
+	// refused until restart. Fail-closed by design.
+	flushPoisoned bool
+
+	mu         sync.Mutex
+	segments   []*segment
+	hwm        int64 // allocated offsets (ADR-014: allocation time may precede durability)
+	visibleHWM int64 // durable records only: what Fetch and HighWatermark expose (invariant 2)
+}
+
+// pendingFrame is one staged-but-unflushed record. Offsets are assigned at
+// flush time, in staging order.
+type pendingFrame struct {
+	ts    int64
+	key   []byte
+	value []byte
+	wait  chan flushResult
+}
+
+type flushResult struct {
+	off int64
+	err error
 }
 
 type segment struct {
@@ -159,7 +212,7 @@ type namedSegment struct {
 
 // Open opens (creating if necessary) the log in dir and performs recovery.
 func Open(dir string, opts ...Option) (*FileLog, error) {
-	l := &FileLog{dir: dir, maxSegmentBytes: defaultMaxSegmentBytes, syncOnAppend: true}
+	l := &FileLog{dir: dir, maxSegmentBytes: defaultMaxSegmentBytes, syncOnAppend: true, maxBatchBytes: 1 << 20}
 	for _, o := range opts {
 		o(l)
 	}
@@ -277,20 +330,23 @@ func (l *FileLog) recoverSegments(segs []namedSegment) (*FileLog, error) {
 		l.segments = append(l.segments, seg)
 	}
 	l.hwm = hwm
+	l.visibleHWM = hwm
 	return l, nil
 }
 
 // SealIfOlderThan rolls the active segment (producing a sealed block) only
 // if it has existed for at least d and holds records. Returns true if a
-// seal happened.
+// seal happened. Any staged flush-window batch is flushed first (ADR-014:
+// a sealed block must be durable).
 func (l *FileLog) SealIfOlderThan(d time.Duration) (bool, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.flushLocked()
 	active := l.segments[len(l.segments)-1]
 	if active.writePos == 0 || time.Since(active.createdAt) < d {
 		return false, nil
 	}
-	if err := active.file.Sync(); err != nil {
+	if err := l.syncSegmentLocked(active); err != nil {
 		return false, fmt.Errorf("firn/log: seal sync: %w", err)
 	}
 	active.sealed = true
@@ -309,9 +365,29 @@ func (l *FileLog) Append(key, value []byte) int64 {
 }
 
 // appendWithTimestamp is Append with an explicit record timestamp.
+// Dispatches to the direct path (fsync-per-append, v0.4.0 semantics) or the
+// ADR-014 flush-window path, depending on -flush-window.
 func (l *FileLog) appendWithTimestamp(key, value []byte, ts int64) int64 {
+	if l.flushWindow > 0 {
+		return l.appendWindowed(key, value, ts)
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	off := l.appendLockedFrame(key, value, ts)
+	if l.syncOnAppend {
+		active := l.segments[len(l.segments)-1]
+		if err := l.syncSegmentLocked(active); err != nil {
+			panic(fmt.Sprintf("firn/log: sync append: %v", err))
+		}
+	}
+	l.visibleHWM = l.hwm
+	return off
+}
+
+// appendLockedFrame writes one frame to the active segment (rolling if
+// needed), assigns the next offset, and updates bookkeeping. It does not
+// fsync; callers decide when to sync. Caller must hold l.mu.
+func (l *FileLog) appendLockedFrame(key, value []byte, ts int64) int64 {
 	off := l.hwm
 	frame := encodeFrame(off, ts, key, value)
 
@@ -319,11 +395,9 @@ func (l *FileLog) appendWithTimestamp(key, value []byte, ts int64) int64 {
 	frameLen := int64(len(frame))
 	sealDue := l.sealAge > 0 && time.Since(active.createdAt) >= l.sealAge
 	if active.writePos > 0 && (active.writePos+frameLen > l.maxSegmentBytes || sealDue) {
-		fsyncStart := time.Now()
-		if err := active.file.Sync(); err != nil {
+		if err := l.syncSegmentLocked(active); err != nil {
 			panic(fmt.Sprintf("firn/log: sync on segment roll: %v", err))
 		}
-		observeFsync(fsyncStart)
 		active.sealed = true // no more appends to this block; descriptor is stable
 		seg, err := l.createSegment(off)
 		if err != nil {
@@ -333,6 +407,14 @@ func (l *FileLog) appendWithTimestamp(key, value []byte, ts int64) int64 {
 		active = seg
 	}
 
+	l.writeFrameLocked(active, frame, off, ts, key, value)
+	l.hwm++
+	return off
+}
+
+// writeFrameLocked writes an already-encoded frame and updates digest,
+// index, and writePos. Caller must hold l.mu.
+func (l *FileLog) writeFrameLocked(active *segment, frame []byte, off, ts int64, key, value []byte) {
 	n, err := active.file.WriteAt(frame, active.writePos)
 	if err != nil || n != len(frame) {
 		panic(fmt.Sprintf("firn/log: write %s: %v (%d/%d bytes)", active.path, err, n, len(frame)))
@@ -345,16 +427,9 @@ func (l *FileLog) appendWithTimestamp(key, value []byte, ts int64) int64 {
 		active.index = append(active.index, indexEntry{offset: off, pos: active.writePos})
 	}
 	active.writePos += int64(n)
-	l.hwm++
-
-	if l.syncOnAppend {
-		fsyncStart := time.Now()
-		if err := active.file.Sync(); err != nil {
-			panic(fmt.Sprintf("firn/log: sync append: %v", err))
-		}
-		observeFsync(fsyncStart)
+	if l.flushWriteHook != nil && l.flushWindow > 0 {
+		l.flushWriteHook(off)
 	}
-	return off
 }
 
 // Fetch returns up to max records starting at offset. It returns an error if
@@ -363,13 +438,20 @@ func (l *FileLog) appendWithTimestamp(key, value []byte, ts int64) int64 {
 func (l *FileLog) Fetch(offset int64, max int) ([]Record, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	return l.fetch(offset, max)
+}
+
+// fetch is Fetch without the mutex. Caller must hold l.mu.
+// The visibility clamp is visibleHWM (durable records only): unflushed
+// window frames, though staged in memory, are never returned.
+func (l *FileLog) fetch(offset int64, max int) ([]Record, error) {
 	if offset < 0 {
 		return nil, errors.New("firn/log: negative offset")
 	}
 	if offset < l.retentionHorizonLocked() {
 		return nil, ErrOffsetOutOfRange
 	}
-	if offset >= l.hwm {
+	if offset >= l.visibleHWM {
 		return nil, errors.New("firn/log: offset beyond end of log")
 	}
 	if max < 1 {
@@ -397,6 +479,9 @@ func (l *FileLog) Fetch(offset int64, max int) ([]Record, error) {
 			if !ok {
 				return nil, fmt.Errorf("firn/log: corrupt frame in %s at %d during fetch", seg.path, pos)
 			}
+			if rec.Offset >= l.visibleHWM {
+				break
+			}
 			if rec.Offset >= offset {
 				out = append(out, copyRecord(rec))
 			}
@@ -406,11 +491,18 @@ func (l *FileLog) Fetch(offset int64, max int) ([]Record, error) {
 	return out, nil
 }
 
+// fetchLocked is Fetch for the window-flush path: caller must hold l.mu.
+func (l *FileLog) fetchLocked(offset int64, max int) ([]Record, error) {
+	return l.fetch(offset, max)
+}
+
 // HighWatermark returns the offset of the next record to be written.
+// With the ADR-014 flush window, unflushed staged frames never reach the
+// segment, so the watermark already reflects durable records only.
 func (l *FileLog) HighWatermark() int64 {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	return l.hwm
+	return l.visibleHWM
 }
 
 // Flush fsyncs the active segment. I/O errors from previous appends panic
@@ -427,13 +519,20 @@ func (l *FileLog) Flush() error {
 	return nil
 }
 
-// Close fsyncs and closes all segments.
+// Close fsyncs and closes all segments. Any staged flush-window batch is
+// flushed first (ADR-014); if the rollback after a flush failure poisoned
+// the log, Close surfaces it in the returned error (appends have already
+// failed for the waiting producers).
 func (l *FileLog) Close() error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	l.flushLocked()
 	var firstErr error
+	if l.flushPoisoned {
+		firstErr = fmt.Errorf("firn/log: flush window poisoned during close (rollback failure)")
+	}
 	for _, seg := range l.segments {
-		if err := seg.file.Sync(); err != nil && firstErr == nil {
+		if err := l.syncSegmentLocked(seg); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("firn/log: close sync %s: %w", seg.path, err)
 		}
 		if err := seg.file.Close(); err != nil && firstErr == nil {
@@ -661,3 +760,240 @@ func readFrameAt(f *os.File, pos int64) (rec frameRecord, raw []byte, ok bool, e
 func copyRecord(r frameRecord) Record {
 	return Record{Offset: r.Offset, Key: r.Key, Value: r.Value}
 }
+
+// ---------------- ADR-014 flush window ----------------
+
+// pendingFramesLocked returns the staged frames. Caller must hold l.mu.
+// Test-only: the result is read without locks by tests holding l.mu.
+func (l *FileLog) pendingFramesLocked() []pendingFrame { return l.pending }
+
+// syncSegmentLocked fsyncs seg through one choke point (so tests can fault
+// it). Caller must hold l.mu.
+func (l *FileLog) syncSegmentLocked(seg *segment) error {
+	fsyncStart := time.Now()
+	err := seg.file.Sync()
+	observeFsync(fsyncStart)
+	return err
+}
+
+// armFlushTimerLocked (re)arms the window timer. Called when the first
+// frame of a window is staged; byte-full windows flush inline instead.
+func (l *FileLog) armFlushTimerLocked() {
+	l.stopFlushTimerLocked()
+	l.flushTimer = time.AfterFunc(l.flushWindow, l.flush)
+}
+
+func (l *FileLog) stopFlushTimerLocked() {
+	if l.flushTimer != nil {
+		l.flushTimer.Stop()
+		l.flushTimer = nil
+	}
+}
+
+// appendWindowed stages the record and blocks until the window holding it
+// is durable. On window failure every caller in the window wakes with the
+// same error (surfaced as a panic, consistent with the rest of FileLog).
+func (l *FileLog) appendWindowed(key, value []byte, ts int64) int64 {
+	l.mu.Lock()
+	if l.flushPoisoned {
+		l.mu.Unlock()
+		panic("firn/log: flush window poisoned after rollback failure; restart required")
+	}
+	fr := pendingFrame{ts: ts, key: key, value: append([]byte(nil), value...), wait: make(chan flushResult, 1)}
+	l.pending = append(l.pending, fr)
+	l.stagingBytes += int64(len(key) + len(value) + 64)
+	full := l.stagingBytes >= l.maxBatchBytes
+	if len(l.pending) == 1 {
+		l.armFlushTimerLocked()
+	}
+	l.mu.Unlock()
+	if full {
+		l.flush() // byte-full: flush inline, no timer wait
+	}
+	res := <-fr.wait
+	if res.err != nil {
+		panic(fmt.Sprintf("firn/log: flush window failed: %v", res.err))
+	}
+	return res.off
+}
+
+// flush writes the staged batch to the segment in order (rolling segments
+// per the usual rules), fsyncs, then publishes the records: hwm/visibleHWM
+// advance and every blocked producer wakes with its offset.
+//
+// On any failure the flush rolls back deterministically: every segment the
+// batch wrote into (including any segment this flush created) is truncated
+// back to its pre-flush position (created segments are deleted), segment
+// digests/indexes/maxTs are rebuilt from disk, hwm is reset to the
+// pre-flush value, and every producer in the window receives the error.
+// If the rollback itself fails, the log is poisoned fail-closed.
+func (l *FileLog) flush() {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.flushLocked()
+}
+
+// flushLocked is flush without the mutex; caller must hold l.mu.
+func (l *FileLog) flushLocked() {
+	l.stopFlushTimerLocked()
+	if len(l.pending) == 0 || l.flushPoisoned {
+		return
+	}
+	staged := l.pending
+	flushStartHWM := l.hwm
+	n := int64(len(staged))
+	l.hwm += n // reserve offsets for the window; rolled back on failure
+
+	type touchedSeg struct {
+		seg        *segment
+		origWrite  int64
+		origSealed bool
+		created    bool
+	}
+	touched := []touchedSeg{}
+	markTouched := func(seg *segment, created bool) {
+		for i := range touched {
+			if touched[i].seg == seg {
+				return
+			}
+		}
+		touched = append(touched, touchedSeg{seg: seg, origWrite: seg.writePos, origSealed: seg.sealed, created: created})
+	}
+
+	fail := func(cause error) {
+		backErr := cause
+		for i := len(touched) - 1; i >= 0; i-- {
+			t := touched[i]
+			if t.created {
+				_ = t.seg.file.Close()
+				if err := os.Remove(t.seg.path); err != nil {
+					backErr = fmt.Errorf("%w (rollback remove %s: %v)", backErr, t.seg.path, err)
+					l.flushPoisoned = true
+					continue
+				}
+				if m := len(l.segments); m > 0 && l.segments[m-1] == t.seg {
+					l.segments = l.segments[:m-1]
+				}
+				continue
+			}
+			if err := t.seg.file.Truncate(t.origWrite); err != nil {
+				backErr = fmt.Errorf("%w (rollback truncate %s: %v)", backErr, t.seg.path, err)
+				l.flushPoisoned = true
+				continue
+			}
+			t.seg.writePos = t.origWrite
+			t.seg.sealed = t.origSealed
+			if err := t.seg.file.Sync(); err != nil {
+				backErr = fmt.Errorf("%w (rollback sync %s: %v)", backErr, t.seg.path, err)
+				l.flushPoisoned = true
+			}
+		}
+		for _, t := range touched {
+			if t.created {
+				continue
+			}
+			if err := l.rebuildSegmentStateLocked(t.seg, flushStartHWM); err != nil {
+				backErr = fmt.Errorf("%w (rollback rebuild %s: %v)", backErr, t.seg.path, err)
+				l.flushPoisoned = true
+			}
+		}
+		l.hwm = flushStartHWM
+		l.pending = nil
+		l.stagingBytes = 0
+		for _, fr := range staged {
+			fr.wait <- flushResult{err: backErr}
+		}
+	}
+
+	for i, fr := range staged {
+		off := flushStartHWM + int64(i)
+		frame := encodeFrame(off, fr.ts, fr.key, fr.value)
+		frameLen := int64(len(frame))
+
+		active := l.segments[len(l.segments)-1]
+		sealDue := l.sealAge > 0 && time.Since(active.createdAt) >= l.sealAge
+		if active.writePos > 0 && (active.writePos+frameLen > l.maxSegmentBytes || sealDue) {
+			// Sealing here is part of the batch: the old active becomes a
+			// durable block before it is sealed.
+			markTouched(active, false)
+			if err := l.syncSegmentLocked(active); err != nil {
+				fail(fmt.Errorf("firn/log: sync before segment seal: %w", err))
+				return
+			}
+			active.sealed = true
+			seg, err := l.createSegment(off)
+			if err != nil {
+				fail(fmt.Errorf("firn/log: create segment: %w", err))
+				return
+			}
+			markTouched(seg, true)
+			l.segments = append(l.segments, seg)
+			active = seg
+		}
+		markTouched(active, false)
+
+		l.writeFrameLocked(active, frame, off, fr.ts, fr.key, fr.value)
+	}
+
+	active := l.segments[len(l.segments)-1]
+	// The batch sync: THE fsync that makes the whole window durable.
+	// injectedSyncErr faults only here (roll/segment syncs stay real).
+	fsyncStart := time.Now()
+	var syncErr error
+	if l.injectedSyncErr != nil {
+		syncErr = l.injectedSyncErr
+	} else {
+		syncErr = active.file.Sync()
+	}
+	observeFsync(fsyncStart)
+	if syncErr != nil {
+		fail(fmt.Errorf("firn/log: fsync window: %w", syncErr))
+		return
+	}
+
+	l.visibleHWM = l.hwm
+	l.pending = nil
+	l.stagingBytes = 0
+	for i, fr := range staged {
+		fr.wait <- flushResult{off: flushStartHWM + int64(i)}
+	}
+}
+
+// rebuildSegmentStateLocked re-derives digest, maxTs, and the sparse index
+// for seg by re-scanning its on-disk frames (used during flush rollback,
+// where staged frames were written to seg and then erased by truncation).
+// boundary is the first offset that was rolled back; every on-disk frame
+// must fall below it. Caller must hold l.mu; seg.writePos must already
+// reflect the rollback.
+func (l *FileLog) rebuildSegmentStateLocked(seg *segment, boundary int64) error {
+	seg.digest = sha256.New()
+	seg.crcXor = 0
+	seg.firstOffset, seg.lastOffset = -1, -1
+	seg.count = 0
+	seg.maxTs = 0
+	seg.index = seg.index[:0]
+	pos := int64(0)
+	for pos < seg.writePos {
+		rec, raw, ok, err := readFrameAt(seg.file, pos)
+		if err != nil {
+			return fmt.Errorf("rescan %s at %d: %w", seg.path, pos, err)
+		}
+		if !ok {
+			return fmt.Errorf("corrupt frame during rollback rescan at %s:%d", seg.path, pos)
+		}
+		if rec.Offset >= boundary {
+			return fmt.Errorf("rollback rescan %s: frame offset %d >= rollback boundary %d — writePos inconsistent", seg.path, rec.Offset, boundary)
+		}
+		feedSegmentDigest(seg, raw, rec)
+		if rec.Ts > seg.maxTs {
+			seg.maxTs = rec.Ts
+		}
+		if rec.Offset%sparseIndexInterval == 0 {
+			seg.index = append(seg.index, indexEntry{offset: rec.Offset, pos: pos})
+		}
+		pos += int64(len(raw))
+	}
+	return nil
+}
+
+// ---------------- end of ADR-014 flush window ----------------

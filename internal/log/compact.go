@@ -137,6 +137,7 @@ func (l *FileLog) Compact() error {
 	}
 	l.segments = nl.segments
 	l.hwm = nl.hwm
+	l.visibleHWM = nl.visibleHWM
 	return nil
 }
 

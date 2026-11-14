@@ -23,6 +23,8 @@ Both streaming and queue semantics need one thing: an ordered, durable, replayab
 4. High watermark = next offset to assign; durable across restarts.
 5. Segment files are append-only between checkpoint boundaries; deletes are whole-segment.
 
+(2026-11-13 note, ADR-014): no amendment of these invariants was required for group commit / flush windows. Unflushed staged frames never reach the segment, so invariant 2 holds verbatim and invariant 4 is flush-aligned at durability time; offsets are allocated at flush time in staging order, preserving invariant 1 exactly.
+
 ## Consequences
 
 - v1 is single-node and fsync-bounded; replication (ADR-006, later) will wrap this log, not replace it.
