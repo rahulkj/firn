@@ -38,7 +38,9 @@ gh attestation verify firn-vX.Y.Z-linux-amd64.tar.gz \
 # .github/workflows/release.yml, signed by GitHub's Sigstore instance.
 ```
 
-The attestation binds: artifact digest ⇒ builder (this repo, `release.yml`), source ref (`refs/tags/vX.Y.Z`), and the workflow run that produced it. It does **not** certify the contents are malware-free; it certifies they were built by this pipeline from this source. To tie that back to the source, check that the tag points at the commit you expect and that `SHA256SUMS` matches the downloaded tarballs.
+The attestation binds: artifact digest ⇒ builder (this repo, `release.yml`), the source ref **as recorded by the workflow run's OIDC identity**, and the workflow run that produced it. It does **not** certify the contents are malware-free; it certifies they were built by this pipeline from this source.
+
+**Caveat — v0.5.0 specifically**: v0.5.0 was tagged before `release.yml` existed, so its assets were re-built and attested via a `workflow_dispatch` run (`runs/43620737740`). Its provenance identity is therefore `release.yml@refs/heads/main @ 3e8cc2d` (the workflow run context), while the binaries were built from the `v0.5.0` tag checkout — the tag tree differs from main only in CI/docs/CHANGELOG (no Go source). Future releases triggered by pushing a tag (`on: push: tags`) record the tag ref exactly (e.g. `refs/tags/v0.6.0`) and need no special handling, because the workflow file is part of the tag tree. To tie tarballs back to the source for v0.5.0, check that the tag points at the commit you expect and that `SHA256SUMS` matches the downloads. For a fully tag-context attestation on v0.5.0 itself, a `v0.5.1` tag cut from `main` is the honest fix (never move published tags).
 
 ## What CI does **not** do (and why)
 
