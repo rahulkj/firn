@@ -1,0 +1,103 @@
+{{- if eq .Values.mode "cluster" }}
+{{- $secret := required "mode=cluster requires meshCA.existingSecret (see values.yaml — the CA must be created first)" .Values.meshCA.existingSecret }}
+{{- end }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "firn.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "firn.labels" . | nindent 4 }}
+spec:
+  replicas: {{ include "firn.replicaCount" . }}
+  serviceName: {{ if eq .Values.mode "cluster" }}{{ include "firn.fullname" . }}-mesh{{ else }}{{ include "firn.fullname" . }}{{ end }}
+  selector:
+    matchLabels:
+      {{- include "firn.selectorLabels" . | nindent 6 }}
+  {{- if ne .Values.mode "cluster" }}
+  strategy:
+    type: Recreate # single replica + RWO volume
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "firn.selectorLabels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name | default (include "firn.fullname" .) }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if eq .Values.mode "cluster" }}
+      initContainers:
+        - name: mesh-ca
+          image: alpine:3.21
+          command: ["/bin/sh", "-c",
+            "set -e; mkdir -p /data/mesh-ca; cp /secret/ca.crt /secret/ca.key /data/mesh-ca/; chmod 600 /data/mesh-ca/ca.key; chown -R 10001:10001 /data"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: mesh-ca
+              mountPath: /secret
+              readOnly: true
+      {{- end }}
+      containers:
+        - name: firnd
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- if eq .Values.mode "cluster" }}
+          command: ["/bin/sh", "-c"]
+          args:
+            - exec firnd -data-dir /var/lib/firn -http-addr :{{ .Values.service.httpPort }} -grpc-addr :{{ .Values.service.grpcPort }} \
+                -node-id "$HOSTNAME" \
+                -peers {{ include "firn.peers" . }}{{ if .Values.existingConfig }} {{ .Values.existingConfig }}{{ end }}
+          {{- else }}
+          args: ["-data-dir", "/var/lib/firn", "-http-addr", ":{{ .Values.service.httpPort }}", "-grpc-addr", ":{{ .Values.service.grpcPort }}"{{ if .Values.existingConfig }}{{ range $a := splitList " " .Values.existingConfig }}, "{{ $a }}"{{ end }}{{ end }}]
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.httpPort }}
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+            {{- if eq .Values.mode "cluster" }}
+            - name: mesh
+              containerPort: {{ .Values.service.meshPort }}
+            {{- end }}
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: {{ if eq .Values.mode "cluster" }}3{{ else }}2{{ end }}
+            periodSeconds: 10
+            {{- if eq .Values.mode "cluster" }}
+            failureThreshold: 6 # staggered boots must not flap
+            {{- end }}
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: {{ if eq .Values.mode "cluster" }}15{{ else }}10{{ end }}
+            periodSeconds: 30
+          securityContext:
+            {{- toYaml .Values.containerSecurityContext | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/firn
+      {{- if eq .Values.mode "cluster" }}
+      volumes:
+        - name: mesh-ca
+          secret:
+            secretName: {{ .Values.meshCA.existingSecret }}
+            defaultMode: 0600
+      {{- end }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}

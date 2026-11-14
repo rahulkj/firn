@@ -1,0 +1,97 @@
+# firn — standalone (single node) on Kubernetes.
+# Prereqs: a namespace, a RWO StorageClass, and the image (or a mirror you control).
+# Apply:  kubectl apply -f deploy/k8s/firn-standalone.yaml
+# Verify: kubectl -n firn port-forward svc/firn 9460:9460 & curl -s localhost:9460/healthz
+# First boot prints a one-time BOOTSTRAP TOKEN in the pod log:
+#         kubectl -n firn logs statefulset/firn
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: firn
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: firn
+  namespace: firn
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: firn
+  namespace: firn
+  labels:
+    app.kubernetes.io/name: firn
+spec:
+  selector:
+    app.kubernetes.io/name: firn
+  ports:
+    - name: http
+      port: 9460
+      targetPort: http
+    - name: grpc
+      port: 9461
+      targetPort: grpc
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: firn
+  namespace: firn
+  labels:
+    app.kubernetes.io/name: firn
+spec:
+  replicas: 1 # single node — scale beyond 1 requires the cluster topology (see firn-cluster.yaml)
+  serviceName: firn
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: firn
+  strategy:
+    type: Recreate # RWO volume: one pod at a time
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: firn
+    spec:
+      serviceAccountName: firn
+      securityContext:
+        fsGroup: 10001 # match the image's firn (uid 10001)
+      containers:
+        - name: firnd
+          image: ghcr.io/rahulkj/firn:v0.5.1
+          imagePullPolicy: IfNotPresent
+          args: ["-data-dir", "/var/lib/firn"]
+          ports:
+            - name: http
+              containerPort: 9460
+            - name: grpc
+              containerPort: 9461
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 100m, memory: 128Mi }
+            limits: { cpu: 1, memory: 512Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/firn
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 10Gi

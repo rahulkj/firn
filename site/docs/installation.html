@@ -53,6 +53,13 @@ tar -xzf firn-v0.5.1-linux-amd64.tar.gz   # firnd, firn-cli, README.md, LICENSE
 sudo install -m 0755 firnd firn-cli /usr/local/bin/</pre>
 <p>Downloads live on the <a href="https://github.com/rahulkj/firn/releases" rel="noopener">GitHub releases page</a>; every release carries <code>SHA256SUMS</code>, an <code>SPDX</code> SBOM, and <code>provenance.sigstore.jsonl</code>. The full verification checklist is in <a href="https://github.com/rahulkj/firn/blob/main/docs/distribution.md" rel="noopener">docs/distribution.md</a>.</p>
 
+<h2>As a service (systemd / launchd) — recommended for Linux &amp; macOS</h2>
+<p>The interactive installer detects the OS, downloads the latest release tarball and verifies it against SHA256SUMS, creates a dedicated <code>firn</code> system user and a <code>0700</code> data directory, and prompts for everything the product needs — TLS paths, retention TTL, and for clusters: node-id, the peer list (including self), and the shared mesh CA (generate or use an existing bundle). It then installs and starts the unit, and prints the bootstrap-token → first-key → <code>/healthz</code> flow. Windows: use WSL2 or the OCI image.</p>
+<pre class="code">sudo ./packaging/install.sh                      # interactive; safe defaults
+sudo ./packaging/install.sh --version v0.5.1     # pin a release
+sudo ./packaging/install.sh --unattended         # defaults, never -dev</pre>
+<p>Single node by default; choose cluster mode at the prompt (or pre-create the mesh CA and copy it to each node — see ADR-015 §3.2).</p>
+
 <h2>From source</h2>
 <pre class="code">git clone https://github.com/rahulkj/firn
 cd firn
@@ -70,6 +77,27 @@ go build -o firnd ./cmd/firnd &amp;&amp; go build -o firn-cli ./cmd/firn-cli</pr
 <li>Backups: stop the broker, <code>cp -a</code> the data dir. Never patch segment files by hand.</li>
 <li>Upgrades: stop → swap binary → start. The data format is not versioned; layout changes land in releases with migration notes.</li>
 </ul>
+
+<h2>Docker / Podman</h2>
+<pre class="code">docker run -d --name firnd -p 9460:9460 -p 9461:9461 -v firn-data:/var/lib/firn ghcr.io/rahulkj/firn:v0.5.1
+docker logs firnd   # one-time BOOTSTRAP TOKEN; then POST /apikeys as in the Quickstart</pre>
+<p><code>deploy/compose/compose.yaml</code> is a ready file for docker/podman compose (single node by default; <code>--profile cluster</code> runs a 3-node cluster with a shared mesh CA). <code>deploy/compose/firnd.container</code> is a rootless Podman Quadlet for systemd integration. Image: <code>ghcr.io/rahulkj/firn</code> (multi-arch linux/amd64+arm64, uid 10001, healthz HEALTHCHECK).</p>
+
+<h2>Kubernetes</h2>
+<p>Two manifests cover both supported topologies, or use the Helm chart — all schema-validated and identical in shape:</p>
+<pre class="code"># standalone
+kubectl apply -f deploy/k8s/firn-standalone.yaml
+
+# 3-node GA cluster — mesh CA Secret first:
+openssl ecparam -genkey -name prime256v1 -out mesh-ca/ca.key
+openssl req -x509 -new -nodes -key mesh-ca/ca.key -days 3650 -subj "/CN=firn-mesh-ca" -out mesh-ca/ca.crt
+kubectl create namespace firn
+kubectl -n firn create secret generic firn-mesh-ca --from-file=ca.crt=mesh-ca/ca.crt --from-file=ca.key=mesh-ca/ca.key
+kubectl apply -f deploy/k8s/firn-cluster.yaml
+
+# or Helm (fails loudly without the meshCA secret):
+helm install firn ./deploy/helm/firn --set meshCA.existingSecret=firn-mesh-ca  # sdg:ignore credential-assignment</pre>
+<p>Fixed 3-node membership; node-id derived from pod hostname; PDB keeps two voters available; mesh CA copied into pods by an initContainer. See <a href="https://github.com/rahulkj/firn/blob/main/docs/adr/015-installation.md" rel="noopener">ADR-015</a>.</p>
 
 <h2 id="tls">TLS (recommended)</h2>
 <pre class="code">firnd -tls-cert /etc/firn/tls.crt -tls-key /etc/firn/tls.key

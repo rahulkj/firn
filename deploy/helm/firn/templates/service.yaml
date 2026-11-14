@@ -1,0 +1,39 @@
+{{- if eq .Values.mode "cluster" }}
+# Headless service — pod DNS for mesh (…-0.firn-mesh.ns, …)
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "firn.fullname" . }}-mesh
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "firn.labels" . | nindent 4 }}
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    {{- include "firn.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: mesh
+      port: {{ .Values.service.meshPort }}
+      targetPort: mesh
+---
+{{- end }}
+# Client service (HTTP admin + gRPC)
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "firn.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "firn.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "firn.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.httpPort }}
+      targetPort: http
+    - name: grpc
+      port: {{ .Values.service.grpcPort }}
+      targetPort: grpc

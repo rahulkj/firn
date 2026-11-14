@@ -2,6 +2,8 @@
 
 Releases of Firn ship as reproducible artifacts with Sigstore-backed build provenance attached to GitHub releases — never as a `git clone` and hope. This page describes what the release pipeline guarantees and what the operator must do manually.
 
+**Container image**: every `v*` tag additionally publishes `ghcr.io/rahulkj/firn:vX.Y.Z` (and `:latest`), multi-arch (linux/amd64, linux/arm64), built from the same tagged tree via `docker/build-push-action` (see the `images` steps in `release.yml`). The image is the same static binary as the tarballs (uid 10001, healthz `HEALTHCHECK`). Pull it with the deployment manifests in `deploy/` (see ADR-015).
+
 ## What CI gives you on every push to `main`
 
 | Step | Tool | Output |

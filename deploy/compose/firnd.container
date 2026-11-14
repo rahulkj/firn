@@ -1,0 +1,31 @@
+# Podman Quadlet — rootless firn with systemd integration (podman 4.4+).
+# Single node, fail-closed default (BOOTSTRAP TOKEN on first boot).
+# Install:
+#   mkdir -p ~/.config/containers/systemd ~/.local/share/firn
+#   cp firnd.container ~/.config/containers/systemd/
+#   systemctl --user daemon-reload && systemctl --user enable --now firn
+# Logs:  journalctl --user -u firn -f
+# Cluster mode: pre-create a shared mesh CA (openssl commands in ADR-015
+# §3.3), mount ca.crt/ca.key at /run/firn (read-only) and pass:
+#   Exec=firnd -data-dir /var/lib/firn -mesh-ca-bundle /run/firn/ca.crt -mesh-ca-key /run/firn/ca.key -node-id n1 -peers n1=n1:9471,n2=n2:9471,n3=n3:9471
+[Unit]
+Description=firn event broker (firnd)
+After=network-online.target
+
+[Container]
+Image=ghcr.io/rahulkj/firn:v0.5.1
+ContainerName=firnd
+User=10001
+Volume=%h/.local/share/firn:/var/lib/firn:Z
+Exec=firnd -data-dir /var/lib/firn
+PublishPort=9460:9460
+PublishPort=9461:9461
+ReadOnly=true
+Tmpfs=/tmp
+
+[Service]
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

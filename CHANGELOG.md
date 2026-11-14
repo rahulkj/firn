@@ -131,6 +131,13 @@ Storage semantics are unchanged for single-node default (`-flush-window=0`).
 
 Security posture during this release: every mutation path continues to audit-record in every mode; `ProduceBatch`/`AckBatch` are metered as one RPC per call (not per record — their value *is* the batching); no new dependencies; SBOM/cosign/grype unchanged; `-flush-window` defaults to `0` (v0.4.0 behavior for anyone upgrading).
 
+## Unreleased — installation & packaging (2026-11-14)
+
+- Release pipeline: tag pushes now also build and publish a **multi-arch OCI image** (`ghcr.io/rahulkj/firn:vX.Y.Z` + `:latest`, linux/amd64+arm64, uid 10001, `/healthz` HEALTHCHECK) — see `packaging/Dockerfile` and the image steps in `.github/workflows/release.yml`.
+- New `packaging/install.sh` — interactive installer for Linux (systemd) and macOS (launchd): detects the OS, installs release binaries with **SHA256SUMS verification**, creates the `firn` system user and a `0700` data dir, prompts for listeners, TLS, single-node vs **3-node cluster** (node-id, peer list including self, shared mesh CA generation or pre-provisioned bundle), writes `/etc/firn/firnd.env`, installs and starts the service, and prints the bootstrap-token → first-key → `/healthz` flow. `--unattended` accepts defaults; never enables `-dev`.
+- New `deploy/` — plain Kubernetes manifests (`deploy/k8s/firn-standalone.yaml`, `firn-cluster.yaml` — fixed 3-voter membership, mesh-CA copy initContainer, PDB `minAvailable: 2`, schema-validated), a Helm chart (`deploy/helm/firn`, lints and renders: standalone or GA cluster with a `required` guard for `meshCA.existingSecret`), OCI Compose (`deploy/compose/compose.yaml` — docker/podman, standalone default + `--profile cluster`), and a rootless Podman Quadlet (`firnd.container`). See `docs/adr/015-installation.md`.
+- migration: no broker behavior change; new artifacts only.
+
 ## v0.5.1 — 2026-11-14 — release pipeline: SLSA build provenance, tag-push releases
 
 **No broker behavior change** — the Go sources are identical to v0.5.0 except the version constant. This tag exists to carry the release pipeline inside the tagged tree, so the release workflow runs on `push: tags` and its SLSA provenance records `refs/tags/v0.5.1` exactly (v0.5.0's attestation, cut via `workflow_dispatch`, records `release.yml@refs/heads/main` instead — see `docs/distribution.md`).

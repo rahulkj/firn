@@ -1,0 +1,14 @@
+{{- if eq .Values.mode "cluster" }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "firn.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "firn.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "firn.selectorLabels" . | nindent 6 }}
+{{- end }}

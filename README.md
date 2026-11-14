@@ -6,6 +6,16 @@ Status: **v0.5.1 — Firn, the durable event broker (secure by default, MIT; clu
 
 **Website:** [rahulkj.github.io/firn](https://rahulkj.github.io/firn/) — product docs, full API reference, architecture diagrams, comparison matrix, release notes. Built from this repo, deployed on GitHub Pages.
 
+## Installation
+
+Three supported paths, all prompting for what they need (TLS, cluster peers, mesh CA, data dir):
+
+- **Linux (systemd) / macOS (launchd)** — `sudo ./packaging/install.sh` (interactive; verifies the release tarball's SHA256SUMS before installing)
+- **Kubernetes** — plain manifests in [`deploy/k8s/`](deploy/k8s/) (standalone + GA 3-node cluster) or the Helm chart in [`deploy/helm/firn/`](deploy/helm/firn/)
+- **Docker / Podman** — image `ghcr.io/rahulkj/firn:v<tag>`; compose files in [`deploy/compose/`](deploy/compose/)
+
+See [`docs/adr/015-installation.md`](docs/adr/015-installation.md) and [`docs/install.md`](docs/install.md).
+
 ## Documentation
 
 - [`docs/install.md`](docs/install.md) — build, single-node quickstart, TLS + auth bootstrap, 3-node cluster, what persists where

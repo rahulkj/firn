@@ -1,0 +1,9 @@
+# keep the build context small and deterministic
+.git
+data
+dist
+node_modules
+docs
+bench
+*.log
+.sdgignore

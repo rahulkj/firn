@@ -1,0 +1,19 @@
+apiVersion: v2
+name: firn
+description: Firn — the durable event broker (streams + queues over one append-only log). HA 3-node cluster (GA envelope) or standalone single node.
+type: application
+version: 0.1.0
+appVersion: "0.5.1"
+keywords:
+  - firn
+  - event-broker
+  - streaming
+  - queue
+  - durable-log
+home: https://rahulkj.github.io/firn/
+sources:
+  - https://github.com/rahulkj/firn
+maintainers:
+  - name: Rahul Jain
+    url: https://github.com/rahulkj
+icon: https://rahulkj.github.io/firn/favicon.svg

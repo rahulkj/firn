@@ -29,6 +29,7 @@ permissions:
   id-token: write # Sigstore short-lived certificate for provenance
   attestations: write # push the attestation to the repository attestation store
   artifact-metadata: write # artifact storage metadata record
+  packages: write # push the container image to GHCR
 
 concurrency:
   group: release-${{ inputs.tag || github.ref_name }}
@@ -133,3 +134,33 @@ jobs:
             gh release create "$TAG" --title "$TAG" --notes-file dist/RELEASE_NOTES.md \
               dist/firn-"$TAG"-*.tar.gz dist/SHA256SUMS dist/sbom.spdx.json dist/provenance.sigstore.jsonl
           fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the OCI image (multi-arch)
+        id: image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: packaging/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/rahulkj/firn:${{ env.TAG }}
+            ghcr.io/rahulkj/firn:latest
+          labels: |
+            org.opencontainers.image.version=${{ env.TAG }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          # the image is byte-reproducible from the tagged tree; no provenance push needed
+          # (the tarballs carry the SLSA attestation already)
+
+      - name: Report the image digest
+        run: echo "ghcr.io/rahulkj/firn:$TAG → ${{ steps.image.outputs.digest }}"

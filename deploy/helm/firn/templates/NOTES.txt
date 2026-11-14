@@ -1,0 +1,20 @@
+firn {{ .Chart.AppVersion }} installed (mode: {{ .Values.mode }}).
+
+1. Watch the pod log — a one-time BOOTSTRAP TOKEN is printed on first boot:
+     kubectl -n {{ .Release.Namespace }} logs {{ include "firn.fullname" . }}-0
+     kubectl -n {{ .Release.Namespace }} logs -f statefulset/{{ include "firn.fullname" . }}
+
+2. Port-forward and mint the first (admin) key:
+     kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "firn.fullname" . }} 9460:9460
+     curl -s -X POST localhost:9460/apikeys \
+       -H "Authorization: Bearer <BOOTSTRAP TOKEN>" \
+       -H 'Content-Type: application/json' -d '{"name":"root","role":"admin"}'
+
+3. Health check:
+     curl -s localhost:9460/healthz
+{{- if eq .Values.mode "cluster" }}
+
+Cluster mode: fixed 3-node membership (firn-0/1/2). Do not scale.
+The mesh CA was copied from the existingSecret '{{ .Values.meshCA.existingSecret }}' into each pod.
+{{- end }}
+Docs: https://rahulkj.github.io/firn/  ·  configuration: docs/configuration.md  ·  cluster guide: docs/install.md

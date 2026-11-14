@@ -1,0 +1,55 @@
+# firn Helm chart — defaults: 3-node GA cluster.
+#   helm install firn ./deploy/helm/firn --set mode=standalone          # single node
+#   helm install firn ./deploy/helm/firn --set meshCA.existingSecret=firn-mesh-ca  # sdg:ignore credential-assignment
+#
+# The mesh CA must exist before installing the cluster:
+#   openssl ecparam -genkey -name prime256v1 -out ca.key
+#   openssl req -x509 -new -nodes -key ca.key -days 3650 -subj "/CN=firn-mesh-ca" -out ca.crt
+#   kubectl create namespace firn
+#   kubectl -n firn create secret generic firn-mesh-ca --from-file=ca.crt=ca.crt --from-file=ca.key=ca.key
+
+mode: cluster # cluster | standalone
+
+image:
+  repository: ghcr.io/rahulkj/firn
+  tag: v0.5.1
+  pullPolicy: IfNotPresent
+
+persistence:
+  size: 10Gi
+  storageClass: "" # cluster default
+
+resources:
+  requests: { cpu: 100m, memory: 128Mi }
+  limits: { cpu: 1, memory: 512Mi }
+
+# cluster mode only
+meshCA:
+  existingSecret: "" # required when mode=cluster — secret with keys ca.crt, ca.key
+
+pdb:
+  minAvailable: 2 # cluster mode; quorum keeps working with one voter out
+
+serviceAccount:
+  create: true
+  name: "" # defaults to fullname
+
+service:
+  httpPort: 9460
+  grpcPort: 9461
+  meshPort: 9471
+  # standalone: ClusterIP. cluster: client service type (mesh service is headless regardless)
+  type: ClusterIP
+
+podAnnotations: {}
+podSecurityContext:
+  fsGroup: 10001
+containerSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: [ALL]
+
+existingConfig: "" # extra CLI flags appended to every pod, e.g. "-flush-window 2ms"

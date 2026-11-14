@@ -1,0 +1,95 @@
+# firn — OCI (Docker & Podman) compose file.
+# Works as-is with:  docker compose up     ·     podman compose up
+# Single node by default. For the 3-node profile use:
+#   docker compose --profile cluster up
+# First boot prints a one-time BOOTSTRAP TOKEN in the logs:
+#   docker compose logs firnd
+# Then mint the first key:
+#   curl -s -X POST localhost:9460/apikeys -H "Authorization: Bearer <TOKEN>" \
+#     -H 'Content-Type: application/json' -d '{"name":"root","role":"admin"}'
+
+services:
+  firnd:
+    image: ghcr.io/rahulkj/firn:v0.5.1
+    # local source build instead:
+    # build: { context: ../.., dockerfile: packaging/Dockerfile }
+    container_name: firnd
+    user: "10001:10001" # image's firn user
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    ports:
+      - "9460:9460" # HTTP admin (/healthz is public)
+      - "9461:9461" # client gRPC
+    volumes:
+      - firn-data:/var/lib/firn
+    # fail-closed default preserved: no -dev flag, ever.
+    command: ["-data-dir", "/var/lib/firn"]
+
+  # --- 3-node cluster profile (optional) -----------------------------------
+  firn-n1: &firn-node
+    profiles: ["cluster"]
+    image: ghcr.io/rahulkj/firn:v0.5.1
+    container_name: firn-n1
+    user: "10001:10001"
+    restart: unless-stopped
+    networks:
+      - firn-mesh
+    volumes:
+      - firn-n1-data:/var/lib/firn
+      # pre-provisioned mesh CA — firnd writes its node cert INTO data-dir at
+      # first start, so the CA is mounted read-only elsewhere and passed via flags
+      - ./mesh-ca/ca.crt:/run/firn/ca.crt:ro
+      - ./mesh-ca/ca.key:/run/firn/ca.key:ro
+    command: ["-data-dir", "/var/lib/firn", "-http-addr", ":9460", "-grpc-addr", ":9461",
+      "-mesh-ca-bundle", "/run/firn/ca.crt", "-mesh-ca-key", "/run/firn/ca.key",
+      "-node-id", "firn-n1", "-peers", "firn-n1=firn-n1:9471,firn-n2=firn-n2:9471,firn-n3=firn-n3:9471"]
+    ports:
+      - "9470:9460"
+      - "9471:9461"
+
+  firn-n2:
+    <<: *firn-node
+    container_name: firn-n2
+    volumes:
+      - firn-n2-data:/var/lib/firn
+      - ./mesh-ca/ca.crt:/run/firn/ca.crt:ro
+      - ./mesh-ca/ca.key:/run/firn/ca.key:ro
+    command: ["-data-dir", "/var/lib/firn", "-http-addr", ":9460", "-grpc-addr", ":9461",
+      "-mesh-ca-bundle", "/run/firn/ca.crt", "-mesh-ca-key", "/run/firn/ca.key",
+      "-node-id", "firn-n2", "-peers", "firn-n1=firn-n1:9471,firn-n2=firn-n2:9471,firn-n3=firn-n3:9471"]
+    ports:
+      - "9570:9460"
+      - "9571:9461"
+
+  firn-n3:
+    <<: *firn-node
+    container_name: firn-n3
+    volumes:
+      - firn-n3-data:/var/lib/firn
+      - ./mesh-ca/ca.crt:/run/firn/ca.crt:ro
+      - ./mesh-ca/ca.key:/run/firn/ca.key:ro
+    command: ["-data-dir", "/var/lib/firn", "-http-addr", ":9460", "-grpc-addr", ":9461",
+      "-mesh-ca-bundle", "/run/firn/ca.crt", "-mesh-ca-key", "/run/firn/ca.key",
+      "-node-id", "firn-n3", "-peers", "firn-n1=firn-n1:9471,firn-n2=firn-n2:9471,firn-n3=firn-n3:9471"]
+    ports:
+      - "9670:9460"
+      - "9671:9461"
+
+networks:
+  firn-mesh:
+    driver: bridge
+
+volumes:
+  firn-data:
+  firn-n1-data:
+  firn-n2-data:
+  firn-n3-data:
+
+# Cluster mesh CA first:
+#   mkdir -p mesh-ca
+#   openssl ecparam -genkey -name prime256v1 -out mesh-ca/ca.key
+#   openssl req -x509 -new -nodes -key mesh-ca/ca.key -days 3650 \
+#     -subj "/CN=firn-mesh-ca" -out mesh-ca/ca.crt && chmod 600 mesh-ca/ca.key
+# then: docker compose --profile cluster up -d

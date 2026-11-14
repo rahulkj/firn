@@ -1,0 +1,28 @@
+# firn event broker — systemd unit (manual install path).
+# The interactive installer (packaging/install.sh) renders the same unit at
+# /etc/systemd/system/firnd.service. Install: sudo systemctl enable --now firnd
+# Requires: /etc/firn/firnd.env containing FIRND_FLAGS="…", a firn system user,
+# and /var/lib/firn mode 0700.
+[Unit]
+Description=firn event broker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=firn
+Group=firn
+EnvironmentFile=/etc/firn/firnd.env
+Environment=GOMAXPROCS=0
+ExecStart=/usr/local/bin/firnd $FIRND_FLAGS
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=10
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/firn /etc/firn
+
+[Install]
+WantedBy=multi-user.target

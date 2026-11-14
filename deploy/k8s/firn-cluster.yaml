@@ -1,0 +1,164 @@
+# firn — 3-node HA cluster (GA envelope: single region, fixed membership, ≥3 voters).
+# Apply:  kubectl apply -f deploy/k8s/firn-cluster.yaml
+# Requires a mesh CA secret BEFORE first start (see step A below).
+#
+# A) Create the mesh CA secret once (do not commit these files):
+#    mkdir -p mesh-ca && openssl ecparam -genkey -name prime256v1 -out mesh-ca/ca.key
+#    openssl req -x509 -new -nodes -key mesh-ca/ca.key -days 3650 \
+#      -subj "/CN=firn-mesh-ca" -out mesh-ca/ca.crt
+#    kubectl create namespace firn
+#    kubectl -n firn create secret generic firn-mesh-ca \
+#      --from-file=ca.crt=mesh-ca/ca.crt --from-file=ca.key=mesh-ca/ca.key
+#    chmod 600 mesh-ca/ca.key
+#
+# B) kubectl apply -f deploy/k8s/firn-cluster.yaml
+#
+# C) Verify: kubectl -n firn port-forward svc/firn-client 9460:9460 & curl -s localhost:9460/healthz
+#    Each pod logs a one-time BOOTSTRAP TOKEN; mint the first key on ANY node:
+#    kubectl -n firn logs firn-0
+#
+# Fixed membership: exactly 3 replicas, identities firn-0/1/2 derived from pod
+# hostname. Do not scale — changing membership requires a fresh 3-node bootstrap.
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: firn
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: firn
+  namespace: firn
+---
+# Headless service — pod DNS records for the mesh (firn-0.firn-mesh.firn, …)
+apiVersion: v1
+kind: Service
+metadata:
+  name: firn-mesh
+  namespace: firn
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app.kubernetes.io/name: firn
+    app.kubernetes.io/component: cluster
+  ports:
+    - name: mesh
+      port: 9471
+      targetPort: mesh
+---
+# Client-facing service (HTTP admin + gRPC), load-balanced across ready pods
+apiVersion: v1
+kind: Service
+metadata:
+  name: firn-client
+  namespace: firn
+spec:
+  selector:
+    app.kubernetes.io/name: firn
+    app.kubernetes.io/component: cluster
+  ports:
+    - name: http
+      port: 9460
+      targetPort: http
+    - name: grpc
+      port: 9461
+      targetPort: grpc
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: firn
+  namespace: firn
+  labels:
+    app.kubernetes.io/name: firn
+spec:
+  replicas: 3
+  serviceName: firn-mesh
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: firn
+      app.kubernetes.io/component: cluster
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: firn
+        app.kubernetes.io/component: cluster
+    spec:
+      serviceAccountName: firn
+      securityContext:
+        fsGroup: 10001
+      initContainers:
+        - name: mesh-ca
+          image: alpine:3.21
+          command: ["/bin/sh", "-c",
+            "set -e; mkdir -p /data/mesh-ca; cp /secret/ca.crt /secret/ca.key /data/mesh-ca/; chmod 600 /data/mesh-ca/ca.key; chown -R 10001:10001 /data"]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: mesh-ca
+              mountPath: /secret
+              readOnly: true
+      containers:
+        - name: firnd
+          image: ghcr.io/rahulkj/firn:v0.5.1
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - exec firnd -data-dir /var/lib/firn -http-addr :9460 -grpc-addr :9461 \
+                -node-id "$HOSTNAME" \
+                -peers firn-0=firn-0.firn-mesh.firn:9471,firn-1=firn-1.firn-mesh.firn:9471,firn-2=firn-2.firn-mesh.firn:9471
+          ports:
+            - name: http
+              containerPort: 9460
+            - name: grpc
+              containerPort: 9461
+            - name: mesh
+              containerPort: 9471
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+            failureThreshold: 6 # peers may boot staggered; don't flap
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          resources:
+            requests: { cpu: 250m, memory: 256Mi }
+            limits: { cpu: 1, memory: 512Mi }
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/firn
+      volumes:
+        - name: mesh-ca
+          secret:
+            secretName: firn-mesh-ca # sdg:ignore credential-assignment
+            defaultMode: 0600
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: firn
+  namespace: firn
+spec:
+  minAvailable: 2 # quorum needs a majority; allow exactly one voter out
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: firn
+      app.kubernetes.io/component: cluster
