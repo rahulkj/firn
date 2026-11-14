@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Installation — firn</title>
+<meta name="description" content="Install firn: verified release tarballs (SHA256SUMS + SLSA attestation), from source, TLS setup, backups, upgrades, single-node and 3-node cluster layout.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="../index.html" aria-label="firn home"><svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0b1020"/><path d="M12 42h40" stroke="#2a3458" stroke-width="4" stroke-linecap="round"/><path d="M17 32h30" stroke="#3d4a77" stroke-width="4" stroke-linecap="round"/><path d="M22 22h20" stroke="#5b6ba1" stroke-width="4" stroke-linecap="round"/><path d="M27 12h10" stroke="#8fd3ff" stroke-width="4" stroke-linecap="round"/></svg>firn <span class="ver">v0.5.1</span></a>
+    <nav class="nav"><a href="index.html">Docs</a><a href="api.html">API</a><a href="architecture.html">Architecture</a><a href="comparison.html">Comparison</a><a href="releases.html">Releases</a><a class="ghbtn" href="https://github.com/rahulkj/firn" rel="noopener"><svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.47 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27s-1.36.09-2 .27C6.32 4.91 5.65 5.13 5.65 5.13c-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.2-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-1.08.01-.73.61.01.86.46.26.99 1.37 3.89.97 0 .67.01 1.15.01 1.31 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8"/></svg>GitHub</a><button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◑</button></nav>
+    <button class="menu-toggle" data-menu-toggle aria-label="Toggle menu">≡</button>
+  </div>
+</header>
+
+<main class="wrap docs-main">
+<aside class="docs-side">
+  <div class="side-title">Get started</div>
+  <a href="quickstart.html">Quickstart</a>
+  <a class="active" href="installation.html">Installation</a>
+  <a href="configuration.html">Configuration</a>
+  <div class="side-title">Reference</div>
+  <a href="api.html">API reference</a>
+  <a href="cli.html">firn-cli</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="sre.html">Metrics &amp; SRE</a>
+  <div class="side-title">Trust &amp; history</div>
+  <a href="security.html">Security</a>
+  <a href="comparison.html">Comparison</a>
+  <a href="releases.html">Release notes</a>
+</aside>
+<article class="docs-content">
+<h1>Installation</h1>
+<p class="doc-lede">Every supported install path, with verification. Release binaries are static; the only runtime dependency is a filesystem that honors fsync.</p>
+
+<h2>From release tarballs (recommended)</h2>
+<pre class="code"># linux-amd64 shown; targets: darwin-arm64, darwin-amd64, linux-amd64, linux-arm64
+gh release download v0.5.1 --repo rahulkj/firn \
+  --pattern 'firn-v0.5.1-linux-amd64.tar.gz' --pattern 'SHA256SUMS'
+
+# 1) integrity
+shasum -a 256 -c SHA256SUMS
+# 2) provenance — SLSA v1.0, built by .github/workflows/release.yml, Sigstore-logged
+gh attestation verify firn-v0.5.1-linux-amd64.tar.gz --repo rahulkj/firn
+# 3) (offline) gh attestation verify firn-v0.5.1-linux-amd64.tar.gz \
+#      --bundle provenance.sigstore.jsonl --repo rahulkj/firn
+
+tar -xzf firn-v0.5.1-linux-amd64.tar.gz   # firnd, firn-cli, README.md, LICENSE
+sudo install -m 0755 firnd firn-cli /usr/local/bin/</pre>
+<p>Downloads live on the <a href="https://github.com/rahulkj/firn/releases" rel="noopener">GitHub releases page</a>; every release carries SHA256SUMS, an SPDX SBOM, and <code>provenance.sigstore.jsonl</code>. The full verification checklist is in <a href="https://github.com/rahulkj/firn/blob/main/docs/distribution.md" rel="noopener">docs/distribution.md</a>.</p>
+
+<h2>From source</h2>
+<pre class="code">git clone https://github.com/rahulkj/firn
+cd firn
+make build    # or: go build ./...
+make verify   # go vet ./... &amp;&amp; go test ./...
+go build -o firnd ./cmd/firnd &amp;&amp; go build -o firn-cli ./cmd/firn-cli</pre>
+<p>Requires Go 1.27+. No third-party runtime dependencies; the dependency set (grpc, prometheus client) is deliberately minimal and SBOM-scanned in release.</p>
+
+<h2>Single node (default)</h2>
+<p>Nothing is required beyond a writable <code>-data-dir</code>:</p>
+<pre class="code">firnd -data-dir /var/lib/firn -http-addr :9460 -grpc-addr :9461
+# bootstrap token on stderr (first boot only); POST /apikeys mints the admin key; done.</pre>
+<ul>
+<li>Dir must be <code>0700</code>, files <code>0600</code> — <code>-dir-mode-check</code> (default on) refuses to start otherwise.</li>
+<li>Backups: stop the broker, <code>cp -a</code> the data dir. Never patch segment files by hand.</li>
+<li>Upgrades: stop → swap binary → start. The data format is not versioned; layout changes land in releases with migration notes.</li>
+</ul>
+
+<h2 id="tls">TLS (recommended)</h2>
+<pre class="code">firnd -tls-cert /etc/firn/tls.crt -tls-key /etc/firn/tls.key
+# both listeners share the cert — SANs must cover every host/IP clients dial
+# min TLS 1.2; clients use -ca-cert on firn-cli or the system roots</pre>
+
+<h2 id="cluster">Three-node cluster (v0.5.0+, GA within the envelope)</h2>
+<ol>
+<li>Pre-provision the mesh CA once: <code>firn-cli mesh-ca init -out ./mesh-ca</code> (or reuse your PKI with <code>-mesh-ca-bundle</code>/<code>-mesh-ca-key</code>).</li>
+<li>Copy <code>ca.crt</code> + <code>ca.key</code> into each node's <code>&lt;data-dir&gt;/mesh-ca/</code> (<code>0600</code>).</li>
+<li>Start three nodes with matching <code>-node-id</code> and the <strong>same</strong> <code>-peers</code> list including all three:</li>
+</ol>
+<pre class="code">firnd -node-id n1 -peers n1=192.0.2.11:9471,n2=192.0.2.12:9471,n3=192.0.2.13:9471 \
+  -http-addr :9460 -grpc-addr :9461 -data-dir /var/lib/firn
+# n2, n3 identical modulo -node-id and -data-dir</pre>
+<p>Membership is fixed at startup; topics created in cluster mode fan out through the quorum (<code>HTTP 202 propagating</code>); produce/fetch route via <code>GetMetadata</code> to the partition's lease holder. <strong>Envelope:</strong> single-region, fixed membership, ≥3 voting nodes, full-restart upgrades, single-copy-of-metadata quorum. Rolling upgrades and dynamic membership are <em>not</em> supported (v1 limitation, documented in the ADRs).</p>
+
+<h2 id="federation">Two-cluster federation (preview)</h2>
+<p>Passive one-way DR (byte-identical, offset-preserving, fenced sink) or active-active (re-originated records, echo-filtered). Registration is out-of-band with federation-scoped keys over the mesh listener. See the <a href="https://github.com/rahulkj/firn/blob/main/docs/federation-cutover.md" rel="noopener">cutover runbook</a> and <a href="architecture.html#federation">Architecture → federation flows</a>.</p>
+
+<h2>Dev mode</h2>
+<p><code>-dev</code> (or <code>-allow-open-bootstrap</code>) disables auth entirely — no keys, no bootstrap token, loud warning. For local development only; never on a network interface you don't own.</p>
+
+<h2>Sizing notes (honest)</h2>
+<ul>
+<li><code>fsync</code> bounds durable throughput per node (~350–500 msg/s measured, NVMe). <code>-flush-window=2ms</code> opts into group commit (see ADR-014 for the RPO trade-off you accept).</li>
+<li>Internal topics (<code>__consumer_offsets</code>, <code>__queue_attempts</code>, <code>__audit</code>, <code>__api_keys</code>) replicate like user topics — capacity-plan disk and replication traffic accordingly.</li>
+<li>Audit budget <code>-audit-max-bytes</code> (default 64 MiB per process) fails closed past the budget; rotation is operator-driven (<a href="configuration.html">see configuration</a>).</li>
+</ul>
+</article>
+</main>
+
+<footer class="site-footer"><div class="wrap"><div class="cols"><div style="max-width:280px"><h4>firn</h4><p>The durable event broker. Streams and queues over one append-only log.</p></div><div><h4>Product</h4><p><a href="index.html">Docs hub</a><br><a href="api.html">API reference</a><br><a href="architecture.html">Architecture</a></p></div><div><h4>Project</h4><p><a href="https://github.com/rahulkj/firn" rel="noopener">GitHub repo</a><br><a href="https://github.com/rahulkj/firn/releases" rel="noopener">Releases</a></p></div></div><div class="fine"><span>© 2026 Rahul Jain and contributors · MIT License</span></div></div></footer>
+<script src="../assets/site.js"></script>
+</body>
+</html>

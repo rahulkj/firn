@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Architecture — firn</title>
+<meta name="description" content="How firn is built: component planes, produce and queue/DLQ flows, cluster replication, federation, internal topics, deployment topologies, storage invariants.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<script>window.addEventListener('load', () => { if (window.mermaid) mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: { fontFamily: 'inherit', primaryColor: '#171f42', primaryBorderColor: '#3d4a77', lineColor: '#5b6ba1', actorColor: '#171f42', signalColor: '#8fd3ff' } }); });</script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="../index.html" aria-label="firn home"><svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0b1020"/><path d="M12 42h40" stroke="#2a3458" stroke-width="4" stroke-linecap="round"/><path d="M17 32h30" stroke="#3d4a77" stroke-width="4" stroke-linecap="round"/><path d="M22 22h20" stroke="#5b6ba1" stroke-width="4" stroke-linecap="round"/><path d="M27 12h10" stroke="#8fd3ff" stroke-width="4" stroke-linecap="round"/></svg>firn <span class="ver">v0.5.1</span></a>
+    <nav class="nav"><a href="index.html">Docs</a><a href="api.html">API</a><a href="architecture.html">Architecture</a><a href="comparison.html">Comparison</a><a href="releases.html">Releases</a><a class="ghbtn" href="https://github.com/rahulkj/firn" rel="noopener"><svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.47 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27s-1.36.09-2 .27C6.32 4.91 5.65 5.13 5.65 5.13c-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.2-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-1.08.01-.73.61.01.86.46.26.99 1.37 3.89.97 0 .67.01 1.15.01 1.31 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8"/></svg>GitHub</a><button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◑</button></nav>
+    <button class="menu-toggle" data-menu-toggle aria-label="Toggle menu">≡</button>
+  </div>
+</header>
+
+<main class="wrap docs-main">
+<aside class="docs-side">
+  <div class="side-title">Get started</div>
+  <a href="quickstart.html">Quickstart</a>
+  <a href="installation.html">Installation</a>
+  <a href="configuration.html">Configuration</a>
+  <div class="side-title">Reference</div>
+  <a href="api.html">API reference</a>
+  <a href="cli.html">firn-cli</a>
+  <a class="active" href="architecture.html">Architecture</a>
+  <a href="sre.html">Metrics &amp; SRE</a>
+  <div class="side-title">Trust &amp; history</div>
+  <a href="security.html">Security</a>
+  <a href="comparison.html">Comparison</a>
+  <a href="releases.html">Release notes</a>
+</aside>
+<article class="docs-content">
+<h1>Architecture</h1>
+<p class="doc-lede">The map of what exists — component planes, the interactions that matter, and the topologies you can run. Canonical diagrams live in <a href="https://github.com/rahulkj/firn/blob/main/docs/adr/012-architecture.md" rel="noopener">ADR-012</a>; this page mirrors them.</p>
+
+<h2>The system at a glance</h2>
+<pre class="mermaid">flowchart TB
+    subgraph clients[Clients]
+        cli[firn-cli]
+        grpc[gRPC clients]
+        http[HTTP admin / curl]
+    end
+    subgraph firnd["firnd — one process"]
+        httpapi[HTTP admin :9460]
+        grpcapi[FirnService gRPC :9461]
+        mesh["Mesh gRPC (mTLS)<br/>Replica · Quorum · Federation"]
+        broker["internal/broker<br/>produce/fetch orchestration"]
+        queue["internal/queue<br/>claim / lease / DLQ"]
+        groups["internal/groups<br/>offsets store"]
+        meta["internal/meta<br/>topic registry"]
+        flog["internal/log<br/>FileLog: segments, CRC frames"]
+        quorum["internal/quorum<br/>embedded Raft"]
+        repl["internal/replication<br/>block push/pull, leases"]
+        fed["internal/federation<br/>pullers, cursors"]
+    end
+    subgraph disk["Local disk"]
+        files["segments + topics.json<br/>internal topics"]
+    end
+    cli --> httpapi & grpcapi
+    http --> httpapi
+    grpc --> grpcapi
+    httpapi --> broker
+    grpcapi --> broker & queue & groups
+    mesh --> broker & quorum & fed
+    broker --> meta & flog
+    queue --> flog
+    groups --> flog
+    repl --> quorum & flog
+    flog --> disk</pre>
+
+<h2>Storage invariants (ADR-003)</h2>
+<ol>
+<li>Offsets are assigned monotonically from 0 per partition — never reused.</li>
+<li>Fetch never returns records at offset ≥ the high watermark.</li>
+<li>After a crash, no torn tail record is ever visible: CRC-framed records are truncated on open.</li>
+<li>Committed group offsets advance monotonically (unless explicitly reset).</li>
+<li>Unacked queue messages are redelivered (at-least-once); DLQ after 3 attempts.</li>
+</ol>
+
+<h2>Flow 1 — produce (single node)</h2>
+<pre class="mermaid">sequenceDiagram
+    participant C as Client
+    participant G as gRPC FirnService
+    participant B as Broker
+    participant L as FileLog
+    participant D as disk
+    C->>G: Produce(topic, key, value)
+    G->>B: topic lookup + FNV partition
+    B->>B: federation fence? (passive peer in scope → 409)
+    B->>B: cluster lease advisor?
+    B->>L: append frame (offset = HWM)
+    L->>D: write + fsync
+    L-->>B: offset
+    G-->>C: ProduceResponse(partition, offset)</pre>
+
+<h2>Flow 2 — queue claim &amp; DLQ</h2>
+<pre class="mermaid">sequenceDiagram
+    participant C as Consumer
+    participant Q as Queue engine
+    participant A as __queue_attempts
+    participant F as FileLog
+    C->>Q: Pull(queue, max, visibility)
+    Q->>A: increment attempts (max-fold at read)
+    alt attempts > 3
+        Q->>F: divert to &lt;queue&gt;.dlq
+        Q-->>C: no delivery for this message
+    else
+        Q-->>C: deliveries (visibility lease held)
+    end
+    C->>Q: Ack(queue, delivery_id)
+    Note over C,Q: lease expiry → redeliver first; DLQ after 3 attempts</pre>
+
+<h2>Flow 3 — cluster produce with a lease (followers catch up)</h2>
+<pre class="mermaid">sequenceDiagram
+    participant C as Client
+    participant B as Any node (write path)
+    participant ADV as Replication advisor
+    participant Q as Quorum (Raft)
+    participant F as FileLog
+    C->>B: Produce(topic, ...)
+    B->>ADV: WriteAllowed(topic, partition)?
+    ADV->>Q: lease table lookup
+    Q-->>ADV: yes/no
+    alt this node holds the lease
+        B->>F: append (HWM-ordered)
+        B->>B: seal full segments → ReplicaPut to peers
+        B->>Q: EntryBlockCommit
+        B-->>C: offset
+    else another node holds the lease
+        B-->>C: FailedPrecondition (client routes via GetMetadata)
+    end</pre>
+<p>Followers notice committed block descriptors and pull missing blocks via <code>ReplicaFetch</code> — content-addressed by SHA-256 of the raw frame bytes, so cross-node equality is checkable. Blocks flow user-topic and internal-topic alike.</p>
+
+<h2>Flow 4 — federation, passive (DR)</h2>
+<pre class="mermaid">sequenceDiagram
+    participant OP as Operator
+    participant SINK as Sink
+    participant SRC as Source
+    OP->>SINK: POST /federation/peers {direction:"in", mode:"passive", topics:[...]}
+    Note over SINK: sink fenced — produce/pull/ack → 409 / FailedPrecondition
+    SINK->>SRC: FederationFetch(topic, partition, first=cursor+1) — mTLS + federation key
+    SRC-->>SINK: CRC-checked frames (cursor+1 → HWM)
+    SINK->>SINK: byte-identical apply; cursor upserted
+    Note over SINK: clients read immediately; writes rejected until cutover</pre>
+
+<h2>Flow 5 — federation, active-active</h2>
+<pre class="mermaid">sequenceDiagram
+    participant A as Cluster A (writable)
+    participant B as Cluster B (writable)
+    A->>A: local produce at A-offsets
+    B->>A: FederationFetch — A filters A-origin frames
+    A-->>B: only B-origin / unseen frames
+    B->>B: AppendReoriginedFrames (fresh B-offsets; ts/key/value preserved)
+    B->>A: symmetric pull, symmetric filter
+    Note over A,B: both see all records; global order undefined</pre>
+
+<h2>Internal topics</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Topic</th><th>Purpose</th><th>Compaction</th></tr></thead>
+<tbody>
+<tr><td><code>__consumer_offsets</code></td><td><code>CommitOffset</code> records (group·topic·partition → offset)</td><td>upsert ≈ 1000 commits</td></tr>
+<tr><td><code>__queue_attempts</code></td><td>claim/DLQ attempt counters, max-fold</td><td>fold at read; physical compaction (single node)</td></tr>
+<tr><td><code>__audit</code></td><td>every admin mutation + authz refusal, all modes</td><td>budget rotation (operator, manual)</td></tr>
+<tr><td><code>__api_keys</code></td><td>SHA-256-hashed keys + roles + CIDR allowlists</td><td>mutation-appended, folded at open</td></tr>
+<tr><td><code>__federation_peers</code></td><td>peer registry (addr, mode, direction, CA pin)</td><td>low volume</td></tr>
+<tr><td><code>__federation_cursors</code></td><td>import progress + foreign-applied ranges (echo filter)</td><td>upsert on import</td></tr>
+</tbody></table></div>
+<p>In clusters, each is replicated byte-identically with a single write lease; non-holders fail closed (HTTP 503 / <code>FailedPrecondition</code>, holder in the message). They are never federated.</p>
+
+<h2>Deployment topologies</h2>
+<div class="grid-2">
+<div class="card"><span class="tag">A</span><h3>Standalone</h3><p>Default. One binary, local disk, fsync durability, zero coordination. Dev, edge, single-worker pools. Single copy — disk loss = data loss.</p></div>
+<div class="card"><span class="tag">B</span><h3>3-node cluster (GA)</h3><p>Single-region, fixed membership, embedded Raft, ≥2 byte-identical sealed-block copies, lease-fenced writes, <code>GetMetadata</code> routing. Full-restart upgrades only.</p></div>
+<div class="card"><span class="tag">C</span><h3>Active / passive DR (preview)</h3><p>One-way byte-identical replication, sink fenced read-only, offsets preserved. Cutover runbook in repo. Perfect for east→west DR.</p></div>
+<div class="card"><span class="tag">D</span><h3>Active / active (preview)</h3><p>Both clusters writable; records re-originated per cluster; A→B→A echo filtered server-side; no global order. Edge + cloud topologies.</p></div>
+</div>
+
+<h2>Ports &amp; listeners</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Listener</th><th>Default</th><th>Contents</th><th>Auth</th></tr></thead>
+<tbody>
+<tr><td>HTTP admin</td><td><code>:9460</code></td><td>/healthz, /metrics, admin API, /ui/</td><td>Bearer (except /healthz)</td></tr>
+<tr><td>Client gRPC</td><td><code>:9461</code></td><td>FirnService</td><td>Bearer + role</td></tr>
+<tr><td>Mesh gRPC</td><td><code>:9471</code></td><td>Replica · Quorum · Federation</td><td>mTLS (+ federation key on FederationService)</td></tr>
+</tbody></table></div>
+<p style="margin-top:18px;color:var(--faint);font-size:.85rem">Diagrams render with Mermaid from the same source of truth as <a href="https://github.com/rahulkj/firn/blob/main/docs/adr/012-architecture.md" rel="noopener">ADR-012</a>. If JavaScript is disabled, the diagram sources are still readable as text.</p>
+</article>
+</main>
+
+<footer class="site-footer"><div class="wrap"><div class="cols"><div style="max-width:280px"><h4>firn</h4><p>The durable event broker. Streams and queues over one append-only log.</p></div><div><h4>Product</h4><p><a href="index.html">Docs hub</a><br><a href="api.html">API reference</a><br><a href="architecture.html">Architecture</a></p></div><div><h4>Project</h4><p><a href="https://github.com/rahulkj/firn" rel="noopener">GitHub repo</a><br><a href="https://github.com/rahulkj/firn/releases" rel="noopener">Releases</a></p></div></div><div class="fine"><span>© 2026 Rahul Jain and contributors · MIT License</span></div></div></footer>
+<script src="../assets/site.js"></script>
+</body>
+</html>

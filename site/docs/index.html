@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Documentation — firn</title>
+<meta name="description" content="Guides and reference for firn, the durable event broker: quickstart, installation, configuration, HTTP/gRPC API, CLI, architecture, security, comparison, releases.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="../index.html" aria-label="firn home"><svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0b1020"/><path d="M12 42h40" stroke="#2a3458" stroke-width="4" stroke-linecap="round"/><path d="M17 32h30" stroke="#3d4a77" stroke-width="4" stroke-linecap="round"/><path d="M22 22h20" stroke="#5b6ba1" stroke-width="4" stroke-linecap="round"/><path d="M27 12h10" stroke="#8fd3ff" stroke-width="4" stroke-linecap="round"/></svg>firn <span class="ver">v0.5.1</span></a>
+    <nav class="nav"><a href="index.html">Docs</a><a href="api.html">API</a><a href="architecture.html">Architecture</a><a href="comparison.html">Comparison</a><a href="releases.html">Releases</a><a class="ghbtn" href="https://github.com/rahulkj/firn" rel="noopener"><svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.47 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27s-1.36.09-2 .27C6.32 4.91 5.65 5.13 5.65 5.13c-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.2-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-1.08.01-.73.61.01.86.46.26.99 1.37 3.89.97 0 .67.01 1.15.01 1.31 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8"/></svg>GitHub</a><button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◑</button></nav>
+    <button class="menu-toggle" data-menu-toggle aria-label="Toggle menu">≡</button>
+  </div>
+</header>
+
+<main class="wrap docs-main">
+<aside class="docs-side">
+  <div class="side-title">Get started</div>
+  <a href="quickstart.html">Quickstart</a>
+  <a href="installation.html">Installation</a>
+  <a href="configuration.html">Configuration</a>
+  <div class="side-title">Reference</div>
+  <a href="api.html">API reference</a>
+  <a href="cli.html">firn-cli</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="sre.html">Metrics &amp; SRE</a>
+  <div class="side-title">Trust &amp; history</div>
+  <a href="security.html">Security</a>
+  <a href="comparison.html">Comparison</a>
+  <a href="releases.html">Release notes</a>
+</aside>
+<article class="docs-content">
+<h1>Documentation</h1>
+<p class="doc-lede">Everything for firn, the durable event broker — written for people who run and integrate it, not for a marketing department. Pages are generated from the same repository (<a href="https://github.com/rahulkj/firn/tree/main/docs" rel="noopener">docs/ on GitHub</a>) that ships the code.</p>
+
+<div class="grid-2">
+  <a class="card" href="quickstart.html" style="text-decoration:none;color:inherit"><span class="tag">New here</span><h3>Quickstart</h3><p>Fail-closed first boot, bootstrap token, mint key, produce + fetch, queue pull/ack. Five minutes, one machine.</p></a>
+  <a class="card" href="installation.html" style="text-decoration:none;color:inherit"><span class="tag">Operator</span><h3>Installation</h3><p>Release tarballs (verify with SHA256SUMS + SLSA attestation), from-source builds, TLS, backups, single-node and 3-node cluster layout.</p></a>
+  <a class="card" href="configuration.html" style="text-decoration:none;color:inherit"><span class="tag">Operator</span><h3>Configuration reference</h3><p>Every flag with defaults: listeners, retention, segment sizing, flush windows, cluster mode, audit budget, security model modes.</p></a>
+  <a class="card" href="api.html" style="text-decoration:none;color:inherit"><span class="tag">Developer</span><h3>API reference</h3><p>HTTP admin surface + gRPC FirnService: topics, produce, fetch, groups, queues, keys, sessions, federation. Auth rules and full error tables.</p></a>
+  <a class="card" href="cli.html" style="text-decoration:none;color:inherit"><span class="tag">Developer</span><h3>firn-cli</h3><p>Command ↔ API map: create topics, produce/fetch, groups, DLQ list/redrive, API keys, federation peers, mesh CA.</p></a>
+  <a class="card" href="architecture.html" style="text-decoration:none;color:inherit"><span class="tag">Internals</span><h3>Architecture</h3><p>The system at a glance, plane-by-plane component catalog, six numbered interaction flows (Mermaid), internal topics, four topologies.</p></a>
+  <a class="card" href="sre.html" style="text-decoration:none;color:inherit"><span class="tag">SRE</span><h3>Metrics &amp; SRE</h3><p>Prometheus catalog — produce/fetch, fsync, flush-window batches, block seal/commit/push, lease grants/renewals, DLQ depth, federation lag — plus alert ideas.</p></a>
+  <a class="card" href="security.html" style="text-decoration:none;color:inherit"><span class="tag">Security</span><h3>Security model</h3><p>Threat model, transport/authn/authz/rate-limit/audit layers, bootstrap flow, mesh mTLS, artifact verification (SLSA + cosign).</p></a>
+  <a class="card" href="comparison.html" style="text-decoration:none;color:inherit"><span class="tag">Honesty</span><h3>Comparison matrix</h3><p>Self-hosted and managed brokers compared row by row — what firn wins, what it loses, what would change the verdict.</p></a>
+  <a class="card" href="releases.html" style="text-decoration:none;color:inherit"><span class="tag">History</span><h3>Release notes</h3><p>v0.1.0 → v0.5.1. What shipped, how releases are cut (CI gates, SBOM, grype, SLSA provenance, cosign), how to verify.</p></a>
+</div>
+
+<h2 style="border-top:0;padding-top:0;margin-top:40px">Six-minute orientation</h2>
+<pre class="code">1. A topic is an append-only log split into partitions; each record gets a
+   monotonically increasing offset. Fetch is by (topic, partition, offset).
+2. Pick a mode at creation: "stream" (replay freely, consume with groups)
+   or "queue" (pull + ack, redelivery, DLQ). Same storage engine both ways.
+3. Auth is fail-closed: no keys ⇒ /healthz only. The first boot prints a
+   one-time BOOTSTRAP TOKEN; POST /apikeys with it mints the first (admin) key.
+4. fsync per append by default. -flush-window=2ms opts into group commit
+   (documented RPO trade-off, ADR-014).
+5. Single node by default. 3-node with -node-id/-peers for HA (quorum, leases).
+6. Audit (__audit) records every admin mutation and authz refusal, always.</pre>
+
+<h2>Ports &amp; listeners</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Listener</th><th>Default</th><th>Serves</th><th>Auth</th></tr></thead>
+<tbody>
+<tr><td>HTTP admin</td><td><code>:9460</code></td><td>/healthz, /metrics, admin API, /ui/</td><td>Bearer (except /healthz)</td></tr>
+<tr><td>Client gRPC</td><td><code>:9461</code></td><td>FirnService (produce/fetch/groups/queue/metadata)</td><td>Bearer + role</td></tr>
+<tr><td>Mesh gRPC</td><td><code>:9471</code> (grpc+10)</td><td>ReplicaService, QuorumService, FederationService</td><td>mesh mTLS (+ federation key on FederationService)</td></tr>
+</tbody></table></div>
+
+<p>Source of truth for everything on this site is the repository: <a href="https://github.com/rahulkj/firn/tree/main/docs" rel="noopener">github.com/rahulkj/firn/tree/main/docs</a>.</p>
+</article>
+</main>
+
+<footer class="site-footer"><div class="wrap"><div class="cols"><div style="max-width:280px"><h4>firn</h4><p>The durable event broker. Streams and queues over one append-only log.</p></div><div><h4>Product</h4><p><a href="index.html">Docs hub</a><br><a href="api.html">API reference</a><br><a href="architecture.html">Architecture</a><br><a href="comparison.html">Comparison</a></p></div><div><h4>Project</h4><p><a href="https://github.com/rahulkj/firn" rel="noopener">GitHub repo</a><br><a href="https://github.com/rahulkj/firn/releases" rel="noopener">Releases</a><br><a href="https://github.com/rahulkj/firn/blob/main/LICENSE" rel="noopener">MIT License</a></p></div></div><div class="fine"><span>© 2026 Rahul Jain and contributors · MIT License</span></div></div></footer>
+<script src="../assets/site.js"></script>
+</body>
+</html>

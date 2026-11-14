@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Metrics &amp; SRE — firn</title>
+<meta name="description" content="firn's Prometheus catalog: produce/fetch rates, fsync, flush-window batches, sealed blocks, blocks pushed/committed, lease grants/renewals, DLQ depth, federation lag — plus alert ideas.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="../index.html" aria-label="firn home"><svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0b1020"/><path d="M12 42h40" stroke="#2a3458" stroke-width="4" stroke-linecap="round"/><path d="M17 32h30" stroke="#3d4a77" stroke-width="4" stroke-linecap="round"/><path d="M22 22h20" stroke="#5b6ba1" stroke-width="4" stroke-linecap="round"/><path d="M27 12h10" stroke="#8fd3ff" stroke-width="4" stroke-linecap="round"/></svg>firn <span class="ver">v0.5.1</span></a>
+    <nav class="nav"><a href="index.html">Docs</a><a href="api.html">API</a><a href="architecture.html">Architecture</a><a href="comparison.html">Comparison</a><a href="releases.html">Releases</a><a class="ghbtn" href="https://github.com/rahulkj/firn" rel="noopener"><svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.47 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27s-1.36.09-2 .27C6.32 4.91 5.65 5.13 5.65 5.13c-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.2-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-1.08.01-.73.61.01.86.46.26.99 1.37 3.89.97 0 .67.01 1.15.01 1.31 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8"/></svg>GitHub</a><button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◑</button></nav>
+    <button class="menu-toggle" data-menu-toggle aria-label="Toggle menu">≡</button>
+  </div>
+</header>
+
+<main class="wrap docs-main">
+<aside class="docs-side">
+  <div class="side-title">Get started</div>
+  <a href="quickstart.html">Quickstart</a>
+  <a href="installation.html">Installation</a>
+  <a href="configuration.html">Configuration</a>
+  <div class="side-title">Reference</div>
+  <a href="api.html">API reference</a>
+  <a href="cli.html">firn-cli</a>
+  <a href="architecture.html">Architecture</a>
+  <a class="active" href="sre.html">Metrics &amp; SRE</a>
+  <div class="side-title">Trust &amp; history</div>
+  <a href="security.html">Security</a>
+  <a href="comparison.html">Comparison</a>
+  <a href="releases.html">Release notes</a>
+</aside>
+<article class="docs-content">
+<h1>Metrics &amp; SRE</h1>
+<p class="doc-lede">Prometheus text exposition on <code>:9460/metrics</code> (viewer key by default). Counters are per-process; replication work shows up as rate-of-change on sealed/pushed/committed series.</p>
+
+<h2>Catalog</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Metric</th><th>Type</th><th>Meaning / alert hint</th></tr></thead>
+<tbody>
+<tr><td><code>firn_produce_total{topic}</code></td><td>counter</td><td>client produce rate per topic</td></tr>
+<tr><td><code>firn_fetch_total{topic}</code></td><td>counter</td><td>client fetch rate</td></tr>
+<tr><td><code>firn_fsync_seconds</code></td><td>histogram</td><td>durability-bound latency of the append path — p99 spike ⇒ disk problem</td></tr>
+<tr><td><code>firn_group_rebalances_total</code></td><td>counter</td><td>rising slope ⇒ members flapping (network? GC?)</td></tr>
+<tr><td><code>firn_queue_depth</code></td><td>gauge</td><td>unacked + redelivery pressure across queues — sustained growth ⇒ DLQ draining needed</td></tr>
+<tr><td><code>firn_federation_cursor_lag_seconds{peer,topic,partition}</code></td><td>gauge</td><td>seconds since last full import — alert &gt; 30s means peer unreachable or import stalled</td></tr>
+<tr><td><code>firn_flush_window_records</code></td><td>histogram</td><td>records per flush window (0-row windows normal under light load)</td></tr>
+<tr><td><code>firn_flush_window_bytes</code></td><td>histogram</td><td>bytes per window — tune <code>-flush-window</code>/<code>-max-batch-bytes</code> from this</td></tr>
+<tr><td><code>firn_flush_window_wait_seconds</code></td><td>histogram</td><td>age of oldest pending frame at flush (timer + fsync)</td></tr>
+<tr><td><code>firn_flush_failures_total</code></td><td>counter</td><td><strong>any non-zero</strong> = whole batches rolled back; produce errors returned</td></tr>
+<tr><td><code>firn_blocks_sealed_total{topic,partition}</code></td><td>counter</td><td>sealed blocks produced; flat-zero with traffic ⇒ sealing stalled</td></tr>
+<tr><td><code>firn_block_bytes_sealed_total{topic,partition}</code></td><td>counter</td><td>bytes sealed per partition</td></tr>
+<tr><td><code>firn_blocks_pushed_total{topic,partition,peer,result}</code></td><td>counter</td><td>peer push attempts; <code>result="false"</code> above tolerance ⇒ replica lag</td></tr>
+<tr><td><code>firn_blocks_committed_total{topic,partition}</code></td><td>counter</td><td>blocks proposed to quorum after majority push</td></tr>
+<tr><td><code>firn_lease_grants_total{topic,partition}</code></td><td>counter</td><td>grants/re-grants; rising slope ⇒ membership churn</td></tr>
+<tr><td><code>firn_lease_renewals_total{topic,partition}</code></td><td>counter</td><td>self-holder renewals; <strong>absent on a healthy cluster</strong> ⇒ stuck holder</td></tr>
+</tbody></table></div>
+
+<h2>Alert ideas (starting points)</h2>
+<ul>
+<li><code>increase(firn_flush_failures_total[5m]) &gt; 0</code> → page; storage rollback is happening.</li>
+<li><code>firn_federation_cursor_lag_seconds &gt; 60</code> (per peer/topic) → page DR owner; import is stalled.</li>
+<li><code>rate(firn_blocks_pushed_total{result="false"}[10m]) &gt; 0.1</code> sustained → replica lag; check mesh mTLS, disks, peer health.</li>
+<li><code>rate(firn_lease_renewals_total[5m]) == 0 and rate(firn_blocks_sealed_total[5m]) &gt; 0</code> on cluster → holder stuck; investigate lease TTL / quorum.</li>
+<li>DLQ non-empty: <code>firn-cli dlq list --queue Q</code> — poison messages or a broken consumer; redrive after fixing.</li>
+</ul>
+
+<h2>Scrape &amp; dashboards</h2>
+<pre class="code"># Prometheus scrape (viewer key in basic-auth-ish header)
+curl -H "Authorization: Bearer $VIEWER_KEY" localhost:9460/metrics
+
+# Grafana: PromQL dashboards over the counters above; starter dashboards are not
+# shipped — build from the catalog, panels per plane: produce, durability (fsync),
+# cluster (seal/push/commit/lease), consumption (rebalances/depth/lag)</pre>
+<p>Full operator playbooks (restore drills, DLQ triage, federation cutover) live in the repo: <a href="https://github.com/rahulkj/firn/blob/main/docs/sre.md" rel="noopener">docs/sre.md</a>, <a href="https://github.com/rahulkj/firn/blob/main/docs/federation-cutover.md" rel="noopener">docs/federation-cutover.md</a>.</p>
+</article>
+</main>
+
+<footer class="site-footer"><div class="wrap"><div class="cols"><div style="max-width:280px"><h4>firn</h4><p>The durable event broker. Streams and queues over one append-only log.</p></div><div><h4>Product</h4><p><a href="index.html">Docs hub</a><br><a href="api.html">API reference</a><br><a href="architecture.html">Architecture</a></p></div><div><h4>Project</h4><p><a href="https://github.com/rahulkj/firn" rel="noopener">GitHub repo</a><br><a href="https://github.com/rahulkj/firn/releases" rel="noopener">Releases</a></p></div></div><div class="fine"><span>© 2026 Rahul Jain and contributors · MIT License</span></div></div></footer>
+<script src="../assets/site.js"></script>
+</body>
+</html>

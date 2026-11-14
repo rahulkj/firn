@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>firn — the durable event broker. Streams and queues, one log.</title>
+<meta name="description" content="firn is an MIT-licensed, single-binary event broker: topics with replay and consumer groups (stream), plus ack/redelivery/DLQ (queue) over one append-only, fsync'd log. Secure by default, cluster-capable, built-in audit. Currently v0.5.1.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/style.css">
+<meta property="og:title" content="firn — the durable event broker">
+<meta property="og:description" content="Streams and queues over one append-only log. One static binary, secure by default, MIT.">
+<meta property="og:type" content="website">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="index.html" aria-label="firn home">
+      <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0b1020"/><path d="M12 42h40" stroke="#2a3458" stroke-width="4" stroke-linecap="round"/><path d="M17 32h30" stroke="#3d4a77" stroke-width="4" stroke-linecap="round"/><path d="M22 22h20" stroke="#5b6ba1" stroke-width="4" stroke-linecap="round"/><path d="M27 12h10" stroke="#8fd3ff" stroke-width="4" stroke-linecap="round"/></svg>
+      firn <span class="ver">v0.5.1</span>
+    </a>
+    <nav class="nav">
+      <a href="docs/index.html">Docs</a>
+      <a href="docs/api.html">API</a>
+      <a href="docs/architecture.html">Architecture</a>
+      <a href="docs/comparison.html">Comparison</a>
+      <a href="docs/releases.html">Releases</a>
+      <a class="ghbtn" href="https://github.com/rahulkj/firn" rel="noopener"><svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.47 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27s-1.36.09-2 .27C6.32 4.91 5.65 5.13 5.65 5.13c-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.2-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-1.08.01-.73.61.01.86.46.26.99 1.37 3.89.97 0 .67.01 1.15.01 1.31 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8"/></svg>GitHub</a>
+      <button class="theme-toggle" data-theme-toggle aria-label="Toggle color theme">◑</button>
+    </nav>
+    <button class="menu-toggle" data-menu-toggle aria-label="Toggle menu">≡</button>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <span class="eyebrow"><span class="dot"></span> MIT · secure by default · self-hosted</span>
+      <h1>The durable<br>event broker<br><span class="grad">streams &amp; queues, one log.</span></h1>
+      <p class="lede"><strong>firn</strong> is an append-only, fsync&prime;d event log with <strong>topics, partitions, replay</strong> and <strong>consumer groups</strong> on one side — and <strong>ack / redelivery / DLQ</strong> queue semantics on the other — in a single ~14&nbsp;MB static binary. Secure by default: a fresh broker serves nothing until you mint its first key.</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="docs/quickstart.html">Get started in 5 minutes →</a>
+        <a class="btn btn-ghost" href="https://github.com/rahulkj/firn" rel="noopener">Star on GitHub</a>
+      </div>
+      <div class="quickfacts" aria-label="Key facts">
+        <div><b>1</b><span>static binary</span></div>
+        <div><b>2</b><span>gRPC + HTTP APIs</span></div>
+        <div><b>0</b><span>config files required</span></div>
+        <div><b>~12k</b><span>lines of Go, MIT</span></div>
+      </div>
+    </div>
+    <div class="term" aria-label="Terminal quickstart">
+      <div class="term-chrome"><i></i><i></i><i></i><span>first boot — /healthz is the only public route</span></div>
+      <pre><span class="p">$</span> firnd -data-dir ./data
+<span class="c"># stderr, exactly once:</span>
+<span class="o">BOOTSTRAP TOKEN: cafebabe…</span>   <span class="c"># no keys ⇒ fail closed</span>
+
+<span class="p">$</span> curl -s -X POST localhost:9460/apikeys \
+    -H "Authorization: Bearer $BOOTSTRAP" \
+    -d '{"name":"root","role":"admin"}'
+<span class="o">{"key":"ev-xxxxxx…","name":"root","role":"admin"}</span>   <span class="c"># shown once</span>
+
+<span class="p">$</span> firn-cli -api-key "$KEY" create-topic --name orders --partitions 3
+<span class="okc">{"mode":"stream","name":"orders","partitions":3}</span>
+
+<span class="p">$</span> firn-cli -api-key "$KEY" produce --topic orders --key k1 --value hello
+<span class="okc">produced to orders partition=1 offset=0</span></pre>
+    </div>
+  </div>
+</section>
+
+<section class="block">
+  <div class="wrap">
+    <span class="kicker">Why firn</span>
+    <h2>One storage engine. Both semantics.</h2>
+    <p class="sub">Most brokers force a choice: an event log <em>or</em> a task queue, maintained as two engines. firn keeps a single append-only, CRC-framed, fsync&prime;d log per partition and layers streaming and queue semantics on top of it — one replication path, one audit trail, one set of backups.</p>
+    <div class="grid-3">
+      <div class="card">
+        <span class="tag">Streaming</span>
+        <h3>Topics, partitions &amp; replay</h3>
+        <p>FNV-1a key → partition assignment (round-robin when keyless), fetch by offset, per-partition ordering, whole-segment retention by TTL or bytes, consumer groups with range/round-robin assignment and restart-safe committed offsets.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Queue</span>
+        <h3>Ack, redeliver, DLQ — broker-native</h3>
+        <p><code>mode: "queue"</code> topics: visibility leases, at-least-once redelivery, attempts counted per message, automatic diversion to <code>&lt;queue&gt;.dlq</code> after 3 attempts, <code>firn-cli dlq redrive</code> to re-inject.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Durable</span>
+        <h3>fsync. CRC frames. Kill -9 tested.</h3>
+        <p>Offsets are monotonic from 0 and never reused; fetch never returns records ≥ HWM; torn tails are truncated on open; the fault-injection suite SIGKILLs a child mid-produce and asserts no acknowledged record is lost.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Secure by default</span>
+        <h3>Fail-closed, or not listening</h3>
+        <p>Zero-key broker serves <code>/healthz</code> only; one-time bootstrap token mints exactly one admin key; SHA-256-hashed keys; roles (viewer/operator/admin); per-key + per-IP rate limits; mesh mTLS; append-only <code>__audit</code> in every mode.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Cluster</span>
+        <h3>3-node HA, quorum-driven</h3>
+        <p>Embedded Raft (no external coordination), content-addressed sealed blocks replicated over mTLS, epoch-fenced write leases, byte-identical replicas, client routing via <code>GetMetadata</code>. Single-region, fixed membership — GA within the documented envelope.</p>
+      </div>
+      <div class="card">
+        <span class="tag">Federation</span>
+        <h3>Byte-identical DR, preview</h3>
+        <p>One-way passive replication preserves offsets exactly, fences the sink read-only, and ships with a cutover runbook. Active-active re-originates records with echo filtering. Cursors and replica lag are first-class metrics.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="block" style="padding-top:0">
+  <div class="wrap">
+    <span class="kicker">Honesty box</span>
+    <div class="honesty">
+      <strong>firn is not Kafka, and says so in writing.</strong> It sustains ~350–500 durable msg/s per node by default (fsync-per-append, measured; ~186&thinsp;000 msg/s opt-in with the <code>-flush-window</code> group-commit path, ADR-014). No exactly-once, no transactions, no Connect/Streams ecosystem, no multi-tenant isolation, one maintainer, zero external production hours. If you need to run the business on it, use Kafka/Redpanda/Pulsar — or a managed service. If you want a broker you can read end-to-end and audit, keep reading.
+      <div style="margin-top:10px"><a href="docs/comparison.html">Read the full, self-critical comparison →</a></div>
+    </div>
+  </div>
+</section>
+
+<section class="block" style="padding-top:0">
+  <div class="wrap">
+    <span class="kicker">Head to head</span>
+    <h2>Where firn actually stands</h2>
+    <p class="sub">A trimmed view of the full matrix — Kafka, Redpanda, Pulsar, RabbitMQ, NATS, Redis Streams, Kinesis, Pub/Sub, SQS.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Capability</th><th>firn</th><th>Kafka 4</th><th>RabbitMQ</th><th>NATS JS</th></tr></thead>
+        <tbody>
+          <tr><td>License</td><td><span class="pill yes">MIT</span></td><td>Apache-2.0</td><td>MPL</td><td>Apache-2.0</td></tr>
+          <tr><td>One static binary, no deps</td><td><span class="pill yes">yes</span></td><td>no (JVM)</td><td>Erlang VM</td><td>yes (Go)</td></tr>
+          <tr><td>Stream semantics (offsets, replay)</td><td><span class="pill yes">yes</span></td><td><span class="pill yes">yes</span></td><td>partial (streams)</td><td><span class="pill yes">yes</span></td></tr>
+          <tr><td>Queue semantics + broker-native DLQ</td><td><span class="pill yes">first-class</span></td><td>app-level / connectors</td><td><span class="pill yes">first-class</span></td><td>partial</td></tr>
+          <tr><td>Exactly-once</td><td><span class="pill no">no</span></td><td><span class="pill yes">EOS</span></td><td>no</td><td>approx (dedup)</td></tr>
+          <tr><td>Secure by default (bootstrap token, audit, mTLS mesh)</td><td><span class="pill yes">built-in</span></td><td>configure it yourself</td><td>configure it yourself</td><td>configure it yourself</td></tr>
+          <tr><td>Audit log, append-only, every mode</td><td><span class="pill yes">built-in</span></td><td>paid tier</td><td>partial</td><td>no</td></tr>
+          <tr><td>Continued honesty: throughput at scale</td><td><span class="pill no">~10³ msg/s</span></td><td><span class="pill yes">~10⁶ msg/s</span></td><td>~10⁵ msg/s</td><td>~10⁵–10⁶ msg/s</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <a class="btn btn-ghost" href="docs/comparison.html">Full comparison matrix →</a>
+  </div>
+</section>
+
+<section class="block" style="padding-top:0">
+  <div class="wrap">
+    <span class="kicker">How to read the docs</span>
+    <h2>Pick your path</h2>
+    <div class="grid-3" style="margin-top:26px">
+      <a class="card" href="docs/quickstart.html" style="text-decoration:none;color:inherit"><span class="tag">5 minutes</span><h3>Quickstart</h3><p>Download, boot fail-closed, mint the first key, produce and fetch your first message.</p></a>
+      <a class="card" href="docs/api.html" style="text-decoration:none;color:inherit"><span class="tag">Reference</span><h3>API reference</h3><p>Every HTTP endpoint and gRPC RPC, roles, error tables, rate limits, federation surface, CLI↔API map.</p></a>
+      <a class="card" href="docs/architecture.html" style="text-decoration:none;color:inherit"><span class="tag">Internals</span><h3>Architecture</h3><p>Component planes, sequence diagrams (produce, claim/DLQ, lease replication, federation), deployment topologies.</p></a>
+      <a class="card" href="docs/installation.html" style="text-decoration:none;color:inherit"><span class="tag">Install</span><h3>Installation</h3><p>Release tarballs + SLSA verification, from source, 1-node and 3-node clusters, TLS, backups, upgrades.</p></a>
+      <a class="card" href="docs/configuration.html" style="text-decoration:none;color:inherit"><span class="tag">Config</span><h3>Configuration</h3><p>Every flag, defaults, retention rules, data-directory layout, startup modes (fail-closed/bootstrap/enforced/open).</p></a>
+      <a class="card" href="docs/releases.html" style="text-decoration:none;color:inherit"><span class="tag">History</span><h3>Release notes</h3><p>v0.1.0 → v0.5.1, how releases are built (CI, SBOM, grype, cosign), verification instructions.</p></a>
+    </div>
+  </div>
+</section>
+
+<footer class="site-footer">
+  <div class="wrap">
+    <div class="cols">
+      <div style="max-width:280px">
+        <h4>firn</h4>
+        <p>The durable event broker. Streams and queues over one append-only log. Named after firn — snow compacted layer by layer, glacier logic for event data.</p>
+      </div>
+      <div>
+        <h4>Product</h4>
+        <p><a href="docs/index.html">Docs hub</a><br><a href="docs/api.html">API reference</a><br><a href="docs/architecture.html">Architecture</a><br><a href="docs/comparison.html">Comparison</a><br><a href="docs/releases.html">Releases</a><br><a href="docs/sre.html">Metrics &amp; SRE</a></p>
+      </div>
+      <div>
+        <h4>Project</h4>
+        <p><a href="https://github.com/rahulkj/firn" rel="noopener">GitHub repo</a><br><a href="https://github.com/rahulkj/firn/releases" rel="noopener">Releases (SLSA-signed)</a><br><a href="https://github.com/rahulkj/firn/issues" rel="noopener">Issues</a><br><a href="https://github.com/rahulkj/firn/blob/main/CHANGELOG.md" rel="noopener">CHANGELOG</a><br><a href="https://github.com/rahulkj/firn/blob/main/LICENSE" rel="noopener">MIT License</a></p>
+      </div>
+    </div>
+    <div class="fine">
+      <span>© 2026 Rahul Jain and contributors · MIT License</span>
+      <span>Docs are part of the repo — <a href="https://github.com/rahulkj/firn/tree/main/docs" rel="noopener">edit them on GitHub</a>.</span>
+    </div>
+  </div>
+</footer>
+<script src="assets/site.js"></script>
+</body>
+</html>

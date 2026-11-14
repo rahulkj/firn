@@ -1,0 +1,49 @@
+name: site
+
+# Deploys site/ to GitHub Pages. Only runs when the site changes on main
+# (or when dispatched manually). No build step — the site is committed
+# static HTML/CSS/JS, so the job just uploads the directory.
+on:
+  push:
+    branches: [main]
+    paths: ['site/**', '.github/workflows/site.yml']
+  workflow_dispatch:
+
+permissions:
+  pages: write # deploy to GitHub Pages
+  id-token: write # OIDC for the deploy action
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sanity check — no missing internal references
+        run: |
+          set -euo pipefail
+          cd site
+          fail=0
+          while IFS= read -r file; do
+            dir=$(dirname "$file")
+            for link in $(grep -oE '(href|src)="[^"]+"' "$file" | sed -E 's/(href|src)="//; s/"$//' | grep -vE '^(https?:|mailto:|tel:|#|data:)'); do
+              t="${link%%#*}"; t="${t%%\?*}"
+              [ -z "$t" ] && continue
+              if [ ! -e "$dir/$t" ]; then echo "MISSING: $link (in $file)"; fail=1; fi
+            done
+          done < <(find . -name '*.html')
+          exit $fail
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

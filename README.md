@@ -4,6 +4,8 @@ A from-scratch event broker in Go providing **streaming** (topics, partitions, o
 
 Status: **v0.5.1 — Firn, the durable event broker (secure by default, MIT; cluster mode GA).** See [`CHANGELOG.md`](CHANGELOG.md) and [`docs/adr/`](docs/adr/). License: [MIT](LICENSE).
 
+**Website:** [rahulkj.github.io/firn](https://rahulkj.github.io/firn/) — product docs, full API reference, architecture diagrams, comparison matrix, release notes. Built from this repo, deployed on GitHub Pages.
+
 ## Documentation
 
 - [`docs/install.md`](docs/install.md) — build, single-node quickstart, TLS + auth bootstrap, 3-node cluster, what persists where

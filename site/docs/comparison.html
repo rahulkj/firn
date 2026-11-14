@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comparison — firn vs Kafka, Redpanda, Pulsar, RabbitMQ, NATS</title>
+<meta name="description" content="Self-critical comparison of firn against Apache Kafka, Redpanda, Pulsar, RabbitMQ, NATS JetStream, Redis Streams, Kinesis, Pub/Sub and SQS — where firn wins, where it loses, and what would change the verdict.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="../index.html" aria-label="firn home"><svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0b1020"/><path d="M12 42h40" stroke="#2a3458" stroke-width="4" stroke-linecap="round"/><path d="M17 32h30" stroke="#3d4a77" stroke-width="4" stroke-linecap="round"/><path d="M22 22h20" stroke="#5b6ba1" stroke-width="4" stroke-linecap="round"/><path d="M27 12h10" stroke="#8fd3ff" stroke-width="4" stroke-linecap="round"/></svg>firn <span class="ver">v0.5.1</span></a>
+    <nav class="nav"><a href="index.html">Docs</a><a href="api.html">API</a><a href="architecture.html">Architecture</a><a href="comparison.html">Comparison</a><a href="releases.html">Releases</a><a class="ghbtn" href="https://github.com/rahulkj/firn" rel="noopener"><svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.47 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27s-1.36.09-2 .27C6.32 4.91 5.65 5.13 5.65 5.13c-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.2-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-1.08.01-.73.61.01.86.46.26.99 1.37 3.89.97 0 .67.01 1.15.01 1.31 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8"/></svg>GitHub</a><button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◑</button></nav>
+    <button class="menu-toggle" data-menu-toggle aria-label="Toggle menu">≡</button>
+  </div>
+</header>
+
+<main class="wrap docs-main">
+<aside class="docs-side">
+  <div class="side-title">Get started</div>
+  <a href="quickstart.html">Quickstart</a>
+  <a href="installation.html">Installation</a>
+  <a href="configuration.html">Configuration</a>
+  <div class="side-title">Reference</div>
+  <a href="api.html">API reference</a>
+  <a href="cli.html">firn-cli</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="sre.html">Metrics &amp; SRE</a>
+  <div class="side-title">Trust &amp; history</div>
+  <a href="security.html">Security</a>
+  <a class="active" href="comparison.html">Comparison</a>
+  <a href="releases.html">Release notes</a>
+</aside>
+<article class="docs-content">
+<h1>firn vs. the field</h1>
+<p class="doc-lede">Written by the project; as objective as we could make it. Treat every "firn wins" row as a claim to verify, not a conclusion. Competitor figures are vendor/community claims; firn's are measured.</p>
+
+<div class="honesty">
+<strong>Read this first.</strong> firn is a young, single-maintainer, zero-external-production-hours broker (~350–500 durable msg/s default). Kafka, Redpanda, Pulsar, RabbitMQ, NATS, Kinesis, Pub/Sub and SQS are million-hours-in-production systems. If you need a broker to run the business by, use one of those. firn wins in narrow, real places — see below.
+</div>
+
+<h2>TL;DR verdict</h2>
+<p>Firn is not superior as a general-purpose production broker. It is meaningfully differentiated in a few places:</p>
+<ol>
+<li><strong>Stream + queue semantics on one append-only log</strong> with broker-native DLQ and one replication/audit path — the cleanest "task queue and event log in one system" among OSS brokers.</li>
+<li><strong>Byte-offset-preserving passive federation with a fenced cutover</strong> — a DR story no mainstream broker ships out of the box (preview-quality, unproven at scale).</li>
+<li><strong>Secure-by-default in the binary</strong> — bootstrap token, hashed keys, roles, per-key + per-IP rate limits, mesh mTLS, append-only audit always on. OSS Kafka/Pulsar/RabbitMQ/NATS make you assemble this (or buy a paid tier).</li>
+<li><strong>MIT, ~12k LOC, single binary</strong> — the learning / embedded / teaching / edge niche.</li>
+</ol>
+<p>In every boring axis — throughput, exactly-once, ecosystem, maturity, multi-tenancy, geo — firn loses, mostly by a lot.</p>
+
+<h2>Feature matrix — self-hosted / open source</h2>
+<p style="color:var(--muted);font-size:.85rem">✅ full · ◐ partial/scoped · ❌ no · 💰 paid tier only</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Capability</th><th>firn</th><th>Kafka 4</th><th>Redpanda</th><th>Pulsar</th><th>RabbitMQ</th><th>NATS JS</th><th>Redis Streams</th></tr></thead>
+<tbody>
+<tr><td>License</td><td>MIT</td><td>Apache-2.0</td><td>BSL + paid</td><td>Apache-2.0</td><td>MPL</td><td>Apache-2.0</td><td>tri (incl. AGPL)</td></tr>
+<tr><td>Single static binary, no deps</td><td>✅</td><td>❌ JVM</td><td>✅</td><td>❌ multi-component</td><td>◐ Erlang VM</td><td>✅</td><td>❌ needs Redis</td></tr>
+<tr><td>Streaming (offsets, replay)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>◐</td><td>✅</td><td>◐</td></tr>
+<tr><td>Queue semantics + DLQ</td><td>✅ first-class</td><td>❌ app-level</td><td>❌ app-level</td><td>✅</td><td>✅</td><td>◐</td><td>❌ app-level</td></tr>
+<tr><td>One log, both semantics</td><td>✅ one engine</td><td>❌</td><td>❌</td><td>◐</td><td>◐ two engines</td><td>◐</td><td>◐</td></tr>
+<tr><td>Consumer groups</td><td>✅ range/roundrobin</td><td>✅ +sticky</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+<tr><td>Delivery guarantee</td><td>at-least-once</td><td>exactly-once</td><td>exactly-once</td><td>effectively-once</td><td>at-least-once</td><td>at-least-once + dedup</td><td>at-least-once</td></tr>
+<tr><td>Transactions / atomic multi-partition</td><td>❌</td><td>✅</td><td>✅</td><td>◐</td><td>❌</td><td>❌</td><td>◐ MULTI</td></tr>
+<tr><td>Replication / HA</td><td>◐ 3-node, embedded Raft, <strong>GA (envelope)</strong></td><td>✅ ISR/KRaft, mature</td><td>✅</td><td>✅ BookKeeper</td><td>✅ quorum queues</td><td>✅</td><td>◐ async replicas</td></tr>
+<tr><td>Geo-replication / DR</td><td>◐ passive byte-identical + active-active (preview)</td><td>◐ MM2 / Replicator 💰</td><td>◐</td><td>✅ native geo-repl</td><td>◐</td><td>✅ superclusters</td><td>◐</td></tr>
+<tr><td>Multi-tenancy</td><td>❌</td><td>◐ quotas</td><td>💰</td><td>✅ tenants/namespaces</td><td>◐ vhosts</td><td>✅ accounts</td><td>❌</td></tr>
+<tr><td>Tiered storage</td><td>❌</td><td>✅ KIP-405</td><td>💰</td><td>✅ native</td><td>❌</td><td>◐</td><td>◐ MAXLEN</td></tr>
+<tr><td>Ecosystem (Connect/Streams/SR)</td><td>❌ (Go SDK + CLI)</td><td>✅ huge</td><td>✅ Kafka-compat</td><td>◐</td><td>◐ plugins</td><td>◐</td><td>◐ (no Kafka interop)</td></tr>
+<tr><td>Kafka wire compatibility</td><td>❌</td><td>✅</td><td>✅</td><td>❌</td><td>◐ AMQP</td><td>❌</td><td>❌</td></tr>
+<tr><td>Secure by default</td><td>✅ bootstrap token, roles, mTLS mesh, audit</td><td>❌ configure</td><td>◐</td><td>❌ configure</td><td>◐ configure</td><td>◐</td><td>❌</td></tr>
+<tr><td>Audit log, built-in</td><td>✅ append-only, every mode</td><td>💰</td><td>💰</td><td>❌ contrib</td><td>◐</td><td>❌</td><td>❌</td></tr>
+<tr><td>Answered ops burden to first broker</td><td><strong>low</strong> (one binary, <code>go run</code>)</td><td>high</td><td>low–medium</td><td>high</td><td>medium</td><td>low–medium</td><td>low</td></tr>
+<tr><td>Throughput (claimed, same class HW)</td><td>~10³ msg/s (measured)</td><td>~10⁶ (vendor)</td><td>~10⁶ (vendor)</td><td>~10⁶/cluster</td><td>~10⁵</td><td>~10⁵–10⁶</td><td>~10⁵–10⁶</td></tr>
+<tr><td>Production maturity</td><td>❌ zero external</td><td>✅ massive</td><td>◐ real users</td><td>✅ Yahoo/etc.</td><td>✅ massive</td><td>✅ wide adoption</td><td>✅ massive</td></tr>
+</tbody></table></div>
+
+<h2>Cloud-managed</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Axis</th><th>AWS Kinesis</th><th>Google Pub/Sub</th><th>AWS SQS (+SNS)</th></tr></thead>
+<tbody>
+<tr><td>Model</td><td>shard stream, pull</td><td>global topics+subs</td><td>managed queue</td></tr>
+<tr><td>Exactly-once</td><td>at-least-once</td><td>✅ EOD GA (pull, regional)</td><td>FIFO dedup (≤3000/s)</td></tr>
+<tr><td>DLQ</td><td>app-level (+SQS)</td><td>✅ DLT</td><td>✅ native redrive</td></tr>
+<tr><td>Ops burden</td><td>none (shard math)</td><td>none</td><td>none</td></tr>
+<tr><td>Fits</td><td>AWS-native streaming</td><td>GCP global messaging</td><td>AWS decoupling</td></tr>
+</tbody></table></div>
+
+<h2>Category scorecard</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Category</th><th>Winner</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Raw throughput at scale</td><td>Redpanda, then Kafka</td><td>C++/no-JVM; decades of tuning. firn is ~3 orders of magnitude behind — by design (fsync).</td></tr>
+<tr><td>Zero-ops low-volume messaging</td><td>SQS</td><td>One API call, SLA'd. Running any broker is ops.</td></tr>
+<tr><td>Exactly-once / EOS</td><td>Kafka</td><td>Reference implementation (EOS + transactions).</td></tr>
+<tr><td>Task-queue work at scale</td><td>RabbitMQ</td><td>DLX, priorities, plugins, two decades of hardening.</td></tr>
+<tr><td>Event log as source of truth</td><td>Kafka</td><td>Retention, Connect, Streams, tooling moat.</td></tr>
+<tr><td>Geo-replication</td><td>Pulsar</td><td>Native, topology-aware.</td></tr>
+<tr><td>Built-in audit + secure by default (OSS)</td><td><strong>firn</strong></td><td>No OSS alternative ships this without assembly (or paid tier).</td></tr>
+<tr><td>DR with offset-preserving cutover</td><td><strong>firn</strong> (preview)</td><td>Byte-identical passive + fenced sink + runbook. Unproven at scale — interesting, not bankable.</td></tr>
+<tr><td>Single log, stream + queue, one binary</td><td><strong>firn</strong></td><td>Architectural elegance; the cleanest version of the idea.</td></tr>
+<tr><td>Enterprise source, hackable in a weekend</td><td><strong>firn</strong></td><td>~12k LOC; invariants documented; one reader can hold it.</td></tr>
+</tbody></table></div>
+
+<h2>Where you'd actually pick firn</h2>
+<ul>
+<li>Internal control-plane / service-mesh plumbing: a few hundred durable msg/s is plenty; you want it MIT and auditable.</li>
+<li>Internal job dispatch where a DLQ + audit + least-privilege keys beats raw throughput.</li>
+<li>An educational or reference implementation of "how brokers work".</li>
+<li>A DR/standby pilot where byte-identical restore has real value and preview semantics are tolerable.</li>
+<li>Embedded/edge: a ~14 MB static Go binary beats Erlang/JVM toolchains.</li>
+</ul>
+<h2>When to pick something else</h2>
+<ul>
+<li><strong>AWS/GCP-native</strong> → SQS/Kinesis/Pub/Sub. <strong>Max throughput / Kafka API</strong> → Redpanda or Kafka. <strong>Multi-tenant platform</strong> → Pulsar. <strong>Enterprise task queue</strong> → RabbitMQ. <strong>Lightweight edge</strong> → NATS. <strong>Exactly-once</strong> → Kafka with transactions. <strong>Already on Redis</strong> → Redis Streams.</li>
+</ul>
+
+<h2>What would change this verdict</h2>
+<ul>
+<li>Group-commit flush windows at scale (ADR-014 shipped behind a flag; adoption evidence needed) → throughput column re-opens.</li>
+<li>Cluster GA at scale + dynamic membership, rolling upgrades → Kafka-class HA story.</li>
+<li>Kafka wire-protocol shim or first-class Schema Registry → ecosystem addressable.</li>
+<li>One external production deployment with published numbers → maturity column stops reading "zero".</li>
+</ul>
+
+<p style="color:var(--muted);font-size:.85rem;border-top:1px solid var(--line);padding-top:14px">Full, cited version with bench notes and sources: <a href="https://github.com/rahulkj/firn/blob/main/docs/comparison.md" rel="noopener">docs/comparison.md</a> in the repository. Self-assessment bias is real — check our homework.</p>
+</article>
+</main>
+
+<footer class="site-footer"><div class="wrap"><div class="cols"><div style="max-width:280px"><h4>firn</h4><p>The durable event broker. Streams and queues over one append-only log.</p></div><div><h4>Product</h4><p><a href="index.html">Docs hub</a><br><a href="api.html">API reference</a><br><a href="architecture.html">Architecture</a></p></div><div><h4>Project</h4><p><a href="https://github.com/rahulkj/firn" rel="noopener">GitHub repo</a><br><a href="https://github.com/rahulkj/firn/releases" rel="noopener">Releases</a></p></div></div><div class="fine"><span>© 2026 Rahul Jain and contributors · MIT License</span></div></div></footer>
+<script src="../assets/site.js"></script>
+</body>
+</html>

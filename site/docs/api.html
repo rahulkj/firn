@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>API reference — firn</title>
+<meta name="description" content="Complete HTTP admin + gRPC FirnService reference: authentication, topics, produce/fetch, consumer groups, queues, API keys, UI sessions, federation, error tables, firn-cli command map.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="../index.html" aria-label="firn home"><svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0b1020"/><path d="M12 42h40" stroke="#2a3458" stroke-width="4" stroke-linecap="round"/><path d="M17 32h30" stroke="#3d4a77" stroke-width="4" stroke-linecap="round"/><path d="M22 22h20" stroke="#5b6ba1" stroke-width="4" stroke-linecap="round"/><path d="M27 12h10" stroke="#8fd3ff" stroke-width="4" stroke-linecap="round"/></svg>firn <span class="ver">v0.5.1</span></a>
+    <nav class="nav"><a href="index.html">Docs</a><a href="api.html">API</a><a href="architecture.html">Architecture</a><a href="comparison.html">Comparison</a><a href="releases.html">Releases</a><a class="ghbtn" href="https://github.com/rahulkj/firn" rel="noopener"><svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.47 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27s-1.36.09-2 .27C6.32 4.91 5.65 5.13 5.65 5.13c-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.2-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-1.08.01-.73.61.01.86.46.26.99 1.37 3.89.97 0 .67.01 1.15.01 1.31 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8"/></svg>GitHub</a><button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◑</button></nav>
+    <button class="menu-toggle" data-menu-toggle aria-label="Toggle menu">≡</button>
+  </div>
+</header>
+
+<main class="wrap docs-main">
+<aside class="docs-side">
+  <div class="side-title">Get started</div>
+  <a href="quickstart.html">Quickstart</a>
+  <a href="installation.html">Installation</a>
+  <a href="configuration.html">Configuration</a>
+  <div class="side-title">Reference</div>
+  <a class="active" href="api.html">API reference</a>
+  <a href="cli.html">firn-cli</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="sre.html">Metrics &amp; SRE</a>
+  <div class="side-title">Trust &amp; history</div>
+  <a href="security.html">Security</a>
+  <a href="comparison.html">Comparison</a>
+  <a href="releases.html">Release notes</a>
+</aside>
+<article class="docs-content">
+<h1>API reference</h1>
+<p class="doc-lede">Two surfaces, one rule: <strong>no keys ⇒ <code>/healthz</code> only.</strong> HTTP for admin/ops, gRPC (<code>firn.v1</code>) for data-plane traffic. Everything reflects <code>internal/api/firn.proto</code> at v0.5.1.</p>
+
+<div class="table-wrap"><table>
+<thead><tr><th>Surface</th><th>Default</th><th>Protocol</th><th>Audience</th></tr></thead>
+<tbody>
+<tr><td>HTTP admin</td><td><code>:9460</code></td><td>HTTP + JSON</td><td>Operators, CLI, probes</td></tr>
+<tr><td>Broker gRPC</td><td><code>:9461</code></td><td>HTTP/2 protobuf</td><td>Applications, firn-cli</td></tr>
+<tr><td>Mesh gRPC</td><td><code>:9471</code></td><td>mTLS protobuf</td><td>Cluster nodes — never clients</td></tr>
+</tbody></table></div>
+
+<h2 id="auth">Authentication &amp; authorization</h2>
+<ul>
+<li><strong>Fail-closed.</strong> Zero keys ⇒ only <code>/healthz</code> answers (gRPC: <code>Unauthenticated</code>). First boot prints a one-time <code>BOOTSTRAP TOKEN</code> on stderr.</li>
+<li><strong>Bootstrap.</strong> <code>POST /apikeys</code> with the token mints exactly one <strong>admin</strong> key; token is void thereafter.</li>
+<li><strong>Enforced.</strong> Once any non-revoked key exists, every non-public route requires <code>Authorization: Bearer &lt;key&gt;</code> (CLI: <code>-api-key</code> or <code>FIRN_API_KEY</code>).</li>
+<li><strong>Roles (least → most):</strong> <code>viewer</code> → read topics/groups/metrics/UI · <code>operator</code> → produce/fetch/queue/group ops/topic create · <code>admin</code> → all + key lifecycle. <code>list-apikeys</code> is admin even for viewers.</li>
+<li><strong>Rate limits:</strong> per-key token bucket, <code>-rate</code> (default 100 ops/s) → HTTP <code>429</code> / gRPC <code>RESOURCE_EXHAUSTED</code>. Anonymous per-IP sliding window <code>-anon-rate</code> (default 20/min); refusals are audited.</li>
+<li><strong>CIDR allowlists:</strong> keys may carry <code>allowed_ips</code>; mismatch ⇒ HTTP <code>403</code> / gRPC <code>PERMISSION_DENIED</code>, audited as <code>authz-refused:ip-not-allowed</code>.</li>
+<li><strong>Cluster fencing:</strong> internal-topic writes are single-writer; non-holder nodes fail closed with HTTP <code>503</code> / gRPC <code>FailedPrecondition</code> containing <code>fenced</code> + holder. Retry on the holder (CLI does this for key ops).</li>
+</ul>
+
+<h3>Refusal payloads</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Code</th><th>When</th></tr></thead>
+<tbody>
+<tr><td><code>401</code> / <code>UNAUTHENTICATED</code></td><td>Missing/unknown/revoked key (incl. zero keys — bootstrap mode)</td></tr>
+<tr><td><code>403</code> / <code>PERMISSION_DENIED</code></td><td>Valid key, wrong role or disallowed source IP</td></tr>
+<tr><td><code>429</code> / <code>RESOURCE_EXHAUSTED</code></td><td>Per-key or anonymous rate limit</td></tr>
+<tr><td><code>503</code> / <code>Unavailable</code></td><td>Subsystem not configured; internal topic fenced (other node holds it)</td></tr>
+</tbody></table></div>
+
+<h2>HTTP admin surface (<code>:9460</code>)</h2>
+
+<h3><code>GET /healthz</code> — public</h3>
+<pre class="code">curl localhost:9460/healthz
+{"status":"ok","version":"0.5.1","flushWindow":"2ms"}   # flushWindow present only with -flush-window</pre>
+
+<h3><code>GET /metrics</code></h3>
+<p>Prometheus text format. Requires a viewer key by default; <code>-metrics-auth=false</code> restores unauthenticated scraping (private networks only).</p>
+
+<h3>Topics</h3>
+<pre class="code">POST /topics      {"name":"orders","partitions":3,"mode":"stream"}   # mode: stream|queue
+GET  /topics      → {"topics":[{"name":"orders","partitions":3,"mode":"stream"}]}</pre>
+<p>Single-node: <code>201 Created</code>. Cluster: <code>202 Accepted</code> with <code>{"status":"propagating"}</code>; the topic lands via the quorum and followers converge within a tick. Errors: <code>400</code> bad args · <code>409</code> exists · <code>401/403</code> auth.</p>
+
+<h3>Consumer groups</h3>
+<pre class="code">GET /groups                  # generation, leader, protocol, members, assignments
+GET /groups/{name}/offsets   # committed offsets per partition</pre>
+
+<h3>Queue</h3>
+<pre class="code">POST /queues/{q}/pull        {"max_messages":10,"visibility_timeout_ms":30000}
+POST /queues/{q}/ack         {"delivery_id":"d-3f2a9c…"}</pre>
+<p>Pull claims with a visibility lease (default 30 s; hard cap 500/batch). Unacked redeliver at lease expiry (at-least-once); after 3 delivery attempts the message diverts to <code>&lt;queue&gt;.dlq</code> (auto-created). Errors: <code>404</code> unknown queue/delivery · <code>400</code> not a queue · <code>401/403</code> auth · cluster: <code>409</code> if passively federated.</p>
+
+<h3>API keys <span class="pill partial">admin</span></h3>
+<pre class="code">POST   /apikeys                 {"name":"ci-deploy","role":"operator"}   # plaintext key shown ONCE
+GET    /apikeys                 # names, roles, revoked flags — never key material
+DELETE /apikeys/{name}          # revoke; sessions tied to the key die immediately</pre>
+
+<h3>Browser sessions (<code>/ui/*</code>)</h3>
+<p><code>POST /ui/session</code> exchanges a bearer key (viewer suffices) for an HttpOnly <code>SameSite=Strict</code> cookie (12h; <code>Secure</code> under TLS). <code>/ui/*</code> accepts the cookie or bearer; everything else (<code>/topics</code>, …) stays bearer-only. <code>DELETE /ui/session</code> revokes (idempotent <code>200</code>). Sessions are in-memory; every request re-verifies the backing key — revoking the key kills sessions instantly. Grant/revoke are audited.</p>
+
+<h3>Federation (preview)</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Method</th><th>Path</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td>POST</td><td><code>/federation/peers</code></td><td>Register/overwrite peer — <code>{name, addr, direction:in|out|both, mode:passive|active-active, key, topics?[], queues?[], ca_crt_pem?, server_name?}</code></td></tr>
+<tr><td>GET</td><td><code>/federation/peers</code></td><td>List peers (key material never returned; <code>keySet</code> reported)</td></tr>
+<tr><td>DELETE</td><td><code>/federation/peers/{name}</code></td><td>Remove peer; cursors persist; full re-import = re-register</td></tr>
+<tr><td>POST</td><td><code>/federation/keys</code></td><td>Mint a federation-scoped key for this cluster (shown once)</td></tr>
+<tr><td>GET</td><td><code>/federation/cursors</code></td><td>Import progress per (peer, topic, partition)</td></tr>
+</tbody></table></div>
+<p><code>FederationService</code> (gRPC) lives <strong>only on the mesh listener</strong>: <code>FederationFetch</code> serves raw, CRC-checked frame windows; normal keys get <code>Unimplemented</code>, federation keys get nothing else.</p>
+
+<h2 id="grpc">gRPC FirnService (<code>:9461</code>)</h2>
+<p>Package <code>firn.v1</code>; every RPC is unary. Proto source: <a href="https://github.com/rahulkj/firn/blob/main/internal/api/firn.proto" rel="noopener">internal/api/firn.proto</a>.</p>
+
+<h3>Produce</h3>
+<pre class="code">message ProduceRequest  { string topic = 1; bytes key = 2; bytes value = 3; }
+message ProduceResponse { int32 partition = 1; int64 offset = 2; }</pre>
+<p>Key → <code>FNV-64a(key) % partitions</code>; unset key → round-robin. In cluster mode the CLI routes to the lease holder from <code>GetMetadata</code> (2s cache, refresh-on-retry).</p>
+
+<h3>ProduceBatch</h3>
+<pre class="code">message ProduceBatchRecord    { bytes key = 1; bytes value = 2; }
+message ProduceBatchRequest   { string topic = 1; repeated ProduceBatchRecord records = 2; }  // ≤ 500
+message ProduceBatchResponse  { repeated ProduceBatchRecordResult records = 1; }</pre>
+<p>One RPC instead of N; order matches request; <strong>not atomic</strong> — on mid-batch failure earlier records are durable, later ones are not; retrying may duplicate earlier records at new offsets (consumers must tolerate duplicates). CLI: <code>firn-cli produce --batch-file events.jsonl</code> (JSONL; <code>-</code> = stdin; auto-chunked).</p>
+
+<h3>Fetch</h3>
+<pre class="code">message FetchRequest  { string topic = 1; int32 partition = 2; int64 offset = 3; int32 max_records = 4; }
+message FetchResponse { repeated Record records = 1; int64 federation_hwm = 2; }  // federation_hwm advisory</pre>
+<p><code>max_records ≥ 1</code> (cap 1000). Fetch at/above HWM → zero records. Below the retention horizon → <code>FailedPrecondition</code>.</p>
+
+<h3>Consumer groups</h3>
+<pre class="code">JoinGroup / SyncGroup / Heartbeat / LeaveGroup
+CommitOffset   { group_id, topic, partition, offset, generation_id, allow_reset = false }
+FetchOffset    → { offset, found, generation_id, leader }
+FetchGroupOffsets { group_id } → all committed offsets</pre>
+<p>Protocols: <code>range</code> (default) | <code>roundrobin</code>. <code>session_timeout_ms</code>: 0 = server default (10s). Offsets monotonic (invariant 4) unless <code>allow_reset</code>; stale generations rejected. Persisted in <code>__consumer_offsets</code>, restart-safe.</p>
+
+<h3>Queue</h3>
+<pre class="code">Pull(queue, max_messages, visibility_timeout_ms) → [QueueDelivery]
+Ack(queue, delivery_id) → OK
+AckBatch(queue, delivery_ids[1..500]) → { acked, unknown }   // unknown ids tolerated, counted
+GetMetadata(topics[] — empty = all) → brokers + per-partition { leader, leader_addr }</pre>
+<p><code>AckBatch</code> is the high-volume path — one <code>__consumer_offsets</code> commit per contiguous advance instead of per Ack.</p>
+
+<h2>gRPC status codes</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Code</th><th>When</th></tr></thead>
+<tbody>
+<tr><td><code>OK</code></td><td>success</td></tr>
+<tr><td><code>INVALID_ARGUMENT</code></td><td>bad mode/protocol/args, empty batch</td></tr>
+<tr><td><code>NOT_FOUND</code></td><td>topic/queue/group/delivery/member</td></tr>
+<tr><td><code>FAILED_PRECONDITION</code></td><td>below retention horizon · non-lease-holder (cluster) · stale generation · stream/queue mode mixup · <code>fenced</code> internal topic (retry on holder)</td></tr>
+<tr><td><code>UNAUTHENTICATED</code></td><td>missing/unknown/revoked key</td></tr>
+<tr><td><code>PERMISSION_DENIED</code></td><td>wrong role, or source IP not in key allowlist</td></tr>
+<tr><td><code>RESOURCE_EXHAUSTED</code></td><td>per-key rate limit</td></tr>
+<tr><td><code>UNAVAILABLE</code></td><td>broker down / connection refused</td></tr>
+</tbody></table></div>
+
+<h2>HTTP status codes</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td>200</td><td>OK (GET, pull, ack, revoke)</td></tr><tr><td>201</td><td>Created (topic, apikey session mint)</td></tr>
+<tr><td>202</td><td>Accepted — cluster topic create, propagating via quorum</td></tr>
+<tr><td>400</td><td>Bad JSON/args · not a queue</td></tr><tr><td>401</td><td>Missing/unknown/revoked key</td></tr>
+<tr><td>403</td><td>Valid key, wrong role / disallowed IP</td></tr><tr><td>404</td><td>Not found</td></tr>
+<tr><td>405</td><td>Method not allowed for path</td></tr>
+<tr><td>409</td><td>Topic exists · resource passively federated (sink is read-only until cutover)</td></tr>
+<tr><td>429</td><td>Rate limited</td></tr><tr><td>500</td><td>Internal</td></tr>
+<tr><td>503</td><td>Subsystem unconfigured · internal topic fenced (retry on holder) · audit budget exhausted</td></tr>
+</tbody></table></div>
+
+<h2>firn-cli ↔ API map</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>CLI</th><th>Path</th></tr></thead>
+<tbody>
+<tr><td><code>create-topic</code> / <code>create-queue</code></td><td>POST /topics</td></tr>
+<tr><td><code>list</code></td><td>GET /topics</td></tr>
+<tr><td><code>produce</code> / <code>fetch</code></td><td>gRPC Produce / Fetch (batch file → ProduceBatch)</td></tr>
+<tr><td><code>groups</code></td><td>GET /groups</td></tr>
+<tr><td><code>dlq list</code> / <code>dlq redrive</code></td><td>gRPC Fetch on <code>&lt;q&gt;.dlq</code> / Fetch + Produce into source queue</td></tr>
+<tr><td><code>create-apikey</code> / <code>revoke-apikey</code> / <code>list-apikeys</code></td><td>POST / DELETE / GET /apikeys</td></tr>
+<tr><td><code>federation add-peer|list-peers|remove-peer|keys|status</code></td><td>POST|GET|DELETE /federation/peers · POST /federation/keys · GET /federation/cursors</td></tr>
+<tr><td><code>mesh-ca init</code></td><td>local CA generation (no API)</td></tr>
+</tbody></table></div>
+
+<h2 id="internal">Internal services — never call these</h2>
+<p><code>ReplicaService</code> (block push/pull, content-addressed by SHA-256 of frame bytes) and <code>QuorumService</code> (one Raft RPC per message: RequestVote/AppendEntries/PreVote + block-commit/lease entries) exist <strong>only on the mesh listener behind mTLS</strong>. Not reachable from client ports, excluded from <code>GetMetadata</code>, shape may change without notice. Treat as implementation detail.</p>
+
+<h2>Audit trail</h2>
+<p><code>__audit</code> (replicated like any internal topic) records every admin mutation and authz refusal in <strong>every</strong> auth mode — including dev. Frame: <code>u32 bodyLen | u32 crc32(body) | body</code> where body = offset, ts, key=<code>audit</code>, value=JSON <code>{"ts","who","action","target","result"}</code>. Budget: <code>-audit-max-bytes</code> (default 64 MiB/process) fails closed past budget; rotation is operator-driven. Cluster caveat: mutations handled on the lease holder are audited; topic-create proposals and refusals served on non-holders log to stderr only.</p>
+</article>
+</main>
+
+<footer class="site-footer"><div class="wrap"><div class="cols"><div style="max-width:280px"><h4>firn</h4><p>The durable event broker. Streams and queues over one append-only log.</p></div><div><h4>Product</h4><p><a href="index.html">Docs hub</a><br><a href="api.html">API reference</a><br><a href="architecture.html">Architecture</a></p></div><div><h4>Project</h4><p><a href="https://github.com/rahulkj/firn" rel="noopener">GitHub repo</a><br><a href="https://github.com/rahulkj/firn/releases" rel="noopener">Releases</a></p></div></div><div class="fine"><span>© 2026 Rahul Jain and contributors · MIT License</span></div></div></footer>
+<script src="../assets/site.js"></script>
+</body>
+</html>

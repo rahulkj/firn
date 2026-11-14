@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>firn-cli — firn</title>
+<meta name="description" content="firn-cli command reference: topics, produce/fetch, consumer groups, DLQ, API keys, federation, mesh CA, cluster routing.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="../assets/style.css">
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="../index.html" aria-label="firn home"><svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0b1020"/><path d="M12 42h40" stroke="#2a3458" stroke-width="4" stroke-linecap="round"/><path d="M17 32h30" stroke="#3d4a77" stroke-width="4" stroke-linecap="round"/><path d="M22 22h20" stroke="#5b6ba1" stroke-width="4" stroke-linecap="round"/><path d="M27 12h10" stroke="#8fd3ff" stroke-width="4" stroke-linecap="round"/></svg>firn <span class="ver">v0.5.1</span></a>
+    <nav class="nav"><a href="index.html">Docs</a><a href="api.html">API</a><a href="architecture.html">Architecture</a><a href="comparison.html">Comparison</a><a href="releases.html">Releases</a><a class="ghbtn" href="https://github.com/rahulkj/firn" rel="noopener"><svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.47 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27s-1.36.09-2 .27C6.32 4.91 5.65 5.13 5.65 5.13c-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.2-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-1.08.01-.73.61.01.86.46.26.99 1.37 3.89.97 0 .67.01 1.15.01 1.31 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8"/></svg>GitHub</a><button class="theme-toggle" data-theme-toggle aria-label="Toggle theme">◑</button></nav>
+    <button class="menu-toggle" data-menu-toggle aria-label="Toggle menu">≡</button>
+  </div>
+</header>
+
+<main class="wrap docs-main">
+<aside class="docs-side">
+  <div class="side-title">Get started</div>
+  <a href="quickstart.html">Quickstart</a>
+  <a href="installation.html">Installation</a>
+  <a href="configuration.html">Configuration</a>
+  <div class="side-title">Reference</div>
+  <a href="api.html">API reference</a>
+  <a class="active" href="cli.html">firn-cli</a>
+  <a href="architecture.html">Architecture</a>
+  <a href="sre.html">Metrics &amp; SRE</a>
+  <div class="side-title">Trust &amp; history</div>
+  <a href="security.html">Security</a>
+  <a href="comparison.html">Comparison</a>
+  <a href="releases.html">Release notes</a>
+</aside>
+<article class="docs-content">
+<h1>firn-cli</h1>
+<p class="doc-lede">The operational CLI — the operator reference client and the fastest path to verify a broker is doing what you think it's doing.</p>
+
+<h2>Global flags</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Flag</th><th>Env</th><th>Default</th><th>Meaning</th></tr></thead>
+<tbody>
+<tr><td><code>-addr</code></td><td><code>FIRN_ADDR</code></td><td><code>localhost:9461</code></td><td>Seed gRPC address; cluster mode: metadata fetched here, then routes to the lease holder (2s cache, refresh-on-retry)</td></tr>
+<tr><td><code>-http-addr</code></td><td><code>FIRN_HTTP_ADDR</code></td><td><code>localhost:9460</code></td><td>Seed HTTP admin address</td></tr>
+<tr><td><code>-peers</code></td><td><code>FIRN_PEERS</code></td><td><code>""</code></td><td>Cluster seeds, comma-separated gRPC addrs; round-robin when metadata unavailable</td></tr>
+<tr><td><code>-http-peers</code></td><td><code>FIRN_HTTP_PEERS</code></td><td>derived</td><td>Cluster HTTP seeds; defaults to <code>-peers</code> with each port −1</td></tr>
+<tr><td><code>-api-key</code></td><td><code>FIRN_API_KEY</code></td><td><code>""</code></td><td>Bearer key (required once auth is enforced)</td></tr>
+<tr><td><code>-ca-cert</code></td><td><code>FIRN_CA_CERT</code></td><td><code>""</code></td><td>PEM CA; switches gRPC to TLS and HTTP to HTTPS</td></tr>
+<tr><td><code>-json</code></td><td>—</td><td>false</td><td>Machine-readable output</td></tr>
+</tbody></table></div>
+
+<h2>Topics &amp; produce/fetch</h2>
+<pre class="code">create-topic --name orders --partitions 3 --mode stream
+create-queue --name jobs --partitions 1        # mode: queue under the hood
+list                                            # topics (JSON with -json)
+produce --topic orders --key k1 --value v1      # or --batch-file events.jsonl (≤500/rpc, auto-chunked)
+produce --topic orders --value big --batch-file -   # stdin
+fetch   --topic orders --partition 0 --offset 0 --max 100</pre>
+
+<h2>Consumer groups</h2>
+<pre class="code">groups                    # members, assignments, generation, lag hints
+# offsets endpoint: GET /groups/{name}/offsets (curl) — see API reference</pre>
+
+<h2>Queue &amp; DLQ</h2>
+<pre class="code">dlq list --queue jobs              # fetch &lt;queue&gt;.dlq into a table
+dlq redrive --queue jobs           # re-produce dlq records back into jobs (gRPC path only)</pre>
+<p>Records divert to <code>&lt;queue&gt;.dlq</code> after 3 delivery attempts; redrive re-injects them — the DLQ is a normal topic, so nothing is lost by listing it first.</p>
+
+<h2>API keys</h2>
+<pre class="code">create-apikey --name ci-deploy --role operator     # role: viewer|operator|admin|federation-ish
+create-apikey --name office --role viewer --allowed-ips 203.0.113.0/24
+list-apikeys                                        # names/roles/revoked — never key material
+revoke-apikey --name ci-deploy                      # kills sessions immediately</pre>
+<p>Keys are shown <strong>exactly once</strong> at creation. Mint admin with the bootstrap token (fail-closed boot) or with any existing admin key.</p>
+
+<h2>Federation (preview)</h2>
+<pre class="code">federation keys                           # mint a federation-scoped key for this cluster (once)
+federation add-peer --name east --addr 192.0.2.11:9471 --direction in --mode passive \
+  --topics orders,jobs --key &lt;peer-key&gt;   # repeat keys for multiple peers
+federation list-peers
+federation remove-peer --name east
+federation status                         # cursors: last applied offset per (peer, topic, partition)</pre>
+<p>Passive = one-way byte-identical import (sink fenced until cutover — see <a href="https://github.com/rahulkj/firn/blob/main/docs/federation-cutover.md" rel="noopener">the cutover runbook</a>). Active-active = both sides writable, re-originated offsets with echo filtering. Registration is out-of-band; peers authenticate over mesh mTLS with federation-scoped keys.</p>
+
+<h2>Mesh CA (cluster operators)</h2>
+<pre class="code">mesh-ca init -out ./mesh-ca     # writes ca.crt + ca.key; copy both into each node's data-dir/mesh-ca/ (mode 0600)</pre>
+
+<h2>Bootstrap flow (first key)</h2>
+<pre class="code">firnd -data-dir ./data          # stderr prints BOOTSTRAP TOKEN: &lt;hex&gt;  (once, zero keys)
+POST /apikeys -H "Authorization: Bearer &lt;hex&gt;" -d '{"name":"root","role":"admin"}'   # → ev-…
+firn-cli -api-key ev-… list</pre>
+
+<h2>JSON output &amp; scripting</h2>
+<p><code>-json</code> works with <code>list</code>, <code>produce</code>, <code>fetch</code> (incl. <code>federation_hwm</code>), <code>groups</code>, <code>dlq list</code>, <code>list-apikeys</code>. Exit codes: <code>0</code> ok, non-zero on any API refusal — safe to gate deploy pipelines on.</p>
+</article>
+</main>
+
+<footer class="site-footer"><div class="wrap"><div class="cols"><div style="max-width:280px"><h4>firn</h4><p>The durable event broker. Streams and queues over one append-only log.</p></div><div><h4>Product</h4><p><a href="index.html">Docs hub</a><br><a href="api.html">API reference</a><br><a href="architecture.html">Architecture</a></p></div><div><h4>Project</h4><p><a href="https://github.com/rahulkj/firn" rel="noopener">GitHub repo</a><br><a href="https://github.com/rahulkj/firn/releases" rel="noopener">Releases</a></p></div></div><div class="fine"><span>© 2026 Rahul Jain and contributors · MIT License</span></div></div></footer>
+<script src="../assets/site.js"></script>
+</body>
+</html>
