@@ -39,6 +39,10 @@ type auth struct {
 	anon    *ratelimit.SlidingWindow
 	audit   *audit.Store
 
+	// uiSessions mints and verifies the short-lived browser sessions used
+	// by /ui/* (ADR-013 Slice C). Always non-nil; in-memory only.
+	uiSessions *uiSessionStore
+
 	// Security-by-default (ADR-011 slice 1): an unopened broker refuses
 	// every request. Opening requires either a key to exist, or the
 	// operator to pass -dev / -allow-open-bootstrap, or a bootstrap
@@ -69,7 +73,7 @@ func WithAnonRate(max int, window time.Duration) AuthOption {
 // NewAuthorizer returns an authenticator wired to these dependencies.
 // Default (no options) fails closed.
 func NewAuthorizer(store *apikeys.Store, limiter *ratelimit.Bucket, audit *audit.Store, opts ...AuthOption) *auth {
-	a := &auth{store: store, limiter: limiter, audit: audit}
+	a := &auth{store: store, limiter: limiter, audit: audit, uiSessions: newUISessionStore()}
 	for _, o := range opts {
 		o(a)
 	}
@@ -120,7 +124,6 @@ func roleFor(method, path string) (apikeys.Role, bool) {
 // Default is fail-closed (see WithOpenBootstrap).
 func (a *auth) Wrap(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := net.ParseIP(clientIP(r))
 		if a.anon != nil && !a.anon.Allow(clientIP(r)) {
 			if a.audit != nil {
 				_ = a.audit.Append("anonymous", "anon-rate-limit", r.Method+" "+r.URL.Path, "rate limited")
@@ -128,7 +131,6 @@ func (a *auth) Wrap(next http.Handler) http.Handler {
 			writeError(w, http.StatusTooManyRequests, "rate limited")
 			return
 		}
-		_ = ip
 		switch {
 		case isPublic(r.URL.Path):
 			openCtx := context.WithValue(r.Context(), authKeyContextKey{}, apikeys.Key{Name: "anonymous", Role: "admin"})
@@ -147,6 +149,25 @@ func (a *auth) Wrap(next http.Handler) http.Handler {
 			token = "" // no Bearer prefix
 		}
 		if token == "" {
+			// /ui/* only: a browser cannot set Authorization, so it may
+			// present the session cookie minted by POST /ui/session instead.
+			// The cookie is never accepted on the admin JSON API.
+			if isUIPath(r.URL.Path) {
+				if c, err := r.Cookie(uiSessionCookieName); err == nil && c.Value != "" {
+					if !a.limiter.Allow("ui:" + c.Value) {
+						a.auditRefused(r, "rate limited")
+						writeError(w, http.StatusTooManyRequests, "rate limited")
+						return
+					}
+					if skey, ok := a.uiSessions.verify(a.store, c.Value); ok {
+						if r2, ok := a.authorizeKey(w, r, skey); ok {
+							next.ServeHTTP(w, r2)
+						}
+						return
+					}
+					// Stale/orphaned session: fall through to the 401.
+				}
+			}
 			a.auditRefused(r, "missing token")
 			writeError(w, http.StatusUnauthorized, "missing bearer token")
 			return
@@ -162,25 +183,37 @@ func (a *auth) Wrap(next http.Handler) http.Handler {
 			writeError(w, http.StatusUnauthorized, "unknown or revoked key")
 			return
 		}
-		if !authzKeyAllowsIP(a.store, key, ip) {
-			if a.audit != nil {
-				_ = a.audit.Append(key.Name, "authz-refused:ip-not-allowed", r.Method+" "+r.URL.Path, "client IP rejected by key allowlist")
-			}
-			writeError(w, http.StatusForbidden, "ip not allowed")
-			return
+		if r2, ok := a.authorizeKey(w, r, key); ok {
+			next.ServeHTTP(w, r2)
 		}
-		minRole, needs := roleFor(r.Method, r.URL.Path)
-		if needs {
-			rr, _ := apikeys.ParseRole(key.Role)
-			if rr < minRole {
-				a.auditRefused(r, "insufficient role")
-				writeError(w, http.StatusForbidden, "insufficient role")
-				return
-			}
-		}
-		ctx := context.WithValue(r.Context(), authKeyContextKey{}, key)
-		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// authorizeKey applies the checks common to bearer- and cookie-
+// authenticated requests (never called before the per-key rate limit):
+// the key's allowed_ips allowlist, the minimum role for the route, and
+// returns the request with the identity in context. On refusal it writes
+// the response and returns ok=false.
+func (a *auth) authorizeKey(w http.ResponseWriter, r *http.Request, key apikeys.Key) (*http.Request, bool) {
+	ip := net.ParseIP(clientIP(r))
+	if !authzKeyAllowsIP(a.store, key, ip) {
+		if a.audit != nil {
+			_ = a.audit.Append(key.Name, "authz-refused:ip-not-allowed", r.Method+" "+r.URL.Path, "client IP rejected by key allowlist")
+		}
+		writeError(w, http.StatusForbidden, "ip not allowed")
+		return r, false
+	}
+	minRole, needs := roleFor(r.Method, r.URL.Path)
+	if needs {
+		rr, _ := apikeys.ParseRole(key.Role)
+		if rr < minRole {
+			a.auditRefused(r, "insufficient role")
+			writeError(w, http.StatusForbidden, "insufficient role")
+			return r, false
+		}
+	}
+	ctx := context.WithValue(r.Context(), authKeyContextKey{}, key)
+	return r.WithContext(ctx), true
 }
 
 // Commands under this map require the listed role; everything else is viewer+.

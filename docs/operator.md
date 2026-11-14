@@ -202,7 +202,18 @@ Keys are shown once and hashed at rest. Roles: `viewer < operator < admin`, plus
 curl -H "Authorization: Bearer $VIEWER_KEY" localhost:9460/metrics
 ```
 
-Browser: `http://<host>:9460/ui/` and `http://<host>:9460/ui/federation`. Note: browsers cannot set an `Authorization` header natively — see [Network setup](#network-setup) for the recommended pattern (reverse proxy with a pinned viewer key + TLS, or use `firn-cli`). `-dev` disables auth (`-dev` also logs a loud warning) — development only.
+Browser: the admin UI can't use a bearer header, so the browser authenticates with a one-time **session cookie**:
+
+```sh
+firn-cli create-apikey --name dashboard --role viewer
+# exchange the key for a session cookie (12h, HttpOnly, SameSite=Strict, Path=/ui/)
+curl -i -X POST localhost:9460/ui/session -H "Authorization: Bearer $DASHBOARD_KEY"
+# → 201 Created, Set-Cookie: firn_ui_session=ev-…; Path=/ui/; HttpOnly; SameSite=Strict; Max-Age=43200
+```
+
+Then give the browser that cookie once: DevTools → Application → Cookies → `http://<host>:9460` → add `firn_ui_session` with the value from `Set-Cookie`. Subsequent visits to `/ui/` and `/ui/federation` just work. (A one-line bookmarklet doing `fetch('/ui/session',{method:'POST',headers:{Authorization:'Bearer '+key}})` avoids the DevTools dance; a browser extension that sets the cookie works too.) `DELETE /ui/session` with the cookie signs out. Sessions are in-memory — a restart signs everyone out — and re-verify the key on every request, so revoking the `dashboard` key kills its sessions immediately.
+
+For a multi-user deployment, a reverse proxy with a pinned viewer key + TLS (see Network setup) remains the cleaner pattern — no per-browser cookie setup. `-dev` disables auth entirely — development only.
 
 ### Health checks
 
@@ -291,5 +302,5 @@ Example scrape config and alerts: [`docs/sre.md`](sre.md).
 - Client SDKs for non-Go languages (Python/Java/.NET) — Go SDK ships (`sdk/firngo`, ADR-013); other languages use gRPC + `internal/api/firn.proto` (see [`docs/developer.md`](developer.md)) or `firn-cli`.
 - Object storage / S3 — by design (see [Storage integrations](#object-storage--s3--blob)).
 - Encryption at rest — OS-level permissions only; no KMS integration.
-- Browser-native login to `/ui/` — browsers can't set `Authorization` headers; use a proxy with a pinned viewer key or `firn-cli`.
+- Multiple concurrent UI sessions per key (each `POST /ui/session` issues an independent token) — by design; revoke the key to kill them all, or present a cookie to `DELETE /ui/session` to drop one.
 - Automatic audit log rotation — `-audit-max-bytes` bounds the log; rotation is operator-driven.

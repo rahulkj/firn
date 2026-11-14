@@ -92,7 +92,7 @@ Point journald or your log shipper at it. Structured queries that work on every 
 
 ## UI screens worth knowing
 
-The admin UI (`:9460/ui/`) is read-only — perfect for "what's happening right now" without minting an operator key:
+The admin UI (`:9460/ui/`) is read-only — perfect for "what's happening right now" with a plain `viewer` key (browsers use the `/ui/session` cookie flow — see [operator docs](operator.md#metrics--ui)):
 
 ![firn admin dashboard](images/ui-dashboard.png)
 

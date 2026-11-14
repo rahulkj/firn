@@ -169,7 +169,7 @@ Console.WriteLine($"offset={resp.Offset}");
 
 ![firn admin dashboard](images/ui-dashboard.png)
 
-Topics with partition counts and mode, consumer groups with generation/protocol/leader/member count, and a link to the federation view. Read-only; every change still goes through the API or CLI (that's deliberate — no one clicks "delete topic" by accident).
+Topics with partition counts and mode, consumer groups with generation/protocol/leader/member count, and a link to the federation view. Read-only; every change still goes through the API or CLI (that's deliberate — no one clicks "delete topic" by accident). Browser access needs a key — `POST /ui/session` exchanges it for an HttpOnly cookie (see [operator docs](operator.md#metrics--ui)); `-dev` skips auth entirely for local brokers.
 
 ### Federation — `:9460/ui/federation`
 

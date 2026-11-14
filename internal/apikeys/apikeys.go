@@ -253,6 +253,21 @@ func (s *Store) VerifyFrom(plaintext string, callerIP string) (Key, bool) {
 	return Key{}, false
 }
 
+// LookupByName returns the non-revoked key with the given name, or ok=false.
+// Used by the /ui/ session layer to re-verify the backing key on every
+// cookie-authenticated request (revoking a key invalidates its sessions).
+func (s *Store) LookupByName(name string) (Key, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_ = s.refreshIfMoved()
+	for _, k := range s.keys {
+		if k.Name == name && !k.Revoked {
+			return k, true
+		}
+	}
+	return Key{}, false
+}
+
 // AllowFrom reports whether the key is permitted from callerIP with role ≥ min.
 func (s *Store) AllowFrom(plaintext string, callerIP string, min Role) bool {
 	k, ok := s.VerifyFrom(plaintext, callerIP)

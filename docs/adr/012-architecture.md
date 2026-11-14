@@ -319,7 +319,7 @@ A federation key can never satisfy a non-federation RPC (`grpcRoles` denies any 
 - **Per-key CIDR allowlists** (`allowed_ips` at mint) — refused with 403/`PERMISSION_DENIED`; recorded as `authz-refused:ip-not-allowed` in `__audit`.
 - **`-dir-mode-check`** refuses startup if any file under `-data-dir` is group/world-accessible (`0700`/`0600` required) — no key leakage via disk perms.
 - **Audit**: every admin mutation and every authz refusal, in **every** auth mode, is appended to `__audit` (bounded by `-audit-max-bytes`, default 64 MiB; past budget → writes refused with 503 until an operator rotates).
-- **Metrics (`:`/ui/`)**: viewer-key-gated by default (`/ui/` and `/metrics` return 403 without one; `-metrics-auth=false` opts out deliberately).
+- **Metrics (`:`/ui/`)**: viewer-key-gated by default (`/ui/` and `/metrics` return 401 without valid credentials; `-metrics-auth=false` opts out of /metrics deliberately). Browsers reach `/ui/` via the `POST /ui/session` cookie flow (ADR-013 Slice C), never via the JSON API's bearer-only rules.
 
 ### Layer 4 — bootstrap & secret handling
 

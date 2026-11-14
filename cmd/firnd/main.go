@@ -660,6 +660,7 @@ func main() {
 	}
 	if *adminHTML {
 		mux.Handle("/ui/", authorizer.Wrap(http.StripPrefix("/ui", adminui.Handler(b, federationStore))))
+		mux.Handle("/ui/session", authorizer.Wrap(api.NewUISessionHandler(authorizer)))
 	}
 	mux.Handle("/", authorizer.Wrap(api.NewAdminHandler(registry, b.Groups(), qm, api.WithClusterAdmin(ca), api.WithAPIKeys(keysStore), api.WithAudit(auditStore), api.WithFederation(api.NewFederationSink(federationStore, api.FederationModeReadWrite)))))
 	httpSrv := &http.Server{Addr: *httpAddr, Handler: api.LoggingMiddleware(api.HardeningMiddleware(mux)), ReadHeaderTimeout: 5 * time.Second}

@@ -31,7 +31,7 @@ ADR-001, ADR-002, ADR-007, ADR-008 all referenced a "Go SDK" (then Python). None
 
 - [ ] **Encryption at rest** (KMS or passphrase) — files are `0600`/`0700`; OS permissions only. Needs its own threat model (KMS vs local passphrase vs HSM), performance on the fsync path, federation key distribution — its own ADR.
 - [ ] **Multi-tenancy / per-topic ACLs** — ADR-011 non-goal. Would land as `topic:read|write|admin` scopes per key, not per cluster. Not scheduled.
-- [ ] **Browser-native auth for `/ui/`** — UI is read-only; browsers can't send bearer headers, so `/ui/` behind keyed auth requires a proxy with a pinned viewer key, or `-dev` locally. A session-cookie flow (exchange bearer → HttpOnly cookie) is the obvious fix; small but touches auth middleware. Candidate slice below.
+- [x] **Browser-native auth for `/ui/`** — **delivered 2026-11-13** (plan 005 slice 7). `POST /ui/session` exchanges a bearer (or existing session) for an HttpOnly, SameSite=Strict `Path=/ui/` cookie (12h TTL, `Secure` on TLS); `/ui/*` accepts bearer or cookie; `DELETE /ui/session` revokes; revoke-on-key-revoke. Proxy-with-pinned-viewer-key remains a valid alternative for multi-user deployments.
 - [ ] Automatic audit log rotation — **rejected by design** (ADR-011 D-007 shipped operator-driven rotation); recorded here only so the register is complete.
 
 ### Non-goals confirmed (never going to happen)
@@ -46,14 +46,14 @@ ADR-001, ADR-002, ADR-007, ADR-008 all referenced a "Go SDK" (then Python). None
 
 1. **Slice A — Go SDK** (`sdk/firngo`): connect (TLS or `-dev`), Produce with key routing, Fetch with partition fan-out, SyncPull (subscriber with rebalance-aware partitioning), offset commit. In-process integration tests (bufconn) + example in `docs/developer.md`. No new dependencies beyond `google.golang.org/grpc` (already in tree).
 2. **Slice B — `firn archive export`** (`firn-cli archive export --topic t --out dump.jsonl`): topic + offsets dump, no storage semantics change (read-only path via gRPC Fetch). Import deliberated separately.
-3. **Slice C — Browser session auth for `/ui/`**: `POST /ui/session` with bearer → HttpOnly cookie (SameSite=Strict, Secure); `/ui/*` accepts cookie; expiry 12h; audit on grant/revoke.
+3. **Slice C — Browser session auth for `/ui/`**: `POST /ui/session` with bearer → HttpOnly cookie (SameSite=Strict, Secure); `/ui/*` accepts cookie; expiry 12h; audit on grant/revoke. **Delivered 2026-11-13** (plan 005 slice 7).
 4. **Future slices** (each its own ADR + storage review): format version byte; S3 tier; encryption at rest; import half of archive CLI; Python/Java/.NET SDKs if demand materializes.
 
 ## Implementation notes
 
 - Slice A (`sdk/firngo`) **delivered 2026-11-13** — connect (TLS with caller-provided CA pool or system roots via `DialProduction`; plaintext only for `-dev` brokers via `DialInsecure`), produce with key routing, fetch, `SubscribePartition`, `CommitOffset`, `Health`, `TopicMetadata`, `JoinGroup`. Example in `docs/developer.md`; tests: in-process integration against a real broker, `-race` clean.
 - Slice B (`firn archive export`) — not landed yet; will be implemented with plain `Fetch` pagination, no storage semantics changed.
-- Slice C — not landed; design note: bearer exchange endpoint, short-lived HttpOnly cookie with SameSite=Strict, revoke on key revoke.
+- Slice C — **delivered 2026-11-13** (plan 005 slice 7). `POST /ui/session` (bearer or existing session) → HttpOnly, SameSite=Strict, `Path=/ui/` cookie, 12h TTL, `Secure` on TLS/`X-Forwarded-Proto: https`. `/ui/*` accepts bearer or cookie; the cookie is scoped away from the admin JSON API; per-key rate limit and `allowed_ips` apply to cookie auth; every cookie verification re-checks the key store so revoking a key kills its sessions ("revoke on key revoke"); sessions are in-memory only (restart = sign out); tokens stored SHA-256-hashed; grant/revoke audit-recorded; federation keys refused (403). See `docs/api.md` ("`POST /ui/session`") and `docs/operator.md`.
 
 ## Consequences
 

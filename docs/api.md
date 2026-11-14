@@ -182,7 +182,39 @@ curl -X DELETE localhost:9460/apikeys/ci-deploy -H 'Authorization: Bearer $ADMIN
 
 ### `GET /ui/`
 
-Read-only HTML dashboard (topics, groups, generation/leader/members). Renders behind the same auth/401 as the rest of the admin surface; meant for browsers on a trusted network.
+Read-only HTML dashboard (topics, groups, generation/leader/members). Renders behind the same auth/401 as the rest of the admin surface. Browsers can't send a bearer header, so `/ui/*` also accepts the session cookie minted by `POST /ui/session` — see below. Meant for browsers on a trusted network.
+
+### `POST /ui/session`
+
+Mint a browser session for `/ui/*`. Requires `Authorization: Bearer <key>` (a `viewer` key is enough) — or a valid existing session cookie, in which case this issues a fresh token (sliding renewal). Federation-scoped keys are refused (`403`).
+
+```sh
+curl -c jar -X POST localhost:9460/ui/session -H "Authorization: Bearer $KEY"
+# {"status":"session created","expires_unix":1794660094}
+```
+
+`201 Created` · `Set-Cookie: firn_ui_session=<token>; Path=/ui/; HttpOnly; SameSite=Strict; Max-Age=43200`. `Secure` is added when the request arrives over TLS or `X-Forwarded-Proto: https`.
+
+Properties:
+- The cookie is scoped `Path=/ui/` — it is **never** sent to the admin JSON API (`/topics`, `/groups`, … all stay bearer-only).
+- Sessions are in-memory only: a restart signs every browser out. TTL 12h.
+- Every cookie-authenticated request re-verifies the backing key, so **revoking a key invalidates its sessions immediately**.
+- The per-key rate limit and `allowed_ips` allowlist apply to cookie auth exactly as to bearer auth.
+- Grant/revoke are audit-recorded (`ui-session-granted` / `ui-session-revoked`).
+- Each `POST` mints a fresh token; previously issued tokens remain valid until revoked or expired.
+
+Errors: `401` missing/unknown key (or bootstrap mode) · `403` federation-scoped key · `400` auth disabled (`-dev`) · `429` rate limited.
+
+### `DELETE /ui/session`
+
+Revoke the session named by the cookie (idempotent — no cookie or an unknown session still returns `200`). Clears the cookie.
+
+```sh
+curl -X DELETE -b jar localhost:9460/ui/session
+# {"status":"revoked"}
+```
+
+`200 OK`. Revocation is audit-recorded.
 
 ---
 

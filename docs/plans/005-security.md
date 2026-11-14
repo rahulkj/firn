@@ -16,6 +16,7 @@ Non-negotiables: storage/quorum diffs always human-reviewed; plan changes land h
 | 4 (**delivered 2026-11-13**) | **Rate limiting everywhere**: `-anon-rate` global per-IP sliding window on unauth endpoints; per-key `allowed_ips` CIDR allowlist persisted in `__api_keys`; refusals audit-recorded in **all** modes | API review |
 | 5 (**delivered 2026-11-13 — pending storage review**) | **Storage private**: data dir `0700`/files `0600` enforced at open (warn+continue only under `-dir-mode-check=false`); `-audit-max-bytes` rotation; audit always wired; `authz-refused` always recorded | **mandatory (storage-adjacent)** |
 | 6 (**delivered 2026-11-13 — pending CI verification**) | **Distribution hardening**: SBOM (`syft`), cosign-signature of release tarballs, `grype` fail-on-critical CI gate; release notes; install/config docs updated; migration guide v0.3→v0.4 | docs review |
+| 7 (**delivered 2026-11-13**) | **Browser session auth for `/ui/`** (ADR-013 Slice C): `POST /ui/session` exchanges a bearer (or existing valid session cookie) for an HttpOnly, SameSite=Strict, `Path=/ui/` cookie (12h expiry; `Secure` on TLS/proxied-TLS requests); `/ui/*` accepts the cookie in addition to bearer; `DELETE /ui/session` revokes; sessions are in-memory (restart = sign-out) and re-verify the underlying key on every request, so revoking a key kills its sessions immediately; grant/revoke audit-recorded; federation-scoped keys cannot mint sessions | API review (auth-adjacent) |
 
 ## Slice details
 
@@ -60,6 +61,15 @@ Non-negotiables: storage/quorum diffs always human-reviewed; plan changes land h
 - Docs: `docs/install.md` "secure by default" callout; `docs/configuration.md` gains every new flag + classification table; `docs/api.md` notes 401/403/429 shapes for every endpoint; README status updated.
 - Migration note v0.3→v0.4: zero-key installs must create a key via bootstrap token or `-dev` before first start after upgrade.
 - Release notes flag mesh rolling-restart requirement.
+
+### Slice 7 — browser session auth for `/ui/`
+
+- `POST /ui/session` with `Authorization: Bearer <key>` → `201` + `Set-Cookie: firn_ui_session=<opaque token>; Path=/ui/; HttpOnly; SameSite=Strict; Max-Age=43200`. `Secure` added when the request arrives over TLS (`r.TLS != nil`) or `X-Forwarded-Proto: https` (trusted first hop, same trust model as `X-Forwarded-For`). POST with a valid existing cookie re-issues (sliding renewal).
+- `/ui/*` (pages, `style.css`, `federation`) authenticates with either the bearer header or the cookie. Cookie is scoped `Path=/ui/` so it is never sent to the admin JSON API. Per-key rate limit and `allowed_ips` allowlist apply to cookie auth exactly as to bearer auth.
+- `DELETE /ui/session` (cookie) → `200 {"status":"revoked"}`; clears the cookie. Grant and revoke are audit-recorded (`ui-session-granted` / `ui-session-revoked`).
+- Sessions live in memory only (restart = all users signed out). Every cookie verification re-checks the underlying key against `__api_keys`, so revoking a key invalidates its sessions immediately (ADR-013 design note: "revoke on key revoke"). Session tokens are stored SHA-256-hashed in the map.
+- Federation-scoped keys are refused at `POST /ui/session` (403); they exist for `FederationService` only.
+- No new dependencies; storage invariants untouched. Browser flow documented in `docs/operator.md` / `docs/api.md`.
 
 ## Open items (tracked, not blocking)
 
