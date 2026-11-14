@@ -1,6 +1,6 @@
 # Distribution & release hardening (ADR-011, slice 6)
 
-Releases of Firn ship as signed, attested artifacts — never as a `git clone` and hope. This page describes what the release pipeline guarantees and what the operator must do manually.
+Releases of Firn ship as reproducible artifacts attached to GitHub releases — never as a `git clone` and hope. This page describes what the release pipeline guarantees and what the operator must do manually.
 
 ## What CI gives you on every push to `main`
 
@@ -10,41 +10,39 @@ Releases of Firn ship as signed, attested artifacts — never as a `git clone` a
 | SBOM | `anchore/sbom-action@v0` | `dist/sbom.spdx.json` — committed to CI artifacts |
 | Vulnerability scan | `anchore/scan-action@v5` (`fail-build: true`, severity ≥ critical) | fail-fast on CVE in shipped binary dependencies |
 
+## What CI does on a tag push (`.github/workflows/release.yml`)
+
+Tagging `v*` (or running the **release** workflow manually via `workflow_dispatch` with a `tag` input, e.g. to re-cut an existing tag) produces the release automatically:
+
+1. Guards that the tag matches the `version` const in `cmd/firnd/main.go` (refuses to release a mismatched tag) and that `CHANGELOG.md` has a `## <tag>` section (that section becomes the release notes).
+2. Builds static `firnd`/`firn-cli` for `darwin-arm64`, `darwin-amd64`, `linux-amd64`, `linux-arm64` (`CGO_ENABLED=0`, `-trimpath -ldflags "-s -w"`).
+3. Packages `firn-vX.Y.Z-<target>.tar.gz` (top-level `firnd`, `firn-cli`, `README.md`, `LICENSE` — exactly the layout `docs/operator.md` tells operators to extract) and generates a `SHA256SUMS` over the tarballs.
+4. Generates `dist/sbom.spdx.json` via anchore/sbom-action.
+5. Creates the GitHub release with notes taken from `CHANGELOG.md`. Re-running on an existing release re-uploads assets with `--clobber`.
+
+The workflow has `contents: write` only (creating the release and uploading assets). It does **not** sign artifacts — see below. The `distribution` job in `ci.yml` continues to run the dependency gate (SBOM + grype critical) on every push to `main`.
+
 ## What CI does **not** do (and why)
 
-- **Cosign sign-blob**. The repo owner cuts releases by hand today; signing is deliberately deferred to that human step and documented below, not wired into CI without an explicit OIDC identity grant. Wiring `id-token: write` inside the workflow without an owner-owned trust policy is an escalation we decline to make in this slice.
+- **Cosign sign-blob** remains a human step (see below), deliberately: wiring `id-token: write` inside the workflow without an owner-owned OIDC identity / trust policy is a security posture we decline to take unilaterally. Artifacts upload unsigned; operators who need signed provenance should verify SHA256SUMS and, once signatures are produced, sign the release tarballs themselves.
 - **SLSA attestation of the build pipeline itself**. Goreleaser-style attestation would require importing goreleaser; that's an ADR of its own.
 
-## Manual release flow (owner executes at tag time)
+## Manual post-release steps (owner, optional)
 
 ```sh
-# 0) CI is green on the tag candidate; SBOM is present in artifacts.
-# 1) Build for all targets:
-for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
-  goos=${target%-*}; goarch=${target#*-}
-  CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch \
-    go build -trimpath -ldflags "-s -w" \
-    -o dist/firnd-$target ./cmd/firnd
-  CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch \
-    go build -trimpath -ldflags "-s -w" \
-    -o dist/firn-cli-$target ./cmd/firn-cli
-done
+# 1) Download the release assets:
+gh release download vX.Y.Z --repo rahulkj/firn
 
-# 2) Sign each artifact with cosign (offline key stored in operator's vault):
-for f in dist/firnd-* dist/firn-cli-*; do
+# 2) Sign each tarball with cosign (offline key stored in operator's vault):
+for f in firn-vX.Y.Z-*.tar.gz; do
   cosign sign-blob --key <path-to-key> --output-signature "$f.sig" "$f"
 done
 
-# 3) Produce tarballs + SHA256SUMS + attach SBOM:
-cd dist && for f in firnd-* firn-cli-*; do tar -czf firn-vX.Y.Z-${f#firnd-}.tar.gz "$f" ../README.md; done
-shasum -a 256 firn-v*.tar.gz >> SHA256SUMS
+# 3) Upload the signatures:
+gh release upload vX.Y.Z firn-vX.Y.Z-*.tar.gz.sig --clobber
 
-# 4) Wire attestation (optional; only if you have an OIDC exchange):
-cosign sign-blob --keyless --output-signature vX.Y.Z.sig firn-vX.Y.Z.tar.gz
-
-# 5) Create the GitHub release (requires gh CLI):
-gh release create vX.Y.Z dist/firn-vX.Y.Z-*.tar.gz dist/SHA256SUMS dist/sbom.spdx.json \
-  --notes-file dist/RELEASE_NOTES.md
+# 4) (Optional) keyless attestation, only with an OIDC identity you control:
+cosign sign-blob --keyless --output-signature vX.Y.Z.sig firn-vX.Y.Z-linux-amd64.tar.gz
 ```
 
 ## Operator's verification checklist (before upgrade in any environment)

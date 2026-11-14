@@ -1,0 +1,113 @@
+name: release
+
+# Cuts the GitHub release for a `v*` tag: builds per-target static binaries,
+# packages them (top-level firnd + firn-cli per tarball), attaches SHA256SUMS
+# and a SPDX SBOM, and publishes notes taken from CHANGELOG.md's matching
+# section. Idempotent: re-running on an existing release re-uploads assets
+# with --clobber instead of failing.
+#
+# Notes are extracted with the tag as literal text (no eval). Signing with
+# cosign stays manual, by design — see docs/distribution.md.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.5.0). Defaults to the ref this run was launched from.'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: write # create the release and upload assets; nothing else
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+          fetch-depth: 1
+
+      - name: Guard against releasing a mismatched tag
+        # Tag v0.5.0 must only be built when the tree claims version 0.5.0;
+        # otherwise archivists get stale binaries under a fresh tag.
+        run: |
+          set -euo pipefail
+          want="${TAG#v}"
+          have=$(sed -n -E 's/^const version = "([^"]+)".*/\1/p' cmd/firnd/main.go)
+          if [ "$want" != "$have" ]; then
+            echo "tag $TAG implies version $want, but cmd/firnd/main.go declares $have — refusing to release" >&2
+            exit 1
+          fi
+          echo "tag $TAG matches version const $have"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.27'
+          cache: true
+
+      - name: Build per-target binaries
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for target in darwin-arm64 darwin-amd64 linux-amd64 linux-arm64; do
+            goos=${target%-*}; goarch=${target#*-}
+            echo "== $target"
+            mkdir -p "dist/payload-$target"
+            CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch \
+              go build -trimpath -ldflags "-s -w" -o "dist/payload-$target/firnd" ./cmd/firnd
+            CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch \
+              go build -trimpath -ldflags "-s -w" -o "dist/payload-$target/firn-cli" ./cmd/firn-cli
+            cp README.md LICENSE "dist/payload-$target/"
+            tar -C "dist/payload-$target" -czf "dist/firn-$TAG-$target.tar.gz" firnd firn-cli README.md LICENSE
+          done
+
+      - name: Generate SHA256SUMS
+        run: (cd dist && shasum -a 256 firn-"$TAG"-*.tar.gz > SHA256SUMS && cat SHA256SUMS)
+
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          path: ./dist
+          format: spdx-json
+          artifact-name: sbom
+          output-file: dist/sbom.spdx.json
+          upload-artifact: true
+
+      - name: Extract release notes from CHANGELOG.md
+        run: |
+          set -euo pipefail
+          # Print the "## vX.Y.Z ..." section up to (not including) the next
+          # "## " header. Literal match, no eval.
+          awk -v ver="$TAG" '$0 ~ "^## " ver " " {flag=1; next} /^## /{flag=0} flag' CHANGELOG.md \
+            > dist/RELEASE_NOTES.md
+          if ! [ -s dist/RELEASE_NOTES.md ]; then
+            echo "no CHANGELOG.md section found for $TAG — refusing to release" >&2
+            exit 1
+          fi
+          wc -l dist/RELEASE_NOTES.md
+
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release $TAG exists — re-uploading assets (--clobber)"
+            gh release upload "$TAG" --clobber \
+              dist/firn-"$TAG"-*.tar.gz dist/SHA256SUMS dist/sbom.spdx.json
+          else
+            gh release create "$TAG" --title "$TAG" --notes-file dist/RELEASE_NOTES.md \
+              dist/firn-"$TAG"-*.tar.gz dist/SHA256SUMS dist/sbom.spdx.json
+          fi
