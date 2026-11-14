@@ -60,11 +60,11 @@ Measured on Apple M3 Pro, darwin/arm64, local NVMe (`go test -bench=. -benchmem 
 
 | Operation | ns/op | Rate | Notes |
 |---|---|---|---|
-| Produce (durable, fsync per append) | ~2.0–2.8 ms | **~350–500 msg/s per partition range** | includes full fsync — this is the honest number, not in-memory |
+| Produce (durable, fsync per append) | ~2.0–2.8 ms | **~350–500 msg/s** (single broker, any/all partitions) | includes full fsync — this is the honest number, not in-memory |
 | Produce (in-memory `MemLog`, dev only) | ~250 ns | ~4M msg/s | slice-1 path only; never production |
-| Fetch (128-record batch, durable log) | ~133 μs | ~960k records/s read | sequential scan from offset |
+| Fetch (128-record batch, durable log) | ~133–144 μs | ~900k records/s read | random or sequential reads; fetch is not a bottleneck |
 
-These are per-partition-range numbers — the fsync cost does not amortize across partitions, only across a single partition's append path. Horizontal concurrency scales with partitions and nodes (lease-parallelism), not with tuning.
+**What these numbers do and don't scale.** Fetch rate (above) is roughly linear per responding partition and reads/cachi can parallelize across partitions and nodes. Produce rate does **not**: the append path takes a single mutex, every partition pays the same fsync, and on a cluster each partition has exactly one lease holder. More partitions or more nodes do **not** raise durable produce TPS — the fsync is the wall (and in a cluster, the write lease is the one writer at a time). To raise aggregate produce TPS you shard into multiple topics/clusters upstream, or accept the fsync-window storage policy (not shipped).
 
 ### Partition budget — how many partitions per node?
 
@@ -92,14 +92,14 @@ Measured on the same machine (broker created fresh, one record produced per part
 
 | Workload | CPU / RAM | Disk | Expected |
 |---|---|---|---|
-| Dev/test (single node) | 1 vCPU / 1 GiB | 5–20 GiB | full feature set; ~350–500 msg/s per partition |
+| Dev/test (single node) | 1 vCPU / 1 GiB | 5–20 GiB | full feature set; ~350–500 msg/s aggregate produce (fsync-bound) |
 | Small prod (single node, low rate) | 2 vCPU / 2–4 GiB | ≥ 2× retention window (e.g. 100 GiB) | correct, not fast; partitions 1–4 |
-| Medium prod (3-node cluster) | 4 vCPU / 8 GiB per node | ≥ 2× retention × replication factor | failover; ~350–500 msg/s per partition range; concurrency scales with partitions × nodes |
-| Large (many partitions/topics) | 8+ vCPU / 16–32 GiB per node, NVMe | sized by retention math | parallelism-bound; watch `firn_fsync_seconds` |
+| Medium prod (3-node cluster) | 4 vCPU / 8 GiB per node | ≥ 2× retention × replication factor | failover; ~350–500 msg/s per partition range; aggregate produce TPS equals single-node — cluster buys availability, not throughput |
+| Large (many partitions/topics) | 8+ vCPU / 16–32 GiB per node, NVMe | sized by retention math | mostly fetch-bound reads; watch `firn_fsync_seconds`, keep partition counts tight |
 
-**Retention math.** `firn` deletes *whole segments* only — it never rewrites offsets — so sizing is: bytes that must stay live = `target_retention_window` × `produce rate ÷ compression`. Example: 2 MiB/s of writes, 7-day retention ⇒ ~1.2 TiB per partition across the cluster (×3 replicas ⇒ plan 3.6 TiB raw). Set `-retention-ttl 168h` and/or `-retention-max-bytes 137438953472` (128 GiB). Use `-segment-bytes` smaller than your max retention deletion unit (default 64 MiB is fine).
+**Retention math.** `firn` deletes *whole segments* only — it never rewrites offsets — so sizing is: bytes that must stay live = `target_retention_window` × produce rate. Example: 2 MiB/s of writes with 7-day retention ⇒ ~1.2 TiB live (firn does not compress — there is no compression option). With ×3 replication across the cluster ⇒ plan 3.6 TiB raw. Set `-retention-ttl 168h` and/or `-retention-max-bytes 137438953472` (128 GiB). Use `-segment-bytes` small enough that whole-segment deletes are granular enough for your retention window (default 64 MiB is fine for most; go lower if you want finer time-based deletion granularity).
 
-**CPU is mostly fsync + CRC.** Produce throughput is ~350–500 msg/s per partition range with fsync-per-append (ADR-003; measured ~2 ms/op). Batching/throughput beyond that requires a different storage policy — not available — so scale by partitions and nodes, not by message rate tuning.
+**CPU is mostly fsync + CRC.** Produce throughput is ~350–500 msg/s broker-wide on a durable log with fsync-per-append (ADR-003; measured ~2 ms/op). Sharding by partition **does not** increase produce throughput — it increases ordering scope and replication parallelism. Batching beyond that requires a different storage policy (flush-window group commit) which is not shipped — scale by choosing targets and acceptance windows accordingly.
 
 **Memory.** In-memory index is proportional to record count, not bytes; partition budget (above) dominates the practical ceiling long before RAM.
 
