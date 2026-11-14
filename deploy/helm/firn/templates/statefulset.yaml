@@ -35,7 +35,7 @@ spec:
         - name: mesh-ca
           image: alpine:3.21
           command: ["/bin/sh", "-c",
-            "set -e; mkdir -p /data/mesh-ca; cp /secret/ca.crt /secret/ca.key /data/mesh-ca/; chmod 700 /data; chmod 600 /data/mesh-ca/ca.key; chown -R 10001:10001 /data"]
+            "set -e; mkdir -p /data/mesh-ca; cp /secret/ca.crt /secret/ca.key /data/mesh-ca/; chmod -R go-rwx /data; chown -R 10001:10001 /data"]
           volumeMounts:
             - name: data
               mountPath: /data
@@ -48,7 +48,7 @@ spec:
         # fail firnd's startup dir-mode-check (700 required)
         - name: permissions
           image: alpine:3.21
-          command: ["/bin/sh", "-c", "set -e; chown -R 10001:10001 /data; chmod 700 /data"]
+          command: ["/bin/sh", "-c", "set -e; chown -R 10001:10001 /data; chmod -R go-rwx /data"]
           volumeMounts:
             - name: data
               mountPath: /data

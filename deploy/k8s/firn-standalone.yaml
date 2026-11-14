@@ -62,7 +62,7 @@ spec:
         # fail firnd's startup dir-mode-check (700 required)
         - name: permissions
           image: alpine:3.21
-          command: ["/bin/sh", "-c", "set -e; chown -R 10001:10001 /data; chmod 700 /data"]
+          command: ["/bin/sh", "-c", "set -e; chown -R 10001:10001 /data; chmod -R go-rwx /data"]
           volumeMounts:
             - name: data
               mountPath: /data
