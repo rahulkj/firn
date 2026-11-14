@@ -14,6 +14,9 @@ Status: **v0.5.0 — Firn, the durable event broker (secure by default, MIT; clu
 - [`docs/sre.md`](docs/sre.md) — observability: metrics catalog, Prometheus scrape, alerting rules, logs, dashboards, on-call workflows
 - [`docs/comparison.md`](docs/comparison.md) — Firn vs Kafka/Redpanda/Pulsar/RabbitMQ/NATS/Redis/Kinesis/Pub/Sub/SQS: feature matrix, category scorecard, where Firn wins and where it loses
 - [`docs/personas.md`](docs/personas.md) — who does what: operator, SRE, developer, security auditor, incident commander, release manager
+- [`docs/federation-cutover.md`](docs/federation-cutover.md) — passive → active cutover runbook
+- [`docs/distribution.md`](docs/distribution.md) — release tarball targets, SBOM, grype, manual cosign sign steps
+- [`docs/migration-v0.3-to-v0.4.md`](docs/migration-v0.3-to-v0.4.md) — upgrade path (fail-closed start, ports 9460/9461/9471)
 
 ## Quick start
 

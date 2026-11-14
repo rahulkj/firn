@@ -98,15 +98,13 @@ No record ever waits on consensus. No consensus path reads records. Queue mode r
 | Block CRC mismatch on a replica | block re-fetched from content hash | served from any good copy | corrupt bytes never acknowledged |
 | Quorum + all replicas of a block lost | **unavailable for that block range** | unavailable for that range | content-addressed restore from any surviving copy/tier |
 
-## Security — API keys + RBAC UI
+## Security — mesh mTLS + public-internet keys & rBAC (as shipped, v0.5.0)
 
-Unchanged in shape, simplified by symmetry:
+As shipped (ADR-011): mesh listener is mTLS-only — `ReplicaService`/`QuorumService` admitting any CA-signed peer; the federation surface additionally requires a federation-scoped API key (verified on every RPC). Public listener: opaque SHA-256-hashed API keys (`viewer`/`operator`/`admin`/`federation`), per-key token-bucket (`-rate`), per-IP anonymous cap, `-metrics-auth` on `/metrics`, hardening headers (CSP/XFO/Referrer-Policy/no-store), audited refusals + mutations into a bounded `__audit` block-logged topic (replicated), `allowed_ips` CIDR per key, `/ui/` session cookie (`HttpOnly` `SameSite=Strict`, 12h).
 
-- Every broker enforces **mTLS** internally and **TLS** for clients; API-key authN (opaque keys, hashed in the metadata log, revocable within the refresh interval) enforced per request at the broker edge — there is no leader to add to auth checks, which makes authorization uniform and cacheable.
-- Roles → permission set; permissions resource-scoped (`topic:read`, `topic:write`, `queue:ack`, `dlq:manage`, `group:reset`, `admin:cluster`); group/topic tools in `firn-cli` and the UI carry the same permissions.
-- **Admin UI** ships in the broker binary; server-rendered HTML (stdlib `html/template`) hitting the same JSON admin API the CLI uses. Roles: `viewer`, `operator`, `admin`. Capabilities: cluster/blocks overview (HWM, seal rate, lease state), topic browser, consumer groups (lag, offsets), queue/DLQ inspector + redrive, key lifecycle, audit log. No new dependencies.
-- Audit: append-only internal `__audit` block-logged topic, replicated, ≥ 90-day retention default.
-- Rate limiting per API key at the edge; circuit breaker to protect data plane.
+- **Admin UI** ships in the broker binary; server-rendered HTML (stdlib `html/template`) over the same admin API. Pages (as shipped, v0.5.0): `/` (topics, consumer groups with generation/leader/members, federation summary), `/federation` (peers + import cursors). `POST /ui/session` issues the session cookie (12h, sliding renew). No blocks overview, no DLQ inspector, no key-lifecycle page — those remain unbuilt (aspirational sketch).
+- `/ui/` is read-only by design; all mutations flow through the admin API or `firn-cli`.
+- Audit lands in `__audit` (bounded `-audit-max-bytes`, fail-closed at budget exhaustion).
 
 ## Extensibility — what this geometry makes cheap
 

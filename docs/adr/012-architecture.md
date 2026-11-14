@@ -138,9 +138,9 @@ Grouped by plane. Every path is relative to the repository root. `ADR-NNN` links
 
 | Component | Path | What it does | Invariants / notes |
 |---|---|---|---|
-| E2E tests | `test/e2e_test.go` | Boot real daemons; multi-cluster and restart flows. | Runs in CI with `-race`. |
+| E2E tests | `test/e2e_test.go` | In-process broker fixture (`newTestCluster`); restart/resume covered by `cmd/firnd` reopen fixtures and internal restart tests. | `ci.yml` runs `go vet` → `go test ./... -count=1` (no `-race`) → `go build` → `golangci-lint` v2.15.0. |
 | Benchmarks | `bench/` | Produce/fetch baselines with `-benchmem`. | Used for perf regressions, not gates. |
-| Build & dist | `.github/workflows/`, `docs/distribution.md` | Multi-arch tarballs, SBOM (syft), grype `fail-on-critical`, cosign sign-blob (manual step), MIT license. | No release artifacts without manual sign-off. |
+| Build & dist | `.github/workflows/`, `docs/distribution.md` | linux/amd64 release build in CI; SBOM (syft); grype `fail-on-critical`; cosign sign-blob manual; darwin-arm64/amd64 and linux-arm64 built manually at tag time | No release artifacts without manual sign-off. |
 
 ## The interactions that matter
 
@@ -571,7 +571,7 @@ Where to find the operator-facing companions to each plane:
 | Configuration reference | `docs/configuration.md` | Every flag with defaults; security model (fail-closed, bootstrap modes); internal-topic paths |
 | API reference | `docs/api.md` | All endpoints, authn/authz rules, error codes, federation surface, `firn-cli` ↔ API map |
 | Federation cutover | `docs/federation-cutover.md` | Operator procedure: passive sink → writable (active-active flip or standalone decommission) |
-| Distribution / release | `docs/distribution.md` | Multi-arch tarballs, SBOM (syft), grype `fail-on-critical`, cosign sign-blob (manual) |
+| Distribution / release | `docs/distribution.md` | linux/amd64 release build in CI; SBOM; grype gate; cosign sign-blob (manual) |
 | SRE / observability | `docs/sre.md` | Metrics catalog, alert rules, DR drill, runbook |
 | Platform operator | `docs/operator.md` | Install, network segments, sizing, backup, lifecycle |
 | Developer / apps | `docs/developer.md` | Publish/consume from Python/Java/.NET with examples |

@@ -95,7 +95,7 @@ Measured on Apple M3 Pro, darwin/arm64, local NVMe (`go test -bench=. -benchmem 
 | Produce (in-memory `MemLog`, dev only) | ~250 ns | ~4M msg/s | slice-1 path only; never production |
 | Fetch (128-record batch, durable log) | ~133–144 μs | ~900k records/s read | random or sequential reads; fetch is not a bottleneck |
 
-**What these numbers do and don't scale.** Fetch rate (above) is roughly linear per responding partition and reads/cachi can parallelize across partitions and nodes. Produce rate does **not**: the append path takes a single mutex, every partition pays the same fsync, and on a cluster each partition has exactly one lease holder. More partitions or more nodes do **not** raise durable produce TPS — the fsync is the wall (and in a cluster, the write lease is the one writer at a time). To raise aggregate produce TPS you shard into multiple topics/clusters upstream, or accept the fsync-window storage policy (not shipped).
+**What these numbers do and don't scale.** Fetch rate (above) is roughly linear per responding partition and reads/cached can parallelize across partitions and nodes. Produce rate does **not**: the append path takes a single mutex, every partition pays the same fsync, and on a cluster each partition has exactly one lease holder. More partitions or more nodes do **not** raise durable produce TPS — the fsync is the wall (and in a cluster, the write lease is the one writer at a time). To raise aggregate produce TPS shard upstream, or opt in to the group commit / flush-window storage policy (ADR-014; `-flush-window=2ms`, measured ~186k msg/s, off by default pending storage review — see `docs/plans/006-throughput.md`).
 
 ### Partition budget — how many partitions per node?
 
@@ -130,7 +130,7 @@ Measured on the same machine (broker created fresh, one record produced per part
 
 **Retention math.** `firn` deletes *whole segments* only — it never rewrites offsets — so sizing is: bytes that must stay live = `target_retention_window` × produce rate. Example: 2 MiB/s of writes with 7-day retention ⇒ ~1.2 TiB live (firn does not compress — there is no compression option). With ×3 replication across the cluster ⇒ plan 3.6 TiB raw. Set `-retention-ttl 168h` and/or `-retention-max-bytes 137438953472` (128 GiB). Use `-segment-bytes` small enough that whole-segment deletes are granular enough for your retention window (default 64 MiB is fine for most; go lower if you want finer time-based deletion granularity).
 
-**CPU is mostly fsync + CRC.** Produce throughput is ~350–500 msg/s broker-wide on a durable log with fsync-per-append (ADR-003; measured ~2 ms/op). Sharding by partition **does not** increase produce throughput — it increases ordering scope and replication parallelism. Batching beyond that requires a different storage policy (flush-window group commit) which is not shipped — scale by choosing targets and acceptance windows accordingly.
+**CPU is mostly fsync + CRC.** Produce throughput is ~350–500 msg/s broker-wide on a durable log with fsync-per-append (ADR-003; measured ~2 ms/op). Sharding by partition **does not** increase produce throughput — it increases ordering scope and replication parallelism. Batching beyond that requires the flush-window group commit (ADR-014, `-flush-window=2ms` measured ~186k msg/s vs ~370 default; off by default, storage review pending).
 
 **Memory.** In-memory index is proportional to record count, not bytes; partition budget (above) dominates the practical ceiling long before RAM.
 

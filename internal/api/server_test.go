@@ -497,3 +497,96 @@ func TestAckBatchGRPC(t *testing.T) {
 		t.Fatal("AckBatch on a missing topic must fail")
 	}
 }
+
+func TestGetMetadataReturnsTopicShape(t *testing.T) {
+	cli, _, reg := newTestCluster(t)
+	if err := reg.Create("events", 3); err != nil {
+		t.Fatalf("create topic: %v", err)
+	}
+
+	resp, err := cli.GetMetadata(context.Background(), &firnpb.GetMetadataRequest{})
+	if err != nil {
+		t.Fatalf("get metadata: %v", err)
+	}
+	if len(resp.Brokers) == 0 {
+		t.Fatal("expected at least one broker in metadata")
+	}
+	var got *firnpb.TopicMetadata
+	for _, tp := range resp.Topics {
+		if tp.Name == "events" {
+			got = tp
+		}
+	}
+	if got == nil {
+		t.Fatal("metadata missing 'events' topic")
+	}
+	if got.Partitions != 3 {
+		t.Fatalf("partition count = %d, want 3", got.Partitions)
+	}
+	if len(got.PartitionsMeta) != 3 {
+		t.Fatalf("partition_meta = %d entries, want 3", len(got.PartitionsMeta))
+	}
+	for i, pm := range got.PartitionsMeta {
+		if pm.PartitionId != int32(i) {
+			t.Fatalf("partition %d: id = %d", i, pm.PartitionId)
+		}
+	}
+
+	// Empty request returns every topic.
+	if err := reg.Create("other", 1); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	resp2, err := cli.GetMetadata(context.Background(), &firnpb.GetMetadataRequest{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]bool{}
+	for _, tp := range resp2.Topics {
+		names[tp.Name] = true
+	}
+	if !names["events"] || !names["other"] {
+		t.Fatalf("expected both topics in metadata, got %v", names)
+	}
+}
+
+func TestRoutedBrokerServiceRoundTrip(t *testing.T) {
+	lis := bufconn.Listen(1024 * 1024)
+	srv := grpc.NewServer()
+	reg := meta.NewRegistry()
+	if err := reg.Create("events", 2); err != nil {
+		t.Fatal(err)
+	}
+	b, err := broker.NewWithDir(reg, t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = b.Close() }()
+	firnpb.RegisterRoutedBrokerServiceServer(srv, NewRoutedBrokerServer(b))
+	go func() { _ = srv.Serve(lis) }()
+	defer srv.Stop()
+
+	conn, err := grpc.NewClient("passthrough:///bufnet",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) { return lis.Dial() }),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	cli := firnpb.NewRoutedBrokerServiceClient(conn)
+	resp, err := cli.RoutedProduce(context.Background(), &firnpb.RoutedProduceRequest{Topic: "events", Key: []byte("k"), Value: []byte("vrouted")})
+	if err != nil {
+		t.Fatalf("routed produce: %v", err)
+	}
+	if resp.Partition < 0 || resp.Partition >= 2 {
+		t.Fatalf("partition out of range: %d", resp.Partition)
+	}
+	recs, err := b.Fetch(context.Background(), "events", resp.Partition, resp.Offset, 1)
+	if err != nil {
+		t.Fatalf("fetch after routed produce: %v", err)
+	}
+	if len(recs) != 1 || string(recs[0].Value) != "vrouted" {
+		t.Fatalf("routed record not readable: %v", recs)
+	}
+}
