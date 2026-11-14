@@ -131,12 +131,14 @@ Storage semantics are unchanged for single-node default (`-flush-window=0`).
 
 Security posture during this release: every mutation path continues to audit-record in every mode; `ProduceBatch`/`AckBatch` are metered as one RPC per call (not per record — their value *is* the batching); no new dependencies; SBOM/cosign/grype unchanged; `-flush-window` defaults to `0` (v0.4.0 behavior for anyone upgrading).
 
-## Unreleased — installation & packaging (2026-11-14)
+## v0.5.2 — 2026-11-14 — OCI image + service installers (no broker behavior change)
 
-- Release pipeline: tag pushes now also build and publish a **multi-arch OCI image** (`ghcr.io/rahulkj/firn:vX.Y.Z` + `:latest`, linux/amd64+arm64, uid 10001, `/healthz` HEALTHCHECK) — see `packaging/Dockerfile` and the image steps in `.github/workflows/release.yml`.
-- New `packaging/install.sh` — interactive installer for Linux (systemd) and macOS (launchd): detects the OS, installs release binaries with **SHA256SUMS verification**, creates the `firn` system user and a `0700` data dir, prompts for listeners, TLS, single-node vs **3-node cluster** (node-id, peer list including self, shared mesh CA generation or pre-provisioned bundle), writes `/etc/firn/firnd.env`, installs and starts the service, and prints the bootstrap-token → first-key → `/healthz` flow. `--unattended` accepts defaults; never enables `-dev`.
-- New `deploy/` — plain Kubernetes manifests (`deploy/k8s/firn-standalone.yaml`, `firn-cluster.yaml` — fixed 3-voter membership, mesh-CA copy initContainer, PDB `minAvailable: 2`, schema-validated), a Helm chart (`deploy/helm/firn`, lints and renders: standalone or GA cluster with a `required` guard for `meshCA.existingSecret`), OCI Compose (`deploy/compose/compose.yaml` — docker/podman, standalone default + `--profile cluster`), and a rootless Podman Quadlet (`firnd.container`). See `docs/adr/015-installation.md`.
-- migration: no broker behavior change; new artifacts only.
+**No broker behavior change** — the Go sources are identical to v0.5.1 except the version constant. This tag exists so the release pipeline ships inside the tagged tree and the multi-arch image can be pushed from it.
+
+- OCI image published on every tag push: `ghcr.io/rahulkj/firn:v0.5.2` (+ `:latest`), multi-arch linux/amd64+arm64, uid 10001, `HEALTHCHECK` on `/healthz` — see `packaging/Dockerfile`.
+- `packaging/install.sh` — interactive installer for Linux (systemd) and macOS (launchd); SHA256SUMS-verified release download; single-node vs 3-node cluster prompts (node-id, peers incl. self, mesh CA generate-or-use-existing); `--unattended` for defaults. Never enables `-dev`.
+- `deploy/` — plain Kubernetes manifests, Helm chart, OCI Compose (+ rootless Podman Quadlet). See `docs/adr/015-installation.md`.
+- migration: v0.5.1 → v0.5.2 is a no-op for brokers.
 
 ## v0.5.1 — 2026-11-14 — release pipeline: SLSA build provenance, tag-push releases
 

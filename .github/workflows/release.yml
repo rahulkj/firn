@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g. v0.5.1). Defaults to the ref this run was launched from.'
+        description: 'Tag to release (e.g. v0.5.2). Defaults to the ref this run was launched from.'
         required: false
         type: string
         default: ''

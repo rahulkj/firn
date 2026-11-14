@@ -102,7 +102,7 @@ spec:
               readOnly: true
       containers:
         - name: firnd
-          image: ghcr.io/rahulkj/firn:v0.5.1
+          image: ghcr.io/rahulkj/firn:v0.5.2
           imagePullPolicy: IfNotPresent
           command: ["/bin/sh", "-c"]
           args:

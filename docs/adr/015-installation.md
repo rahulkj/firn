@@ -164,7 +164,7 @@ divergence between "the released tarball" and "the released image".
 
 - `shellcheck -S warning packaging/install.sh` — clean.
 - Image built from a clean checkout and run: `/healthz` →
-  `{"status":"ok","version":"0.5.1"}` as uid 10001, bootstrap-locked as
+  `{"status":"ok","version":"0.5.2"}` as uid 10001, bootstrap-locked as
   expected.
 - `docker compose -f deploy/compose/compose.yaml config` — valid; runtime
   path (image, ports, volumes) identical to the verified `docker run` flow.

@@ -10,7 +10,7 @@
 
 services:
   firnd:
-    image: ghcr.io/rahulkj/firn:v0.5.1
+    image: ghcr.io/rahulkj/firn:v0.5.2
     # local source build instead:
     # build: { context: ../.., dockerfile: packaging/Dockerfile }
     container_name: firnd
@@ -30,7 +30,7 @@ services:
   # --- 3-node cluster profile (optional) -----------------------------------
   firn-n1: &firn-node
     profiles: ["cluster"]
-    image: ghcr.io/rahulkj/firn:v0.5.1
+    image: ghcr.io/rahulkj/firn:v0.5.2
     container_name: firn-n1
     user: "10001:10001"
     restart: unless-stopped

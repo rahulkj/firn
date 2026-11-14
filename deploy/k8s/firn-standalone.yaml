@@ -59,7 +59,7 @@ spec:
         fsGroup: 10001 # match the image's firn (uid 10001)
       containers:
         - name: firnd
-          image: ghcr.io/rahulkj/firn:v0.5.1
+          image: ghcr.io/rahulkj/firn:v0.5.2
           imagePullPolicy: IfNotPresent
           args: ["-data-dir", "/var/lib/firn"]
           ports:
