@@ -231,6 +231,29 @@ message AckBatchResponse {
   int32 unknown = 2;  // ids that were not pending (unknown/already settled)
 }
 
+// RoutedBrokerService is served ONLY on the mesh listener (mTLS) — like
+// ReplicaService/QuorumService/FederationService. It carries broker-to-
+// broker produce traffic for internal plumbing (the DLQ diverter today)
+// when a record must land on the node holding a partition lease. Clients
+// never get a mesh cert; the public listener does not register this
+// service.
+service RoutedBrokerService {
+  rpc RoutedProduce(RoutedProduceRequest) returns (RoutedProduceResponse);
+}
+
+message RoutedProduceRequest {
+  string topic = 1;
+  // partition is advisory; the handler produces to the partition the key
+  // maps to, exactly as a client Produce call would.
+  bytes key = 2;
+  bytes value = 3;
+}
+
+message RoutedProduceResponse {
+  int32 partition = 1;
+  int64 offset = 2;
+}
+
 // --- ADR-007 phase C: internal broker-broker replication (not for clients) ---
 
 service QuorumService {

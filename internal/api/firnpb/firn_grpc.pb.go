@@ -619,6 +619,122 @@ var FirnService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	RoutedBrokerService_RoutedProduce_FullMethodName = "/firn.v1.RoutedBrokerService/RoutedProduce"
+)
+
+// RoutedBrokerServiceClient is the client API for RoutedBrokerService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// RoutedBrokerService is served ONLY on the mesh listener (mTLS) — like
+// ReplicaService/QuorumService/FederationService. It carries broker-to-
+// broker produce traffic for internal plumbing (the DLQ diverter today)
+// when a record must land on the node holding a partition lease. Clients
+// never get a mesh cert; the public listener does not register this
+// service.
+type RoutedBrokerServiceClient interface {
+	RoutedProduce(ctx context.Context, in *RoutedProduceRequest, opts ...grpc.CallOption) (*RoutedProduceResponse, error)
+}
+
+type routedBrokerServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewRoutedBrokerServiceClient(cc grpc.ClientConnInterface) RoutedBrokerServiceClient {
+	return &routedBrokerServiceClient{cc}
+}
+
+func (c *routedBrokerServiceClient) RoutedProduce(ctx context.Context, in *RoutedProduceRequest, opts ...grpc.CallOption) (*RoutedProduceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RoutedProduceResponse)
+	err := c.cc.Invoke(ctx, RoutedBrokerService_RoutedProduce_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// RoutedBrokerServiceServer is the server API for RoutedBrokerService service.
+// All implementations must embed UnimplementedRoutedBrokerServiceServer
+// for forward compatibility.
+//
+// RoutedBrokerService is served ONLY on the mesh listener (mTLS) — like
+// ReplicaService/QuorumService/FederationService. It carries broker-to-
+// broker produce traffic for internal plumbing (the DLQ diverter today)
+// when a record must land on the node holding a partition lease. Clients
+// never get a mesh cert; the public listener does not register this
+// service.
+type RoutedBrokerServiceServer interface {
+	RoutedProduce(context.Context, *RoutedProduceRequest) (*RoutedProduceResponse, error)
+	mustEmbedUnimplementedRoutedBrokerServiceServer()
+}
+
+// UnimplementedRoutedBrokerServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedRoutedBrokerServiceServer struct{}
+
+func (UnimplementedRoutedBrokerServiceServer) RoutedProduce(context.Context, *RoutedProduceRequest) (*RoutedProduceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RoutedProduce not implemented")
+}
+func (UnimplementedRoutedBrokerServiceServer) mustEmbedUnimplementedRoutedBrokerServiceServer() {}
+func (UnimplementedRoutedBrokerServiceServer) testEmbeddedByValue()                             {}
+
+// UnsafeRoutedBrokerServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to RoutedBrokerServiceServer will
+// result in compilation errors.
+type UnsafeRoutedBrokerServiceServer interface {
+	mustEmbedUnimplementedRoutedBrokerServiceServer()
+}
+
+func RegisterRoutedBrokerServiceServer(s grpc.ServiceRegistrar, srv RoutedBrokerServiceServer) {
+	// If the following call panics, it indicates UnimplementedRoutedBrokerServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&RoutedBrokerService_ServiceDesc, srv)
+}
+
+func _RoutedBrokerService_RoutedProduce_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RoutedProduceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RoutedBrokerServiceServer).RoutedProduce(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RoutedBrokerService_RoutedProduce_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RoutedBrokerServiceServer).RoutedProduce(ctx, req.(*RoutedProduceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// RoutedBrokerService_ServiceDesc is the grpc.ServiceDesc for RoutedBrokerService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var RoutedBrokerService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "firn.v1.RoutedBrokerService",
+	HandlerType: (*RoutedBrokerServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "RoutedProduce",
+			Handler:    _RoutedBrokerService_RoutedProduce_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "firn.proto",
+}
+
+const (
 	QuorumService_QuorumMessage_FullMethodName = "/firn.v1.QuorumService/QuorumMessage"
 )
 

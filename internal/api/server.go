@@ -376,7 +376,7 @@ func toStatus(err error) error {
 		return status.Error(codes.NotFound, err.Error())
 	case errors.Is(err, broker.ErrPartitionOutOfRange), errors.Is(err, broker.ErrInvalidRequest):
 		return status.Error(codes.InvalidArgument, err.Error())
-	case errors.Is(err, firnlog.ErrOffsetOutOfRange), errors.Is(err, fence.ErrFenced), errors.Is(err, broker.ErrFederatedPassive):
+	case errors.Is(err, firnlog.ErrOffsetOutOfRange), errors.Is(err, fence.ErrFenced), errors.Is(err, broker.ErrFederatedPassive), errors.Is(err, broker.ErrNotLeaseHolder):
 		return status.Error(codes.FailedPrecondition, err.Error())
 	default:
 		log.Printf("firn/api: internal error: %v", err)

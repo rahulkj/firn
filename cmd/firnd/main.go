@@ -404,6 +404,7 @@ func main() {
 	slogEnv("mesh: mTLS enabled", "addr", *meshAddr, "ca_fingerprint", meshBundle.Fingerprint())
 	meshServer := grpc.NewServer(grpc.Creds(credentials.NewTLS(meshBundle.ServerTLSConfig())), grpc.MaxRecvMsgSize(80<<20))
 	firnpb.RegisterReplicaServiceServer(meshServer, api.NewReplicaServer(b))
+	firnpb.RegisterRoutedBrokerServiceServer(meshServer, api.NewRoutedBrokerServer(b))
 
 	// Cluster bootstrap (ADR-007 phases B–D): embedded TCP quorum +
 	// replication agent + write-lease advisor + replica service registration.
@@ -416,13 +417,8 @@ func main() {
 			names = append(names, id)
 		}
 		sort.Strings(names)
-		peerAddrs := []string{}
-		for id, a := range peers {
-			if id != selfID {
-				peerAddrs = append(peerAddrs, a)
-			}
-		}
-		sort.Strings(peerAddrs)
+		// peerAddrs was the client gRPC list for the replication agent;
+		// the mesh-translated list (meshPeerList, built below) replaced it.
 
 		topicCreateHook := func(e quorum.Entry) {
 			if e.Type != quorum.EntryTopicCreate {
@@ -458,9 +454,61 @@ func main() {
 		firnpb.RegisterQuorumServiceServer(meshServer, api.NewQuorumServer(qnode))
 		qnode.Start()
 
+		// Wire the DLQ diverter's route to the partition lease holder:
+		// when the local routed produce fails (this node doesn't hold the
+		// jobs.dlq partition's lease), dial the holder's mesh listener
+		// (mTLS) and deliver the record there. Otherwise poison messages
+		// had no path to the DLQ on a multi-node cluster and were silently
+		// dropped. No-op outside cluster mode (qm route stays nil).
+		qm.SetRouter(func(ctx context.Context, topic string, partition int32, key, value []byte) (int32, int64, error) {
+			lease, ok := qnode.Lease(topic, partition)
+			if !ok {
+				return 0, 0, fmt.Errorf("quorum has no lease for %s[%d]", topic, partition)
+			}
+			peerAddr, ok := peers[lease.Holder]
+			if !ok {
+				return 0, 0, fmt.Errorf("mesh: no address for holder %q of %s[%d]", lease.Holder, topic, partition)
+			}
+			holderMesh := meshPeerAddr(peerAddr)
+			conn, err := grpc.NewClient(holderMesh, grpc.WithTransportCredentials(credentials.NewTLS(meshBundle.ClientTLSConfig(lease.Holder))))
+			if err != nil {
+				return 0, 0, fmt.Errorf("mesh dial %s (holder %s): %w", holderMesh, lease.Holder, err)
+			}
+			defer func() { _ = conn.Close() }()
+			rctx, rcancel := context.WithTimeout(ctx, 10*time.Second)
+			defer rcancel()
+			client := firnpb.NewRoutedBrokerServiceClient(conn)
+			rresp, err := client.RoutedProduce(rctx, &firnpb.RoutedProduceRequest{Topic: topic, Key: key, Value: value})
+			if err != nil {
+				return 0, 0, fmt.Errorf("routed produce to %s: %w", lease.Holder, err)
+			}
+			return rresp.Partition, rresp.Offset, nil
+		})
+		// Register auto-created DLQ topics everywhere via the quorum —
+		// single-node falls back to a local create.
+		qm.SetTopicCreateProposer(func(name string, partitions int, mode string) error {
+			data, _ := json.Marshal(quorum.TopicMetadata{Name: name, Partitions: partitions, Mode: mode, ReplicationFactor: 1})
+			_, _, err := qnode.ProposeNamed(quorum.EntryTopicCreate, data)
+			return err
+		})
+
+		// Replication needs each peer's MESH address plus mesh-mTLS
+		// credentials. The default plaintext Dial would hit the public gRPC
+		// listener, which does not serve ReplicaService (ADR-011 slice 2) —
+		// dialing it surfaces "unknown service firn.v1.ReplicaService".
+		meshProbe := map[string]string{}
+		meshPeerList := []string{}
+		for id, addr := range peers {
+			meshProbe[meshPeerAddr(addr)] = id
+			if id != selfID {
+				meshPeerList = append(meshPeerList, meshPeerAddr(addr))
+			}
+		}
+		sort.Strings(meshPeerList)
+
 		agentCfg := replication.NewAgent(replication.Config{
 			NodeID:     selfID,
-			Peers:      peerAddrs,
+			Peers:      meshPeerList,
 			All:        names,
 			Advertised: peers,
 			Registry:   registry,
@@ -468,6 +516,13 @@ func main() {
 			Quorum:     qnode,
 			LeaseTTL:   *leaseTTL,
 			DataDir:    *dataDir,
+			Dial: func(ctx context.Context, addr string) (*grpc.ClientConn, error) {
+				id, ok := meshProbe[addr]
+				if !ok {
+					return nil, fmt.Errorf("replication: peer %q is not in the membership map", addr)
+				}
+				return grpc.NewClient(addr, grpc.WithTransportCredentials(credentials.NewTLS(meshBundle.ClientTLSConfig(id))))
+			},
 		})
 		agentCtx, agentCancel := context.WithCancel(context.Background())
 		defer agentCancel()

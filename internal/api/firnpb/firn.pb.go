@@ -1872,6 +1872,120 @@ func (x *AckBatchResponse) GetUnknown() int32 {
 	return 0
 }
 
+type RoutedProduceRequest struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Topic string                 `protobuf:"bytes,1,opt,name=topic,proto3" json:"topic,omitempty"`
+	// partition is advisory; the handler produces to the partition the key
+	// maps to, exactly as a client Produce call would.
+	Key           []byte `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	Value         []byte `protobuf:"bytes,3,opt,name=value,proto3" json:"value,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RoutedProduceRequest) Reset() {
+	*x = RoutedProduceRequest{}
+	mi := &file_firn_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RoutedProduceRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RoutedProduceRequest) ProtoMessage() {}
+
+func (x *RoutedProduceRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_firn_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RoutedProduceRequest.ProtoReflect.Descriptor instead.
+func (*RoutedProduceRequest) Descriptor() ([]byte, []int) {
+	return file_firn_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *RoutedProduceRequest) GetTopic() string {
+	if x != nil {
+		return x.Topic
+	}
+	return ""
+}
+
+func (x *RoutedProduceRequest) GetKey() []byte {
+	if x != nil {
+		return x.Key
+	}
+	return nil
+}
+
+func (x *RoutedProduceRequest) GetValue() []byte {
+	if x != nil {
+		return x.Value
+	}
+	return nil
+}
+
+type RoutedProduceResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Partition     int32                  `protobuf:"varint,1,opt,name=partition,proto3" json:"partition,omitempty"`
+	Offset        int64                  `protobuf:"varint,2,opt,name=offset,proto3" json:"offset,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RoutedProduceResponse) Reset() {
+	*x = RoutedProduceResponse{}
+	mi := &file_firn_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RoutedProduceResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RoutedProduceResponse) ProtoMessage() {}
+
+func (x *RoutedProduceResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_firn_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RoutedProduceResponse.ProtoReflect.Descriptor instead.
+func (*RoutedProduceResponse) Descriptor() ([]byte, []int) {
+	return file_firn_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *RoutedProduceResponse) GetPartition() int32 {
+	if x != nil {
+		return x.Partition
+	}
+	return 0
+}
+
+func (x *RoutedProduceResponse) GetOffset() int64 {
+	if x != nil {
+		return x.Offset
+	}
+	return 0
+}
+
 type QuorumMessageRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Payload       []byte                 `protobuf:"bytes,1,opt,name=payload,proto3" json:"payload,omitempty"` // JSON quorum.Message
@@ -1881,7 +1995,7 @@ type QuorumMessageRequest struct {
 
 func (x *QuorumMessageRequest) Reset() {
 	*x = QuorumMessageRequest{}
-	mi := &file_firn_proto_msgTypes[32]
+	mi := &file_firn_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1893,7 +2007,7 @@ func (x *QuorumMessageRequest) String() string {
 func (*QuorumMessageRequest) ProtoMessage() {}
 
 func (x *QuorumMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[32]
+	mi := &file_firn_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1906,7 +2020,7 @@ func (x *QuorumMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuorumMessageRequest.ProtoReflect.Descriptor instead.
 func (*QuorumMessageRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{32}
+	return file_firn_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *QuorumMessageRequest) GetPayload() []byte {
@@ -1924,7 +2038,7 @@ type QuorumMessageResponse struct {
 
 func (x *QuorumMessageResponse) Reset() {
 	*x = QuorumMessageResponse{}
-	mi := &file_firn_proto_msgTypes[33]
+	mi := &file_firn_proto_msgTypes[35]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1936,7 +2050,7 @@ func (x *QuorumMessageResponse) String() string {
 func (*QuorumMessageResponse) ProtoMessage() {}
 
 func (x *QuorumMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[33]
+	mi := &file_firn_proto_msgTypes[35]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1949,7 +2063,7 @@ func (x *QuorumMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use QuorumMessageResponse.ProtoReflect.Descriptor instead.
 func (*QuorumMessageResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{33}
+	return file_firn_proto_rawDescGZIP(), []int{35}
 }
 
 type ReplicaFetchRequest struct {
@@ -1964,7 +2078,7 @@ type ReplicaFetchRequest struct {
 
 func (x *ReplicaFetchRequest) Reset() {
 	*x = ReplicaFetchRequest{}
-	mi := &file_firn_proto_msgTypes[34]
+	mi := &file_firn_proto_msgTypes[36]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1976,7 +2090,7 @@ func (x *ReplicaFetchRequest) String() string {
 func (*ReplicaFetchRequest) ProtoMessage() {}
 
 func (x *ReplicaFetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[34]
+	mi := &file_firn_proto_msgTypes[36]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1989,7 +2103,7 @@ func (x *ReplicaFetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaFetchRequest.ProtoReflect.Descriptor instead.
 func (*ReplicaFetchRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{34}
+	return file_firn_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *ReplicaFetchRequest) GetTopic() string {
@@ -2029,7 +2143,7 @@ type ReplicaFetchResponse struct {
 
 func (x *ReplicaFetchResponse) Reset() {
 	*x = ReplicaFetchResponse{}
-	mi := &file_firn_proto_msgTypes[35]
+	mi := &file_firn_proto_msgTypes[37]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2041,7 +2155,7 @@ func (x *ReplicaFetchResponse) String() string {
 func (*ReplicaFetchResponse) ProtoMessage() {}
 
 func (x *ReplicaFetchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[35]
+	mi := &file_firn_proto_msgTypes[37]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2054,7 +2168,7 @@ func (x *ReplicaFetchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaFetchResponse.ProtoReflect.Descriptor instead.
 func (*ReplicaFetchResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{35}
+	return file_firn_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *ReplicaFetchResponse) GetFrames() []byte {
@@ -2076,7 +2190,7 @@ type ReplicaPutRequest struct {
 
 func (x *ReplicaPutRequest) Reset() {
 	*x = ReplicaPutRequest{}
-	mi := &file_firn_proto_msgTypes[36]
+	mi := &file_firn_proto_msgTypes[38]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2088,7 +2202,7 @@ func (x *ReplicaPutRequest) String() string {
 func (*ReplicaPutRequest) ProtoMessage() {}
 
 func (x *ReplicaPutRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[36]
+	mi := &file_firn_proto_msgTypes[38]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2101,7 +2215,7 @@ func (x *ReplicaPutRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaPutRequest.ProtoReflect.Descriptor instead.
 func (*ReplicaPutRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{36}
+	return file_firn_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *ReplicaPutRequest) GetTopic() string {
@@ -2141,7 +2255,7 @@ type ReplicaPutResponse struct {
 
 func (x *ReplicaPutResponse) Reset() {
 	*x = ReplicaPutResponse{}
-	mi := &file_firn_proto_msgTypes[37]
+	mi := &file_firn_proto_msgTypes[39]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2153,7 +2267,7 @@ func (x *ReplicaPutResponse) String() string {
 func (*ReplicaPutResponse) ProtoMessage() {}
 
 func (x *ReplicaPutResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[37]
+	mi := &file_firn_proto_msgTypes[39]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2166,7 +2280,7 @@ func (x *ReplicaPutResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ReplicaPutResponse.ProtoReflect.Descriptor instead.
 func (*ReplicaPutResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{37}
+	return file_firn_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *ReplicaPutResponse) GetHighWatermark() int64 {
@@ -2193,7 +2307,7 @@ type FederationFetchRequest struct {
 
 func (x *FederationFetchRequest) Reset() {
 	*x = FederationFetchRequest{}
-	mi := &file_firn_proto_msgTypes[38]
+	mi := &file_firn_proto_msgTypes[40]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2205,7 +2319,7 @@ func (x *FederationFetchRequest) String() string {
 func (*FederationFetchRequest) ProtoMessage() {}
 
 func (x *FederationFetchRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[38]
+	mi := &file_firn_proto_msgTypes[40]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2218,7 +2332,7 @@ func (x *FederationFetchRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FederationFetchRequest.ProtoReflect.Descriptor instead.
 func (*FederationFetchRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{38}
+	return file_firn_proto_rawDescGZIP(), []int{40}
 }
 
 func (x *FederationFetchRequest) GetTopic() string {
@@ -2266,7 +2380,7 @@ type FederationFetchResponse struct {
 
 func (x *FederationFetchResponse) Reset() {
 	*x = FederationFetchResponse{}
-	mi := &file_firn_proto_msgTypes[39]
+	mi := &file_firn_proto_msgTypes[41]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2278,7 +2392,7 @@ func (x *FederationFetchResponse) String() string {
 func (*FederationFetchResponse) ProtoMessage() {}
 
 func (x *FederationFetchResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[39]
+	mi := &file_firn_proto_msgTypes[41]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2291,7 +2405,7 @@ func (x *FederationFetchResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FederationFetchResponse.ProtoReflect.Descriptor instead.
 func (*FederationFetchResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{39}
+	return file_firn_proto_rawDescGZIP(), []int{41}
 }
 
 func (x *FederationFetchResponse) GetFrames() []byte {
@@ -2318,7 +2432,7 @@ type FederationReportRequest struct {
 
 func (x *FederationReportRequest) Reset() {
 	*x = FederationReportRequest{}
-	mi := &file_firn_proto_msgTypes[40]
+	mi := &file_firn_proto_msgTypes[42]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2330,7 +2444,7 @@ func (x *FederationReportRequest) String() string {
 func (*FederationReportRequest) ProtoMessage() {}
 
 func (x *FederationReportRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[40]
+	mi := &file_firn_proto_msgTypes[42]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2343,7 +2457,7 @@ func (x *FederationReportRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FederationReportRequest.ProtoReflect.Descriptor instead.
 func (*FederationReportRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{40}
+	return file_firn_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *FederationReportRequest) GetTopic() string {
@@ -2376,7 +2490,7 @@ type LocalRangePB struct {
 
 func (x *LocalRangePB) Reset() {
 	*x = LocalRangePB{}
-	mi := &file_firn_proto_msgTypes[41]
+	mi := &file_firn_proto_msgTypes[43]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2388,7 +2502,7 @@ func (x *LocalRangePB) String() string {
 func (*LocalRangePB) ProtoMessage() {}
 
 func (x *LocalRangePB) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[41]
+	mi := &file_firn_proto_msgTypes[43]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2401,7 +2515,7 @@ func (x *LocalRangePB) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LocalRangePB.ProtoReflect.Descriptor instead.
 func (*LocalRangePB) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{41}
+	return file_firn_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *LocalRangePB) GetStart() int64 {
@@ -2440,7 +2554,7 @@ type FederationReportResponse struct {
 
 func (x *FederationReportResponse) Reset() {
 	*x = FederationReportResponse{}
-	mi := &file_firn_proto_msgTypes[42]
+	mi := &file_firn_proto_msgTypes[44]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2452,7 +2566,7 @@ func (x *FederationReportResponse) String() string {
 func (*FederationReportResponse) ProtoMessage() {}
 
 func (x *FederationReportResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[42]
+	mi := &file_firn_proto_msgTypes[44]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2465,7 +2579,7 @@ func (x *FederationReportResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use FederationReportResponse.ProtoReflect.Descriptor instead.
 func (*FederationReportResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{42}
+	return file_firn_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *FederationReportResponse) GetHighWatermark() int64 {
@@ -2507,7 +2621,7 @@ type PartitionMetadata struct {
 
 func (x *PartitionMetadata) Reset() {
 	*x = PartitionMetadata{}
-	mi := &file_firn_proto_msgTypes[43]
+	mi := &file_firn_proto_msgTypes[45]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2519,7 +2633,7 @@ func (x *PartitionMetadata) String() string {
 func (*PartitionMetadata) ProtoMessage() {}
 
 func (x *PartitionMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[43]
+	mi := &file_firn_proto_msgTypes[45]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2532,7 +2646,7 @@ func (x *PartitionMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PartitionMetadata.ProtoReflect.Descriptor instead.
 func (*PartitionMetadata) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{43}
+	return file_firn_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *PartitionMetadata) GetPartitionId() int32 {
@@ -2568,7 +2682,7 @@ type TopicMetadata struct {
 
 func (x *TopicMetadata) Reset() {
 	*x = TopicMetadata{}
-	mi := &file_firn_proto_msgTypes[44]
+	mi := &file_firn_proto_msgTypes[46]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2580,7 +2694,7 @@ func (x *TopicMetadata) String() string {
 func (*TopicMetadata) ProtoMessage() {}
 
 func (x *TopicMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[44]
+	mi := &file_firn_proto_msgTypes[46]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2593,7 +2707,7 @@ func (x *TopicMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use TopicMetadata.ProtoReflect.Descriptor instead.
 func (*TopicMetadata) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{44}
+	return file_firn_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *TopicMetadata) GetName() string {
@@ -2635,7 +2749,7 @@ type BrokerMetadata struct {
 
 func (x *BrokerMetadata) Reset() {
 	*x = BrokerMetadata{}
-	mi := &file_firn_proto_msgTypes[45]
+	mi := &file_firn_proto_msgTypes[47]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2647,7 +2761,7 @@ func (x *BrokerMetadata) String() string {
 func (*BrokerMetadata) ProtoMessage() {}
 
 func (x *BrokerMetadata) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[45]
+	mi := &file_firn_proto_msgTypes[47]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2660,7 +2774,7 @@ func (x *BrokerMetadata) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BrokerMetadata.ProtoReflect.Descriptor instead.
 func (*BrokerMetadata) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{45}
+	return file_firn_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *BrokerMetadata) GetId() string {
@@ -2693,7 +2807,7 @@ type GetMetadataRequest struct {
 
 func (x *GetMetadataRequest) Reset() {
 	*x = GetMetadataRequest{}
-	mi := &file_firn_proto_msgTypes[46]
+	mi := &file_firn_proto_msgTypes[48]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2705,7 +2819,7 @@ func (x *GetMetadataRequest) String() string {
 func (*GetMetadataRequest) ProtoMessage() {}
 
 func (x *GetMetadataRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[46]
+	mi := &file_firn_proto_msgTypes[48]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2718,7 +2832,7 @@ func (x *GetMetadataRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMetadataRequest.ProtoReflect.Descriptor instead.
 func (*GetMetadataRequest) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{46}
+	return file_firn_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *GetMetadataRequest) GetTopics() []string {
@@ -2738,7 +2852,7 @@ type GetMetadataResponse struct {
 
 func (x *GetMetadataResponse) Reset() {
 	*x = GetMetadataResponse{}
-	mi := &file_firn_proto_msgTypes[47]
+	mi := &file_firn_proto_msgTypes[49]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2750,7 +2864,7 @@ func (x *GetMetadataResponse) String() string {
 func (*GetMetadataResponse) ProtoMessage() {}
 
 func (x *GetMetadataResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_firn_proto_msgTypes[47]
+	mi := &file_firn_proto_msgTypes[49]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2763,7 +2877,7 @@ func (x *GetMetadataResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GetMetadataResponse.ProtoReflect.Descriptor instead.
 func (*GetMetadataResponse) Descriptor() ([]byte, []int) {
-	return file_firn_proto_rawDescGZIP(), []int{47}
+	return file_firn_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *GetMetadataResponse) GetBrokers() []*BrokerMetadata {
@@ -2915,7 +3029,14 @@ const file_firn_proto_rawDesc = "" +
 	"\fdelivery_ids\x18\x02 \x03(\tR\vdeliveryIds\"B\n" +
 	"\x10AckBatchResponse\x12\x14\n" +
 	"\x05acked\x18\x01 \x01(\x05R\x05acked\x12\x18\n" +
-	"\aunknown\x18\x02 \x01(\x05R\aunknown\"0\n" +
+	"\aunknown\x18\x02 \x01(\x05R\aunknown\"T\n" +
+	"\x14RoutedProduceRequest\x12\x14\n" +
+	"\x05topic\x18\x01 \x01(\tR\x05topic\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\fR\x03key\x12\x14\n" +
+	"\x05value\x18\x03 \x01(\fR\x05value\"M\n" +
+	"\x15RoutedProduceResponse\x12\x1c\n" +
+	"\tpartition\x18\x01 \x01(\x05R\tpartition\x12\x16\n" +
+	"\x06offset\x18\x02 \x01(\x03R\x06offset\"0\n" +
 	"\x14QuorumMessageRequest\x12\x18\n" +
 	"\apayload\x18\x01 \x01(\fR\apayload\"\x17\n" +
 	"\x15QuorumMessageResponse\"\x8d\x01\n" +
@@ -2996,7 +3117,9 @@ const file_firn_proto_rawDesc = "" +
 	"\x04Pull\x12\x14.firn.v1.PullRequest\x1a\x15.firn.v1.PullResponse\x120\n" +
 	"\x03Ack\x12\x13.firn.v1.AckRequest\x1a\x14.firn.v1.AckResponse\x12?\n" +
 	"\bAckBatch\x12\x18.firn.v1.AckBatchRequest\x1a\x19.firn.v1.AckBatchResponse\x12H\n" +
-	"\vGetMetadata\x12\x1b.firn.v1.GetMetadataRequest\x1a\x1c.firn.v1.GetMetadataResponse2_\n" +
+	"\vGetMetadata\x12\x1b.firn.v1.GetMetadataRequest\x1a\x1c.firn.v1.GetMetadataResponse2e\n" +
+	"\x13RoutedBrokerService\x12N\n" +
+	"\rRoutedProduce\x12\x1d.firn.v1.RoutedProduceRequest\x1a\x1e.firn.v1.RoutedProduceResponse2_\n" +
 	"\rQuorumService\x12N\n" +
 	"\rQuorumMessage\x12\x1d.firn.v1.QuorumMessageRequest\x1a\x1e.firn.v1.QuorumMessageResponse2\xa4\x01\n" +
 	"\x0eReplicaService\x12K\n" +
@@ -3019,7 +3142,7 @@ func file_firn_proto_rawDescGZIP() []byte {
 	return file_firn_proto_rawDescData
 }
 
-var file_firn_proto_msgTypes = make([]protoimpl.MessageInfo, 48)
+var file_firn_proto_msgTypes = make([]protoimpl.MessageInfo, 50)
 var file_firn_proto_goTypes = []any{
 	(*ProduceRequest)(nil),            // 0: firn.v1.ProduceRequest
 	(*ProduceResponse)(nil),           // 1: firn.v1.ProduceResponse
@@ -3053,22 +3176,24 @@ var file_firn_proto_goTypes = []any{
 	(*AckResponse)(nil),               // 29: firn.v1.AckResponse
 	(*AckBatchRequest)(nil),           // 30: firn.v1.AckBatchRequest
 	(*AckBatchResponse)(nil),          // 31: firn.v1.AckBatchResponse
-	(*QuorumMessageRequest)(nil),      // 32: firn.v1.QuorumMessageRequest
-	(*QuorumMessageResponse)(nil),     // 33: firn.v1.QuorumMessageResponse
-	(*ReplicaFetchRequest)(nil),       // 34: firn.v1.ReplicaFetchRequest
-	(*ReplicaFetchResponse)(nil),      // 35: firn.v1.ReplicaFetchResponse
-	(*ReplicaPutRequest)(nil),         // 36: firn.v1.ReplicaPutRequest
-	(*ReplicaPutResponse)(nil),        // 37: firn.v1.ReplicaPutResponse
-	(*FederationFetchRequest)(nil),    // 38: firn.v1.FederationFetchRequest
-	(*FederationFetchResponse)(nil),   // 39: firn.v1.FederationFetchResponse
-	(*FederationReportRequest)(nil),   // 40: firn.v1.FederationReportRequest
-	(*LocalRangePB)(nil),              // 41: firn.v1.LocalRangePB
-	(*FederationReportResponse)(nil),  // 42: firn.v1.FederationReportResponse
-	(*PartitionMetadata)(nil),         // 43: firn.v1.PartitionMetadata
-	(*TopicMetadata)(nil),             // 44: firn.v1.TopicMetadata
-	(*BrokerMetadata)(nil),            // 45: firn.v1.BrokerMetadata
-	(*GetMetadataRequest)(nil),        // 46: firn.v1.GetMetadataRequest
-	(*GetMetadataResponse)(nil),       // 47: firn.v1.GetMetadataResponse
+	(*RoutedProduceRequest)(nil),      // 32: firn.v1.RoutedProduceRequest
+	(*RoutedProduceResponse)(nil),     // 33: firn.v1.RoutedProduceResponse
+	(*QuorumMessageRequest)(nil),      // 34: firn.v1.QuorumMessageRequest
+	(*QuorumMessageResponse)(nil),     // 35: firn.v1.QuorumMessageResponse
+	(*ReplicaFetchRequest)(nil),       // 36: firn.v1.ReplicaFetchRequest
+	(*ReplicaFetchResponse)(nil),      // 37: firn.v1.ReplicaFetchResponse
+	(*ReplicaPutRequest)(nil),         // 38: firn.v1.ReplicaPutRequest
+	(*ReplicaPutResponse)(nil),        // 39: firn.v1.ReplicaPutResponse
+	(*FederationFetchRequest)(nil),    // 40: firn.v1.FederationFetchRequest
+	(*FederationFetchResponse)(nil),   // 41: firn.v1.FederationFetchResponse
+	(*FederationReportRequest)(nil),   // 42: firn.v1.FederationReportRequest
+	(*LocalRangePB)(nil),              // 43: firn.v1.LocalRangePB
+	(*FederationReportResponse)(nil),  // 44: firn.v1.FederationReportResponse
+	(*PartitionMetadata)(nil),         // 45: firn.v1.PartitionMetadata
+	(*TopicMetadata)(nil),             // 46: firn.v1.TopicMetadata
+	(*BrokerMetadata)(nil),            // 47: firn.v1.BrokerMetadata
+	(*GetMetadataRequest)(nil),        // 48: firn.v1.GetMetadataRequest
+	(*GetMetadataResponse)(nil),       // 49: firn.v1.GetMetadataResponse
 }
 var file_firn_proto_depIdxs = []int32{
 	2,  // 0: firn.v1.ProduceBatchRequest.records:type_name -> firn.v1.ProduceBatchRecord
@@ -3078,10 +3203,10 @@ var file_firn_proto_depIdxs = []int32{
 	9,  // 4: firn.v1.SyncGroupResponse.assignment:type_name -> firn.v1.TopicAssignment
 	22, // 5: firn.v1.FetchGroupOffsetsResponse.offsets:type_name -> firn.v1.OffsetEntry
 	25, // 6: firn.v1.PullResponse.deliveries:type_name -> firn.v1.QueueDelivery
-	41, // 7: firn.v1.FederationReportResponse.foreign_ranges:type_name -> firn.v1.LocalRangePB
-	43, // 8: firn.v1.TopicMetadata.partitions_meta:type_name -> firn.v1.PartitionMetadata
-	45, // 9: firn.v1.GetMetadataResponse.brokers:type_name -> firn.v1.BrokerMetadata
-	44, // 10: firn.v1.GetMetadataResponse.topics:type_name -> firn.v1.TopicMetadata
+	43, // 7: firn.v1.FederationReportResponse.foreign_ranges:type_name -> firn.v1.LocalRangePB
+	45, // 8: firn.v1.TopicMetadata.partitions_meta:type_name -> firn.v1.PartitionMetadata
+	47, // 9: firn.v1.GetMetadataResponse.brokers:type_name -> firn.v1.BrokerMetadata
+	46, // 10: firn.v1.GetMetadataResponse.topics:type_name -> firn.v1.TopicMetadata
 	0,  // 11: firn.v1.FirnService.Produce:input_type -> firn.v1.ProduceRequest
 	3,  // 12: firn.v1.FirnService.ProduceBatch:input_type -> firn.v1.ProduceBatchRequest
 	6,  // 13: firn.v1.FirnService.Fetch:input_type -> firn.v1.FetchRequest
@@ -3095,33 +3220,35 @@ var file_firn_proto_depIdxs = []int32{
 	26, // 21: firn.v1.FirnService.Pull:input_type -> firn.v1.PullRequest
 	28, // 22: firn.v1.FirnService.Ack:input_type -> firn.v1.AckRequest
 	30, // 23: firn.v1.FirnService.AckBatch:input_type -> firn.v1.AckBatchRequest
-	46, // 24: firn.v1.FirnService.GetMetadata:input_type -> firn.v1.GetMetadataRequest
-	32, // 25: firn.v1.QuorumService.QuorumMessage:input_type -> firn.v1.QuorumMessageRequest
-	34, // 26: firn.v1.ReplicaService.ReplicaFetch:input_type -> firn.v1.ReplicaFetchRequest
-	36, // 27: firn.v1.ReplicaService.ReplicaPut:input_type -> firn.v1.ReplicaPutRequest
-	38, // 28: firn.v1.FederationService.FederationFetch:input_type -> firn.v1.FederationFetchRequest
-	40, // 29: firn.v1.FederationService.FederationReport:input_type -> firn.v1.FederationReportRequest
-	1,  // 30: firn.v1.FirnService.Produce:output_type -> firn.v1.ProduceResponse
-	5,  // 31: firn.v1.FirnService.ProduceBatch:output_type -> firn.v1.ProduceBatchResponse
-	7,  // 32: firn.v1.FirnService.Fetch:output_type -> firn.v1.FetchResponse
-	11, // 33: firn.v1.FirnService.JoinGroup:output_type -> firn.v1.JoinGroupResponse
-	13, // 34: firn.v1.FirnService.SyncGroup:output_type -> firn.v1.SyncGroupResponse
-	15, // 35: firn.v1.FirnService.Heartbeat:output_type -> firn.v1.HeartbeatResponse
-	17, // 36: firn.v1.FirnService.LeaveGroup:output_type -> firn.v1.LeaveGroupResponse
-	19, // 37: firn.v1.FirnService.CommitOffset:output_type -> firn.v1.CommitOffsetResponse
-	21, // 38: firn.v1.FirnService.FetchOffset:output_type -> firn.v1.FetchOffsetResponse
-	24, // 39: firn.v1.FirnService.FetchGroupOffsets:output_type -> firn.v1.FetchGroupOffsetsResponse
-	27, // 40: firn.v1.FirnService.Pull:output_type -> firn.v1.PullResponse
-	29, // 41: firn.v1.FirnService.Ack:output_type -> firn.v1.AckResponse
-	31, // 42: firn.v1.FirnService.AckBatch:output_type -> firn.v1.AckBatchResponse
-	47, // 43: firn.v1.FirnService.GetMetadata:output_type -> firn.v1.GetMetadataResponse
-	33, // 44: firn.v1.QuorumService.QuorumMessage:output_type -> firn.v1.QuorumMessageResponse
-	35, // 45: firn.v1.ReplicaService.ReplicaFetch:output_type -> firn.v1.ReplicaFetchResponse
-	37, // 46: firn.v1.ReplicaService.ReplicaPut:output_type -> firn.v1.ReplicaPutResponse
-	39, // 47: firn.v1.FederationService.FederationFetch:output_type -> firn.v1.FederationFetchResponse
-	42, // 48: firn.v1.FederationService.FederationReport:output_type -> firn.v1.FederationReportResponse
-	30, // [30:49] is the sub-list for method output_type
-	11, // [11:30] is the sub-list for method input_type
+	48, // 24: firn.v1.FirnService.GetMetadata:input_type -> firn.v1.GetMetadataRequest
+	32, // 25: firn.v1.RoutedBrokerService.RoutedProduce:input_type -> firn.v1.RoutedProduceRequest
+	34, // 26: firn.v1.QuorumService.QuorumMessage:input_type -> firn.v1.QuorumMessageRequest
+	36, // 27: firn.v1.ReplicaService.ReplicaFetch:input_type -> firn.v1.ReplicaFetchRequest
+	38, // 28: firn.v1.ReplicaService.ReplicaPut:input_type -> firn.v1.ReplicaPutRequest
+	40, // 29: firn.v1.FederationService.FederationFetch:input_type -> firn.v1.FederationFetchRequest
+	42, // 30: firn.v1.FederationService.FederationReport:input_type -> firn.v1.FederationReportRequest
+	1,  // 31: firn.v1.FirnService.Produce:output_type -> firn.v1.ProduceResponse
+	5,  // 32: firn.v1.FirnService.ProduceBatch:output_type -> firn.v1.ProduceBatchResponse
+	7,  // 33: firn.v1.FirnService.Fetch:output_type -> firn.v1.FetchResponse
+	11, // 34: firn.v1.FirnService.JoinGroup:output_type -> firn.v1.JoinGroupResponse
+	13, // 35: firn.v1.FirnService.SyncGroup:output_type -> firn.v1.SyncGroupResponse
+	15, // 36: firn.v1.FirnService.Heartbeat:output_type -> firn.v1.HeartbeatResponse
+	17, // 37: firn.v1.FirnService.LeaveGroup:output_type -> firn.v1.LeaveGroupResponse
+	19, // 38: firn.v1.FirnService.CommitOffset:output_type -> firn.v1.CommitOffsetResponse
+	21, // 39: firn.v1.FirnService.FetchOffset:output_type -> firn.v1.FetchOffsetResponse
+	24, // 40: firn.v1.FirnService.FetchGroupOffsets:output_type -> firn.v1.FetchGroupOffsetsResponse
+	27, // 41: firn.v1.FirnService.Pull:output_type -> firn.v1.PullResponse
+	29, // 42: firn.v1.FirnService.Ack:output_type -> firn.v1.AckResponse
+	31, // 43: firn.v1.FirnService.AckBatch:output_type -> firn.v1.AckBatchResponse
+	49, // 44: firn.v1.FirnService.GetMetadata:output_type -> firn.v1.GetMetadataResponse
+	33, // 45: firn.v1.RoutedBrokerService.RoutedProduce:output_type -> firn.v1.RoutedProduceResponse
+	35, // 46: firn.v1.QuorumService.QuorumMessage:output_type -> firn.v1.QuorumMessageResponse
+	37, // 47: firn.v1.ReplicaService.ReplicaFetch:output_type -> firn.v1.ReplicaFetchResponse
+	39, // 48: firn.v1.ReplicaService.ReplicaPut:output_type -> firn.v1.ReplicaPutResponse
+	41, // 49: firn.v1.FederationService.FederationFetch:output_type -> firn.v1.FederationFetchResponse
+	44, // 50: firn.v1.FederationService.FederationReport:output_type -> firn.v1.FederationReportResponse
+	31, // [31:51] is the sub-list for method output_type
+	11, // [11:31] is the sub-list for method input_type
 	11, // [11:11] is the sub-list for extension type_name
 	11, // [11:11] is the sub-list for extension extendee
 	0,  // [0:11] is the sub-list for field type_name
@@ -3138,9 +3265,9 @@ func file_firn_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_firn_proto_rawDesc), len(file_firn_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   48,
+			NumMessages:   50,
 			NumExtensions: 0,
-			NumServices:   4,
+			NumServices:   5,
 		},
 		GoTypes:           file_firn_proto_goTypes,
 		DependencyIndexes: file_firn_proto_depIdxs,

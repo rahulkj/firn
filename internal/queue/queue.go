@@ -48,6 +48,10 @@ const (
 // ErrUnknownDelivery is returned when Ack references an unknown/expired id.
 var ErrUnknownDelivery = errors.New("firn/queue: unknown delivery id")
 
+// ErrDivertFailed is returned when a DLQ diversion fails; the source record
+// is NOT consumed and must back off.
+var ErrDivertFailed = errors.New("firn/queue: DLQ diversion failed")
+
 // ErrFederatedPassive is returned when a Pull/Ack targets a queue that is
 // federated in passive mode on this cluster — the delivery engine stays
 // idle until the operator cuts over (ADR-010).
@@ -113,8 +117,36 @@ type Manager struct {
 	// cluster until the operator cuts over. Nil = no fence. Late-bound.
 	fedFence func(queue string) bool
 
+	// route, when set, is consulted when a local produce of a DLQ record
+	// fails with a lease-holder error — the record is delivered to the
+	// lease holder directly instead of being dropped. Nil (single node,
+	// default) keeps the local produce path only.
+	route RoutedProducer
+
+	// proposeTopicCreate, when set, registers auto-created DLQ topics on
+	// EVERY node via the quorum (cluster mode). Nil (single node, default)
+	// creates locally. Without it, the DLQ topic exists only on this node
+	// and every divert fails with "not lease holder" on the par.
+	proposeTopicCreate func(name string, partitions int, mode string) error
+
 	mu     sync.Mutex
 	queues map[string]*queueState
+}
+
+// RoutedProducer delivers (queue, topic, partition, key, value) to the
+// holder of the partition lease when this node does not hold it.
+// Implemented in firnd by dialling the lease holder over the mesh mTLS
+// network. Optional; production wiring only.
+type RoutedProducer func(ctx context.Context, topic string, partition int32, key, value []byte) (int32, int64, error)
+
+// SetRouter binds the cluster-mode routed-produce path. Late-bound like
+// SetFederationFence. Optional: nil leaves the local lease-gated produce.
+func (m *Manager) SetRouter(r RoutedProducer) { m.route = r }
+
+// SetTopicCreateProposer binds the cluster-mode quorum topic creator.
+// Optional: nil leaves single-node local topic creation.
+func (m *Manager) SetTopicCreateProposer(p func(name string, partitions int, mode string) error) {
+	m.proposeTopicCreate = p
 }
 
 // Attempts exposes the folded delivery-attempt count for
@@ -254,7 +286,9 @@ func (m *Manager) Pull(ctx context.Context, queue string, maxMessages int, visib
 		item := q.requeue[0]
 		next := item.attempts + 1
 		if next > maxDeliveries {
-			m.divertToDLQ(queue, item.partition, item.offset, item.key, item.value, uint32(next))
+			if err := m.divertToDLQ(queue, item.partition, item.offset, item.key, item.value, uint32(next)); err != nil {
+				return nil, err
+			}
 			m.accumulateAckLocked(queue, q, item.partition, item.offset)
 			m.commitAckLocked(queue, q, item.partition)
 			q.requeue = q.requeue[1:]
@@ -278,7 +312,9 @@ func (m *Manager) Pull(ctx context.Context, queue string, maxMessages int, visib
 		rec := recs[0]
 		next := int32(m.attempts.Attempts(queue, p, rec.Offset)) + 1
 		if next > maxDeliveries {
-			m.divertToDLQ(queue, p, rec.Offset, rec.Key, rec.Value, uint32(next))
+			if err := m.divertToDLQ(queue, p, rec.Offset, rec.Key, rec.Value, uint32(next)); err != nil {
+				return nil, err
+			}
 			m.accumulateAckLocked(queue, q, p, rec.Offset)
 			m.commitAckLocked(queue, q, p)
 			q.nextFetch[p] = rec.Offset + 1
@@ -430,22 +466,43 @@ func (m *Manager) commitAckLocked(queue string, q *queueState, partition int32) 
 
 // divertToDLQ writes the message to <queue>.dlq (auto-created as a stream
 // topic). The caller is responsible for marking the source offset consumed.
-func (m *Manager) divertToDLQ(queue string, partition int32, offset int64, key, value []byte, attempts uint32) {
+func (m *Manager) divertToDLQ(queue string, partition int32, offset int64, key, value []byte, attempts uint32) error {
 	dlq := queue + ".dlq"
 	if _, err := m.reg.Get(dlq); err != nil {
-		// Auto-create the DLQ; ignore races with concurrent creation.
-		_ = m.reg.Create(dlq, 1)
+		// Auto-create the DLQ. Cluster mode must register it everywhere
+		// via the quorum; single node creates locally. Ignore
+		// already-exists (races, or the topic came back from the apply).
+		if m.proposeTopicCreate != nil {
+			_ = m.proposeTopicCreate(dlq, 1, "stream")
+		} else if err := m.reg.Create(dlq, 1); err != nil && !errors.Is(err, meta.ErrTopicExists) {
+			return fmt.Errorf("firn/queue: create DLQ %q: %w", dlq, err)
+		}
 	}
 	if len(key) == 0 {
 		key = []byte(fmt.Sprintf("offset-%d", offset))
 	}
 	dlqValue := append([]byte(nil), value...)
-	// Best effort: if the DLQ produce fails we still mark the source offset
-	// consumed to avoid an infinite redelivery loop on a poisoned DLQ. The
-	// failure is observable via the log and admin /topics.
-	if _, _, err := m.broker.Produce(context.Background(), dlq, key, dlqValue); err != nil {
-		fmt.Printf("firn/queue: divert to DLQ %q failed for %q partition %d offset %d: %v\n", dlq, queue, partition, offset, err)
+
+	// Primary: local produce. Works in single-node mode and whenever this
+	// node holds the DLQ partition lease.
+	if _, _, err := m.broker.Produce(context.Background(), dlq, key, dlqValue); err == nil {
+		return nil
 	}
+	// Cluster mode: the local node may not hold the DLQ partition's lease.
+	// If a routed producer is wired, deliver to the holder instead of
+	// dropping the record.
+	if m.route != nil {
+		if _, _, err := m.route(context.Background(), dlq, 0, key, dlqValue); err == nil {
+			return nil
+		} else {
+			return fmt.Errorf("firn/queue: divert to DLQ %q partition %d offset %d (routed): %w", dlq, partition, offset, err)
+		}
+	}
+	// No route wired (e.g. single node with a poisoned local log, or an
+	// old caller): return the error so the caller refuses to consume the
+	// source record — at-least-once is preserved. Callers must not mark the
+	// offset consumed; returning the error is what stops the silent drop.
+	return fmt.Errorf("%w: firn/queue: divert to DLQ %q partition %d offset %d", ErrDivertFailed, dlq, partition, offset)
 }
 
 // expireLocked returns lease-expired pendings to the requeue list.
