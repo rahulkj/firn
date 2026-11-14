@@ -8,7 +8,7 @@
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../assets/style.css">
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<script>window.addEventListener('load', () => { if (window.mermaid) mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: { fontFamily: 'inherit', primaryColor: '#171f42', primaryBorderColor: '#3d4a77', lineColor: '#5b6ba1' } }); });</script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'base', darkMode: true, themeVariables: { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', background: '#0a0e22', primaryColor: '#171f42', primaryTextColor: '#eaf6ff', primaryBorderColor: '#3d4a77', lineColor: '#7d8fc4', actorBkg: '#1c2547', actorBorder: '#3d4a77', actorTextColor: '#eaf6ff', actorLineColor: '#5b6ba1', signalColor: '#8fd3ff', signalTextColor: '#eaf6ff', noteBkgColor: '#241c07', noteTextColor: '#fbbf24', noteBorderColor: '#a16207', loopTextColor: '#eaf6ff', mainBkg: '#171f42', mainTextColor: '#eaf6ff', nodeBorder: '#3d4a77' } });</script>
 </head>
 <body>
 <header class="site-header">
@@ -74,10 +74,10 @@
     participant Op as Operator
     participant F as firnd (first boot)
     Op->>F: fresh install, zero keys
-    F-->>Op: stderr: BOOTSTRAP TOKEN: &lt;hex&gt; (once)
-    Op->>F: POST /apikeys Bearer &lt;token&gt; {"name":"root","role":"admin"}
-    F-->>Op: 201 + plaintext key (once; never stored)
-    Note over Op,F: token void from the next request; enforced thereafter</pre>
+    F-->>Op: stderr prints BOOTSTRAP TOKEN once
+    Op->>F: POST /apikeys with Bearer token, body name root role admin
+    F-->>Op: 201 plus plaintext key (shown once, never stored)
+    Note over Op,F: token is void from the next request onward</pre>
 <ul>
 <li>Federation keys are created <strong>on the serving cluster</strong>, pasted out-of-band into the peer — material never crosses a wire and never lives on disk anywhere hostile.</li>
 <li>Node certs come from a CA that never leaves operator custody; nodes get certs, never the CA key.</li>

@@ -109,24 +109,24 @@ DELETE /apikeys/{name}          # revoke; sessions tied to the key die immediate
 </tbody></table></div>
 <p><code>FederationService</code> (gRPC) lives <strong>only on the mesh listener</strong>: <code>FederationFetch</code> serves raw, CRC-checked frame windows; normal keys get <code>Unimplemented</code>, federation keys get nothing else.</p>
 
-<h2 id="grpc">gRPC FirnService (<code>:9461</code>)</h2>
+<h2 id="grpc">gRPC <code>FirnService</code> (<code>:9461</code>)</h2>
 <p>Package <code>firn.v1</code>; every RPC is unary. Proto source: <a href="https://github.com/rahulkj/firn/blob/main/internal/api/firn.proto" rel="noopener">internal/api/firn.proto</a>.</p>
 
-<h3>Produce</h3>
+<h3><code>Produce</code></h3>
 <pre class="code">message ProduceRequest  { string topic = 1; bytes key = 2; bytes value = 3; }
 message ProduceResponse { int32 partition = 1; int64 offset = 2; }</pre>
 <p>Key → <code>FNV-64a(key) % partitions</code>; unset key → round-robin. In cluster mode the CLI routes to the lease holder from <code>GetMetadata</code> (2s cache, refresh-on-retry).</p>
 
-<h3>ProduceBatch</h3>
+<h3><code>ProduceBatch</code></h3>
 <pre class="code">message ProduceBatchRecord    { bytes key = 1; bytes value = 2; }
 message ProduceBatchRequest   { string topic = 1; repeated ProduceBatchRecord records = 2; }  // ≤ 500
 message ProduceBatchResponse  { repeated ProduceBatchRecordResult records = 1; }</pre>
 <p>One RPC instead of N; order matches request; <strong>not atomic</strong> — on mid-batch failure earlier records are durable, later ones are not; retrying may duplicate earlier records at new offsets (consumers must tolerate duplicates). CLI: <code>firn-cli produce --batch-file events.jsonl</code> (JSONL; <code>-</code> = stdin; auto-chunked).</p>
 
-<h3>Fetch</h3>
+<h3><code>Fetch</code></h3>
 <pre class="code">message FetchRequest  { string topic = 1; int32 partition = 2; int64 offset = 3; int32 max_records = 4; }
 message FetchResponse { repeated Record records = 1; int64 federation_hwm = 2; }  // federation_hwm advisory</pre>
-<p><code>max_records ≥ 1</code> (cap 1000). Fetch at/above HWM → zero records. Below the retention horizon → <code>FailedPrecondition</code>.</p>
+<p><code>max_records ≥ 1</code> (cap 1000). <code>Fetch</code> at/above HWM → zero records. Below the retention horizon → <code>FailedPrecondition</code>.</p>
 
 <h3>Consumer groups</h3>
 <pre class="code">JoinGroup / SyncGroup / Heartbeat / LeaveGroup
@@ -176,9 +176,9 @@ GetMetadata(topics[] — empty = all) → brokers + per-partition { leader, lead
 <tbody>
 <tr><td><code>create-topic</code> / <code>create-queue</code></td><td>POST /topics</td></tr>
 <tr><td><code>list</code></td><td>GET /topics</td></tr>
-<tr><td><code>produce</code> / <code>fetch</code></td><td>gRPC Produce / Fetch (batch file → ProduceBatch)</td></tr>
+<tr><td><code>produce</code> / <code>fetch</code></td><td>gRPC <code>Produce</code> / <code>Fetch</code> (batch file → <code>ProduceBatch</code>)</td></tr>
 <tr><td><code>groups</code></td><td>GET /groups</td></tr>
-<tr><td><code>dlq list</code> / <code>dlq redrive</code></td><td>gRPC Fetch on <code>&lt;q&gt;.dlq</code> / Fetch + Produce into source queue</td></tr>
+<tr><td><code>dlq list</code> / <code>dlq redrive</code></td><td>gRPC <code>Fetch</code> on <code>&lt;q&gt;.dlq</code> / <code>Fetch</code> + <code>Produce</code> into source queue</td></tr>
 <tr><td><code>create-apikey</code> / <code>revoke-apikey</code> / <code>list-apikeys</code></td><td>POST / DELETE / GET /apikeys</td></tr>
 <tr><td><code>federation add-peer|list-peers|remove-peer|keys|status</code></td><td>POST|GET|DELETE /federation/peers · POST /federation/keys · GET /federation/cursors</td></tr>
 <tr><td><code>mesh-ca init</code></td><td>local CA generation (no API)</td></tr>

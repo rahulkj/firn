@@ -45,7 +45,7 @@
 <tr><td><code>-grpc-addr</code></td><td><code>:9461</code></td><td>Client gRPC listener — <code>FirnService</code>. Clients dial this</td></tr>
 <tr><td><code>-mesh-addr</code></td><td>grpc+10 (<code>:9471</code>)</td><td>Mesh gRPC — Replica/Quorum/Federation services. mTLS only; never client-reachable</td></tr>
 <tr><td><code>-tls-cert</code> / <code>-tls-key</code></td><td><code>""</code></td><td>TLS for both listeners; both set together or plaintext; min TLS 1.2</td></tr>
-<tr><td><code>-metrics-auth</code></td><td><code>true</code></td><td>Require viewer key on /metrics (set false only on private networks)</td></tr>
+<tr><td><code>-metrics-auth</code></td><td><code>true</code></td><td>Require viewer key on <code>/metrics</code> (set false only on private networks)</td></tr>
 <tr><td><code>-admin-ui</code></td><td><code>true</code></td><td>Serve read-only dashboard at /ui/</td></tr>
 </tbody></table></div>
 
@@ -108,7 +108,7 @@
 <thead><tr><th>Mode</th><th>How</th><th>What serves</th></tr></thead>
 <tbody>
 <tr><td><strong>Bootstrap</strong></td><td>zero keys, no flags</td><td>Only <code>/healthz</code>; one-time <code>BOOTSTRAP TOKEN</code> on stderr; POST /apikeys mints the single admin key</td></tr>
-<tr><td><strong>Enforced</strong></td><td>any key exists</td><td>Bearer + role on every non-public route; /metrics viewer-gated by default</td></tr>
+<tr><td><strong>Enforced</strong></td><td>any key exists</td><td>Bearer + role on every non-public route; <code>/metrics</code> viewer-gated by default</td></tr>
 <tr><td><strong>Open</strong></td><td><code>-dev</code> / <code>-allow-open-bootstrap</code></td><td>No auth anywhere — loud warning, development only</td></tr>
 </tbody></table></div>
 

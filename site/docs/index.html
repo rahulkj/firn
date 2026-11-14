@@ -41,7 +41,7 @@
   <a class="card" href="quickstart.html" style="text-decoration:none;color:inherit"><span class="tag">New here</span><h3>Quickstart</h3><p>Fail-closed first boot, bootstrap token, mint key, produce + fetch, queue pull/ack. Five minutes, one machine.</p></a>
   <a class="card" href="installation.html" style="text-decoration:none;color:inherit"><span class="tag">Operator</span><h3>Installation</h3><p>Release tarballs (verify with SHA256SUMS + SLSA attestation), from-source builds, TLS, backups, single-node and 3-node cluster layout.</p></a>
   <a class="card" href="configuration.html" style="text-decoration:none;color:inherit"><span class="tag">Operator</span><h3>Configuration reference</h3><p>Every flag with defaults: listeners, retention, segment sizing, flush windows, cluster mode, audit budget, security model modes.</p></a>
-  <a class="card" href="api.html" style="text-decoration:none;color:inherit"><span class="tag">Developer</span><h3>API reference</h3><p>HTTP admin surface + gRPC FirnService: topics, produce, fetch, groups, queues, keys, sessions, federation. Auth rules and full error tables.</p></a>
+  <a class="card" href="api.html" style="text-decoration:none;color:inherit"><span class="tag">Developer</span><h3>API reference</h3><p>HTTP admin surface + gRPC <code>FirnService</code>: topics, produce, fetch, groups, queues, keys, sessions, federation. Auth rules and full error tables.</p></a>
   <a class="card" href="cli.html" style="text-decoration:none;color:inherit"><span class="tag">Developer</span><h3>firn-cli</h3><p>Command ↔ API map: create topics, produce/fetch, groups, DLQ list/redrive, API keys, federation peers, mesh CA.</p></a>
   <a class="card" href="architecture.html" style="text-decoration:none;color:inherit"><span class="tag">Internals</span><h3>Architecture</h3><p>The system at a glance, plane-by-plane component catalog, six numbered interaction flows (Mermaid), internal topics, four topologies.</p></a>
   <a class="card" href="sre.html" style="text-decoration:none;color:inherit"><span class="tag">SRE</span><h3>Metrics &amp; SRE</h3><p>Prometheus catalog — produce/fetch, fsync, flush-window batches, block seal/commit/push, lease grants/renewals, DLQ depth, federation lag — plus alert ideas.</p></a>
@@ -66,9 +66,9 @@
 <div class="table-wrap"><table>
 <thead><tr><th>Listener</th><th>Default</th><th>Serves</th><th>Auth</th></tr></thead>
 <tbody>
-<tr><td>HTTP admin</td><td><code>:9460</code></td><td>/healthz, /metrics, admin API, /ui/</td><td>Bearer (except /healthz)</td></tr>
-<tr><td>Client gRPC</td><td><code>:9461</code></td><td>FirnService (produce/fetch/groups/queue/metadata)</td><td>Bearer + role</td></tr>
-<tr><td>Mesh gRPC</td><td><code>:9471</code> (grpc+10)</td><td>ReplicaService, QuorumService, FederationService</td><td>mesh mTLS (+ federation key on FederationService)</td></tr>
+<tr><td>HTTP admin</td><td><code>:9460</code></td><td><code>/healthz</code>, <code>/metrics</code>, admin API, /ui/</td><td>Bearer (except <code>/healthz</code>)</td></tr>
+<tr><td>Client gRPC</td><td><code>:9461</code></td><td><code>FirnService</code> (produce/fetch/groups/queue/metadata)</td><td>Bearer + role</td></tr>
+<tr><td>Mesh gRPC</td><td><code>:9471</code> (grpc+10)</td><td><code>ReplicaService</code>, <code>QuorumService</code>, <code>FederationService</code></td><td>mesh mTLS (+ federation key on <code>FederationService</code>)</td></tr>
 </tbody></table></div>
 
 <p>Source of truth for everything on this site is the repository: <a href="https://github.com/rahulkj/firn/tree/main/docs" rel="noopener">github.com/rahulkj/firn/tree/main/docs</a>.</p>

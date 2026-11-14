@@ -8,7 +8,7 @@
 <link rel="icon" href="../favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="../assets/style.css">
 <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
-<script>window.addEventListener('load', () => { if (window.mermaid) mermaid.initialize({ startOnLoad: true, theme: 'dark', themeVariables: { fontFamily: 'inherit', primaryColor: '#171f42', primaryBorderColor: '#3d4a77', lineColor: '#5b6ba1', actorColor: '#171f42', signalColor: '#8fd3ff' } }); });</script>
+<script>mermaid.initialize({ startOnLoad: true, theme: 'base', darkMode: true, themeVariables: { fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', background: '#0a0e22', primaryColor: '#171f42', primaryTextColor: '#eaf6ff', primaryBorderColor: '#3d4a77', lineColor: '#7d8fc4', secondaryColor: '#121936', tertiaryColor: '#0e1430', actorBkg: '#1c2547', actorBorder: '#3d4a77', actorTextColor: '#eaf6ff', actorLineColor: '#5b6ba1', signalColor: '#8fd3ff', signalTextColor: '#eaf6ff', labelBoxBkgColor: '#171f42', labelBoxBorderColor: '#3d4a77', labelTextColor: '#eaf6ff', loopTextColor: '#eaf6ff', noteBkgColor: '#241c07', noteTextColor: '#fbbf24', noteBorderColor: '#a16207', activationBkgColor: '#1c2547', activationBorderColor: '#3d4a77', mainBkg: '#171f42', mainTextColor: '#eaf6ff', nodeBorder: '#3d4a77', clusterBkg: '#121936', clusterBorder: '#3d4a77', titleColor: '#eaf6ff', edgeLabelBackground: '#171f42', flowchart: { htmlLabels: true } } });</script>
 </head>
 <body>
 <header class="site-header">
@@ -40,44 +40,48 @@
 <p class="doc-lede">The map of what exists — component planes, the interactions that matter, and the topologies you can run. Canonical diagrams live in <a href="https://github.com/rahulkj/firn/blob/main/docs/adr/012-architecture.md" rel="noopener">ADR-012</a>; this page mirrors them.</p>
 
 <h2>The system at a glance</h2>
-<pre class="mermaid">flowchart TB
+<pre class="mermaid">flowchart LR
     subgraph clients[Clients]
         cli[firn-cli]
         grpc[gRPC clients]
-        http[HTTP admin / curl]
+        http[HTTP admin]
     end
-    subgraph firnd["firnd — one process"]
-        httpapi[HTTP admin :9460]
-        grpcapi[FirnService gRPC :9461]
-        mesh["Mesh gRPC (mTLS)<br/>Replica · Quorum · Federation"]
-        broker["internal/broker<br/>produce/fetch orchestration"]
-        queue["internal/queue<br/>claim / lease / DLQ"]
-        groups["internal/groups<br/>offsets store"]
-        meta["internal/meta<br/>topic registry"]
-        flog["internal/log<br/>FileLog: segments, CRC frames"]
-        quorum["internal/quorum<br/>embedded Raft"]
-        repl["internal/replication<br/>block push/pull, leases"]
-        fed["internal/federation<br/>pullers, cursors"]
+    subgraph firnd[firnd - one process]
+        httpapi[HTTP :9460]
+        grpcapi[gRPC :9461]
+        mesh[Mesh gRPC · mTLS]
+        broker[broker]
+        queue[queue]
+        groups[groups]
+        meta[meta]
+        flog[FileLog]
+        quorum[Raft]
+        repl[replication]
+        fed[federation]
+        httpapi --> broker
+        grpcapi --> broker
+        grpcapi --> queue
+        grpcapi --> groups
+        mesh --> broker
+        mesh --> quorum
+        mesh --> fed
+        broker --> meta
+        broker --> flog
+        queue --> flog
+        groups --> flog
+        repl --> quorum
+        repl --> flog
     end
-    subgraph disk["Local disk"]
-        files["segments + topics.json<br/>internal topics"]
-    end
-    cli --> httpapi & grpcapi
+    cli --> httpapi
+    cli --> grpcapi
     http --> httpapi
     grpc --> grpcapi
-    httpapi --> broker
-    grpcapi --> broker & queue & groups
-    mesh --> broker & quorum & fed
-    broker --> meta & flog
-    queue --> flog
-    groups --> flog
-    repl --> quorum & flog
-    flog --> disk</pre>
+    flog --> disk[(local disk: segments + topics.json)]</pre>
 
 <h2>Storage invariants (ADR-003)</h2>
 <ol>
 <li>Offsets are assigned monotonically from 0 per partition — never reused.</li>
-<li>Fetch never returns records at offset ≥ the high watermark.</li>
+<li><code>Fetch</code> never returns records at offset ≥ the high watermark.</li>
 <li>After a crash, no torn tail record is ever visible: CRC-framed records are truncated on open.</li>
 <li>Committed group offsets advance monotonically (unless explicitly reset).</li>
 <li>Unacked queue messages are redelivered (at-least-once); DLQ after 3 attempts.</li>
@@ -107,14 +111,14 @@
     participant F as FileLog
     C->>Q: Pull(queue, max, visibility)
     Q->>A: increment attempts (max-fold at read)
-    alt attempts > 3
-        Q->>F: divert to &lt;queue&gt;.dlq
+    alt attempts greater than 3
+        Q->>F: divert to the DLQ topic (queue plus .dlq suffix)
         Q-->>C: no delivery for this message
     else
         Q-->>C: deliveries (visibility lease held)
     end
     C->>Q: Ack(queue, delivery_id)
-    Note over C,Q: lease expiry → redeliver first; DLQ after 3 attempts</pre>
+    Note over C,Q: lease expiry redelivers first. DLQ after 3 attempts</pre>
 
 <h2>Flow 3 — cluster produce with a lease (followers catch up)</h2>
 <pre class="mermaid">sequenceDiagram
@@ -142,23 +146,23 @@
     participant OP as Operator
     participant SINK as Sink
     participant SRC as Source
-    OP->>SINK: POST /federation/peers {direction:"in", mode:"passive", topics:[...]}
-    Note over SINK: sink fenced — produce/pull/ack → 409 / FailedPrecondition
-    SINK->>SRC: FederationFetch(topic, partition, first=cursor+1) — mTLS + federation key
-    SRC-->>SINK: CRC-checked frames (cursor+1 → HWM)
-    SINK->>SINK: byte-identical apply; cursor upserted
-    Note over SINK: clients read immediately; writes rejected until cutover</pre>
+    OP->>SINK: POST federation peers (direction in, mode passive, topics list)
+    Note over SINK: sink fenced — produce/pull/ack return 409 or FailedPrecondition
+    SINK->>SRC: FederationFetch(topic, partition, first = cursor+1) over mTLS plus federation key
+    SRC-->>SINK: CRC-checked frames (cursor+1 to HWM)
+    SINK->>SINK: byte-identical apply, cursor upserted
+    Note over SINK: clients read immediately. Writes rejected until cutover</pre>
 
 <h2>Flow 5 — federation, active-active</h2>
 <pre class="mermaid">sequenceDiagram
     participant A as Cluster A (writable)
     participant B as Cluster B (writable)
     A->>A: local produce at A-offsets
-    B->>A: FederationFetch — A filters A-origin frames
-    A-->>B: only B-origin / unseen frames
-    B->>B: AppendReoriginedFrames (fresh B-offsets; ts/key/value preserved)
+    B->>A: FederationFetch (A filters A-origin frames)
+    A-->>B: only B-origin or unseen frames
+    B->>B: AppendReoriginedFrames (fresh B-offsets, ts/key/value preserved)
     B->>A: symmetric pull, symmetric filter
-    Note over A,B: both see all records; global order undefined</pre>
+    Note over A,B: both see all records. Global order undefined</pre>
 
 <h2>Internal topics</h2>
 <div class="table-wrap"><table>
@@ -185,9 +189,9 @@
 <div class="table-wrap"><table>
 <thead><tr><th>Listener</th><th>Default</th><th>Contents</th><th>Auth</th></tr></thead>
 <tbody>
-<tr><td>HTTP admin</td><td><code>:9460</code></td><td>/healthz, /metrics, admin API, /ui/</td><td>Bearer (except /healthz)</td></tr>
-<tr><td>Client gRPC</td><td><code>:9461</code></td><td>FirnService</td><td>Bearer + role</td></tr>
-<tr><td>Mesh gRPC</td><td><code>:9471</code></td><td>Replica · Quorum · Federation</td><td>mTLS (+ federation key on FederationService)</td></tr>
+<tr><td>HTTP admin</td><td><code>:9460</code></td><td><code>/healthz</code>, <code>/metrics</code>, admin API, /ui/</td><td>Bearer (except <code>/healthz</code>)</td></tr>
+<tr><td>Client gRPC</td><td><code>:9461</code></td><td><code>FirnService</code></td><td>Bearer + role</td></tr>
+<tr><td>Mesh gRPC</td><td><code>:9471</code></td><td>Replica · Quorum · Federation</td><td>mTLS (+ federation key on <code>FederationService</code>)</td></tr>
 </tbody></table></div>
 <p style="margin-top:18px;color:var(--faint);font-size:.85rem">Diagrams render with Mermaid from the same source of truth as <a href="https://github.com/rahulkj/firn/blob/main/docs/adr/012-architecture.md" rel="noopener">ADR-012</a>. If JavaScript is disabled, the diagram sources are still readable as text.</p>
 </article>
