@@ -216,7 +216,7 @@ func parsePeers(s string) (map[string]string, error) {
 	return out, nil
 }
 
-const version = "0.5.0"
+const version = "0.5.1"
 
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelInfo})))

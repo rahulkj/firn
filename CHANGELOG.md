@@ -131,7 +131,11 @@ Storage semantics are unchanged for single-node default (`-flush-window=0`).
 
 Security posture during this release: every mutation path continues to audit-record in every mode; `ProduceBatch`/`AckBatch` are metered as one RPC per call (not per record — their value *is* the batching); no new dependencies; SBOM/cosign/grype unchanged; `-flush-window` defaults to `0` (v0.4.0 behavior for anyone upgrading).
 
-## Unreleased — release pipeline (2026-11-14)
+## v0.5.1 — 2026-11-14 — release pipeline: SLSA build provenance, tag-push releases
 
-- Release pipeline: tag pushes (`v*`) and manual `workflow_dispatch` now attest **SLSA v1.0 build provenance** via `actions/attest@v4`, binding each tarball's SHA-256 to the workflow that built it (Sigstore-signed with the workflow's OIDC identity; persisted to the repository attestation store). The Sigstore bundle is attached to each release as `provenance.sigstore.jsonl` for offline verification. Additive to the existing SHA256SUMS + SBOM + grype gate; cosign sign-blob remains a human step. See `docs/distribution.md` for verification instructions (`gh attestation verify …`).
+**No broker behavior change** — the Go sources are identical to v0.5.0 except the version constant. This tag exists to carry the release pipeline inside the tagged tree, so the release workflow runs on `push: tags` and its SLSA provenance records `refs/tags/v0.5.1` exactly (v0.5.0's attestation, cut via `workflow_dispatch`, records `release.yml@refs/heads/main` instead — see `docs/distribution.md`).
+
+- Release pipeline (v0.5.0+): tag pushes (`v*`) and manual `workflow_dispatch` now attest **SLSA v1.0 build provenance** via `actions/attest@v4`, binding each tarball's SHA-256 to the workflow that built it (Sigstore-signed with the workflow's OIDC identity; persisted to the repository attestation store). The Sigstore bundle is attached to each release as `provenance.sigstore.jsonl` for offline verification. Additive to the existing SHA256SUMS + SBOM + grype gate; cosign sign-blob remains a human step. See `docs/distribution.md` for verification instructions (`gh attestation verify …`).
+- Release workflow guards that the tag matches the version const and that a matching `## vX.Y.Z` CHANGELOG section exists (that section is the release notes).
+- migration: v0.5.0 → v0.5.1 is a no-op for brokers (no flags, wire, or storage changes).
 

@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag to release (e.g. v0.5.0). Defaults to the ref this run was launched from.'
+        description: 'Tag to release (e.g. v0.5.1). Defaults to the ref this run was launched from.'
         required: false
         type: string
         default: ''
@@ -46,7 +46,7 @@ jobs:
           fetch-depth: 1
 
       - name: Guard against releasing a mismatched tag
-        # Tag v0.5.0 must only be built when the tree claims version 0.5.0;
+        # Tag vX.Y.Z must only be built when the tree claims version X.Y.Z;
         # otherwise archivists get stale binaries under a fresh tag.
         run: |
           set -euo pipefail
