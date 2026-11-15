@@ -156,8 +156,8 @@ func TestActiveActiveConvergenceBothWays(t *testing.T) {
 	}
 	// Convergence barrier under full-suite -race CPU starvation: not a
 	// correctness bound — a starved pair of pullers can take arbitrary time
-	// to converge; 30s is generous scheduling headroom for CI.
-	waitFor(t, 30*time.Second, func() bool {
+	// to converge; 90s is generous scheduling headroom for 2-core CI.
+	waitFor(t, 90*time.Second, func() bool {
 		aHWM, err := a.broker.PartitionHighWatermark(ctx, "shared", 0)
 		bHWM, err2 := b.broker.PartitionHighWatermark(ctx, "shared", 0)
 		return err == nil && err2 == nil && aHWM == 5 && bHWM == 5
