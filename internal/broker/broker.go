@@ -440,13 +440,44 @@ func (b *Broker) Fetch(ctx context.Context, topic string, partition int32, offse
 	}
 
 	b.mu.Lock()
-	defer b.mu.Unlock()
 	logs, err := b.partitionLogs(t)
 	if err != nil {
+		b.mu.Unlock()
 		return nil, fmt.Errorf("fetch: %w", err)
 	}
 	plog := logs[partition]
+	fileBacked := false
+	if _, ok := plog.(*log.FileLog); ok {
+		fileBacked = true
+	}
+	b.mu.Unlock()
 
+	var recs []log.Record
+	var fetchErr error
+	if fileBacked {
+		// FileLog serializes its own frames internally (its leaf mutex), so we
+		// can release the broker-wide mutex here and let concurrent fetches
+		// across partitions proceed in parallel. Holding b.mu across the log
+		// read would serialize every consumer on one broker mutex (the same
+		// defect class ADR-014 fixed on the produce side).
+		recs, fetchErr = b.fetchFrom(plog, offset, maxRecords)
+	} else {
+		// In-memory MemLogs are not concurrency-safe on their own; keep the
+		// broker mutex as the serializer for that path.
+		b.mu.Lock()
+		defer b.mu.Unlock()
+		recs, fetchErr = b.fetchFrom(plog, offset, maxRecords)
+	}
+	if fetchErr != nil {
+		return nil, fetchErr
+	}
+	return recs, nil
+}
+
+// fetchFrom reads from plog starting at offset; the caller holds b.mu when
+// plog is an in-memory MemLog (which must be serialized), and must not hold
+// it when plog is a *log.FileLog (which locks internally).
+func (b *Broker) fetchFrom(plog partitionLog, offset int64, maxRecords int) ([]log.Record, error) {
 	hw := plog.HighWatermark()
 	if offset == hw {
 		return nil, nil

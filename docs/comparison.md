@@ -9,6 +9,12 @@ Honesty box, read this first:
 - Competitor facts below are from their public documentation as of 2026-11-13. Performance numbers for competitors are **vendor/community claims**, not independent measurements. Firn's numbers are measured; theirs are cited. Treat both accordingly.
 - Azure Event Hubs / Azure Service Bus are not included (insufficient verified data in this pass); they are comparable to Kinesis/SQS in the managed tier.
 
+## Update — 2026-11-16 (performance pass; numbers re-measured)
+
+- **Fetch read path no longer broker-serialized (2026-11-16).** `Broker.Fetch` releases the broker-wide mutex before reading from a file-backed partition log (in-memory logs keep the broker mutex as their serializer). The produce side had already done this under ADR-014; the fetch side held the same mutex across the read, serializing consumers across partitions. New benchmark: `BenchmarkFetchParallel` (8 workers / 8 partitions, 100-record batches) added in the same pass; re-run numbers in `bench/baseline.md` (2026-11-16).
+- **New numbers (2026-11-16):** single-partition fetch of a 128-record batch ≈ **1.07M records/s** (~119.6 µs/op); 8-way concurrent fetch ≈ **185 µs/op** per 100-record batch (~5.4k batches/s aggregate). Durable produce ceiling is unchanged by this pass: **~350–500 msg/s** fsync/append default, **~186,000 msg/s** with `-flush-window=2ms` (ADR-014; measured 2026-11-13/14 on Apple M3 Pro).
+- No change to the fsync-bound durable produce number; the group-commit window (ADR-014) remains the throughput lever for the produce path.
+
 ## TL;DR verdict
 
 Firn is **not** superior as a general-purpose production broker, and nothing here says otherwise. It is meaningfully differentiated in a few narrow places:

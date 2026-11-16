@@ -161,6 +161,48 @@ func BenchmarkQueuePullAckDurable(b *testing.B) {
 	}
 }
 
+// BenchmarkFetchParallel measures concurrent fetch throughput: many
+// goroutines reading different partitions of one topic at once. Before the
+// broker released its mutex before touching the partition log, every fetch
+// serialized on the broker-wide mutex even across partitions, capping how
+// many consumers could read in parallel.
+func BenchmarkFetchParallel(b *testing.B) {
+	dir := b.TempDir()
+	reg := meta.NewRegistry()
+	if err := reg.Create("bench", 8); err != nil {
+		b.Fatal(err)
+	}
+	bk, err := broker.NewWithDir(reg, dir)
+	if err != nil {
+		b.Fatal(err)
+	}
+	b.Cleanup(func() { _ = bk.Close() })
+	ctx := context.Background()
+	value := make([]byte, 256)
+	const seeded = 8_000
+	for i := 0; i < seeded; i++ {
+		if _, _, err := bk.Produce(ctx, "bench", nil, value); err != nil {
+			b.Fatal(err)
+		}
+	}
+	const perPartition = seeded / 8 // 1000 records per partition (keyless rr)
+	const batches = perPartition / 100 // 100-record batches per partition
+	b.SetParallelism(8)
+	b.ReportAllocs()
+	b.ResetTimer()
+	var workerID, fetchID int64
+	b.RunParallel(func(pb *testing.PB) {
+		p := int32(atomic.AddInt64(&workerID, 1)-1) % 8
+		for pb.Next() {
+			off := int64(atomic.AddInt64(&fetchID, 1)-1)%batches*100
+			if _, err := bk.Fetch(ctx, "bench", p, off, 100); err != nil {
+				b.Error(err)
+				return
+			}
+		}
+	})
+}
+
 // BenchmarkQueuePullAck measures queue-mode consume throughput: pull a
 // batch of 10 and ack each delivery. Runs against an in-memory broker to
 // isolate the queue machinery from fsync; the durable path is bounded by

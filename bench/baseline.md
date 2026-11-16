@@ -92,3 +92,22 @@ Notes:
 - ADR-014 slice 5 (`AckBatch`, 2026-11-13): same drain loop with batched acks — **~376 deliveries/s vs ~192 per-message** (Apple M3 Pro).
 - ADR-014 slice 6 (batch claim, 2026-11-13): `__queue_attempts` records for a whole pull are written in ONE fsync (`partitionLog.AppendBatch` with pre-batch rollback) — durable drain: per-message Ack 196 → **347/s**; AckBatch drain **376 → 2075/s** (~5.5× compounding with slice 5). Remaining floor: claim-time attempts fsync (~2.6 ms per delivered message); the batch-claim lever is deliberately untouched here.
 - Numbers re-measured on an Apple M3 Pro / NVMe; public-cloud storage will be slower. Treat as an upper bound for dissimilar hardware.
+
+## Re-run 2026-11-16 (fetch-path mutex scoping fix; Apple M3 Pro, darwin/arm64)
+
+New benchmark added in this pass: `BenchmarkFetchParallel` — 8 concurrent
+workers, one per partition, 100-record fetch batches over an 8-partition topic.
+
+| Benchmark | ns/op | B/op | allocs/op | Rate |
+|---|---|---|---|---|
+| Fetch (128-record batch, single partition, fixed path) | 119,596 | 153,602 | 798 | ~1.07M records/s |
+| FetchParallel (8 workers / 8 partitions, 100-record batches) | ~185,500 | 113,389 | 511 | ~5.4k batches/s ≈ 540k records/s aggregate |
+
+Fix shipped in the same pass: `Broker.Fetch` no longer holds the broker-wide
+mutex (`b.mu`) across the partition-log read for file-backed logs (it releases
+the mutex before delegating to the partition log's internal mutex and keeps the
+broker mutex as serializer for in-memory logs). The produce side already did
+this (ADR-014); the fetch side held the same broker-wide mutex across the read,
+serializing all consumers across partitions behind one mutex.
+
+## Re-run 2026-11-13 (capacity check, v0.4.x, Apple M3 Pro, darwin/arm64)
