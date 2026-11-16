@@ -185,7 +185,7 @@ func BenchmarkFetchParallel(b *testing.B) {
 			b.Fatal(err)
 		}
 	}
-	const perPartition = seeded / 8 // 1000 records per partition (keyless rr)
+	const perPartition = seeded / 8    // 1000 records per partition (keyless rr)
 	const batches = perPartition / 100 // 100-record batches per partition
 	b.SetParallelism(8)
 	b.ReportAllocs()
@@ -194,7 +194,7 @@ func BenchmarkFetchParallel(b *testing.B) {
 	b.RunParallel(func(pb *testing.PB) {
 		p := int32(atomic.AddInt64(&workerID, 1)-1) % 8
 		for pb.Next() {
-			off := int64(atomic.AddInt64(&fetchID, 1)-1)%batches*100
+			off := int64(atomic.AddInt64(&fetchID, 1)-1) % batches * 100
 			if _, err := bk.Fetch(ctx, "bench", p, off, 100); err != nil {
 				b.Error(err)
 				return

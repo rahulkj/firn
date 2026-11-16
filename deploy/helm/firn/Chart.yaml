@@ -3,7 +3,7 @@ name: firn
 description: Firn — the durable event broker (streams + queues over one append-only log). HA 3-node cluster (GA envelope) or standalone single node.
 type: application
 version: 0.4.0
-appVersion: "0.5.4"
+appVersion: "0.5.5"
 keywords:
   - firn
   - event-broker

@@ -131,6 +131,13 @@ Storage semantics are unchanged for single-node default (`-flush-window=0`).
 
 Security posture during this release: every mutation path continues to audit-record in every mode; `ProduceBatch`/`AckBatch` are metered as one RPC per call (not per record — their value *is* the batching); no new dependencies; SBOM/cosign/grype unchanged; `-flush-window` defaults to `0` (v0.4.0 behavior for anyone upgrading).
 
+## v0.5.5 — 2026-11-16 — broker fetch mutex release (perf)
+
+**No broker behavior change** — the broker-wide mutex is no longer held across file-backed (`*log.FileLog`) fetch reads; `FileLog` serializes frames through its internal leaf mutex, so concurrent fetches across partitions on one broker now proceed in parallel — the same defect class ADR-014 fixed on the produce side (release broker mutex before file-backed append). The in-memory (`MemLog`) fetch path keeps the broker mutex as its serializer, as before.
+
+- perf(broker): `Broker.Fetch` releases the broker mutex before reading from a `*log.FileLog` driver and re-acquires it only for in-memory logs.
+- test(federation): widened `ActiveActive` convergence barrier 30s → 90s (timing guard; no behavior change).
+
 ## v0.5.4 — 2026-11-14 — restart crash-loop fix
 
 **Crash-loop-on-restart fixed** (found by the first live k8s deployment, then by restarting the cluster): firnd created `<data-dir>/metadata/` with default umask (`0755`) and its quorum log files with `0644` — then `enforceStoragePermissions()` refused to boot on the next start (dir must be `0700`, files `0600`). Every cluster restart crash-looped forever. `internal/quorum` now creates both `0700`/`0600`. Permission-mode only; no storage semantics changed (the quorum log is not the FileLog; flagged for review).

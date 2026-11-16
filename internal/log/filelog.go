@@ -142,7 +142,7 @@ type FileLog struct {
 	maxBatchBytes int64
 	pending       []pendingFrame // staged, unwritten, unflushed
 	stagingBytes  int64
-	pendingSince  time.Time      // when the first frame of the current window staged
+	pendingSince  time.Time // when the first frame of the current window staged
 	flushTimer    *time.Timer
 
 	// Test-only hooks. Untouched in production builds (always nil).
