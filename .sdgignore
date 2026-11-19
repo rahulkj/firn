@@ -5,3 +5,4 @@
 docs/integrations.md
 internal/ingest/ingest_test.go
 internal/egress/new_sinks_test.go
+internal/ingest/mqtt5_test.go

@@ -114,3 +114,7 @@ Second batch, still honoring "runtime remains outside firnd":
 - **Prometheus metrics on all three binaries** (`-metrics-addr`): records-in/produced, DLQ totals, op latency histograms, MQTT connection gauge.
 - **Databricks staged path** now has two options: slice-2 file sink (unchanged) and direct UC Volumes PUT.
 - **Still not built (dependency-gated):** Kafka messaging sink (driver approval needed).
+
+## Implementation notes (2026-11-19c): Kafka sink delivered
+
+- **`kafka` sink**: franz-go producer with `acks=all`; key/header passthrough; plain/SCRAM-SHA-256/SCRAM-SHA-512 auth; optional TLS CA env (`ca_env` → PEM); all produce errors retryable; live-verified against the in-memory fake cluster (kfake) in-tree. Delivery remains at-least-once per route policy. No exactly-once producer session games (idempotent producer not enabled — the ack policy `after_sink_confirm` is the contract).

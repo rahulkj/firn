@@ -102,3 +102,12 @@ What shipped vs the decision record, honestly:
 - **Not built (dependency-gated):** Kafka/Redpanda/NATS sources, SQL CDC (Postgres logical replication) and NoSQL change-stream connectors. They need third-party drivers, which this repo does not add ad hoc; each is named in plan 007 and tracked in ADR-013. MQTT 5.0 native, SUBSCRIBE support, retained-store, and topic-checkpoint coordination for multi-instance deployments are also unbuilt.
 - Checkpointing is **file-based by default**; a `__integration_checkpoints`-backed store was deferred (documented in plan 007 slice 1).
 - Everything speaks to Firn through `sdk/firngo`; no storage-path or replication changes; storage invariants untouched.
+
+## Implementation notes (2026-11-19c): all gated sources delivered and live-verified
+
+- **Kafka source** (franz-go): consume-partitions with checkpoint positions (no consumer groups); position format `p:o,p:o` verified against an in-memory fake cluster (kfake) — full produce/consume/checkpoint/drain/resume cycle passes in-tree.
+- **Postgres CDC** (pglogrepl + pgx/v5, pgoutput v1): slot `firn_cdc` (auto-created), publication `firn_cdc_pub` (auto-created `FOR ALL TABLES` when privileged), in-process decode, key from replica-identity columns, `REPLICA IDENTITY FULL` recommended. **Live-verified** against `debezium/postgres:16` (insert/update/delete round-trip + checkpoint resume) in this environment; the wal2json plugin is NOT used.
+- **MongoDB change streams** (mongo-driver/v2): `Watch()` with `updateLookup`, base64 resume-token checkpoint, namespace/op/documentKey extracted. **Live-verified** against `mongo:7` (replica set) in this environment.
+- **DynamoDB Streams** (aws-sdk-go-v2): per-shard checkpoints, parent→child shard continuity. **Live-verified** against `amazon/dynamodb-local` in this environment.
+- **MQTT 5.0**: wire-correct v5 CONNACK/PUBLISH/PUBACK/PUBREC/PUBREL/PUBCOMP/SUBACK(0x87 refusal)/DISCONNECT, properties parser (all 26 property ids), reason codes, fail-closed. v4 behavior unchanged. Live-tested at the protocol level in-tree; not against a commercial MQTT harness.
+- All four connectors run through the shared checkpoint runtime (`integration.Runner`) with post-produce checkpointing and content-addressed positions; compose with `-metrics-addr`.

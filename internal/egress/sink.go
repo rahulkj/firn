@@ -48,6 +48,8 @@ func NewSink(r Route) (Sink, error) {
 		return newDatabricksSink(r)
 	case "s3":
 		return newS3Sink(r)
+	case "kafka":
+		return newKafkaSink(r)
 	default:
 		return nil, fmt.Errorf("egress: unknown sink %q", r.Sink.Type)
 	}

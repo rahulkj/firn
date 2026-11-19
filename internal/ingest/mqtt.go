@@ -207,9 +207,11 @@ func (s *MQTTServer) ListenAndServe(ctx context.Context) error {
 }
 
 type connectInfo struct {
-	clientID string
-	username string
-	password string
+	clientID   string
+	username   string
+	password   string
+	version    int    // 4 = MQTT 3.1.1, 5 = MQTT 5.0
+	authMethod string // v5 extended-auth method (must be empty — unsupported)
 }
 
 func (s *MQTTServer) serveConn(ctx context.Context, conn net.Conn) {
@@ -219,16 +221,21 @@ func (s *MQTTServer) serveConn(ctx context.Context, conn net.Conn) {
 	if err != nil || pktType != 1 { // CONNECT
 		return
 	}
-	ci, err := parseConnect(payload)
+	ci, err := parseConnectAuto(payload)
 	if err != nil {
-		s.writePacket(conn, 0x20, []byte{0x00, 0x02}) // CONNACK: identifier rejected
+		reason := byte(0x82)
+		var ce *connectError
+		if errors.As(err, &ce) {
+			reason = ce.reason
+		}
+		s.writeConnAck(conn, ci, reason, err.Error())
 		return
 	}
 	if !s.authenticate(ci) {
-		s.writePacket(conn, 0x20, []byte{0x00, 0x04}) // CONNACK: bad username/password
+		s.writeConnAck(conn, ci, 0x84, "bad username or password")
 		return
 	}
-	s.writePacket(conn, 0x20, []byte{0x00, 0x00}) // CONNACK: accepted
+	s.writeConnAck(conn, ci, 0x00, "")
 
 	for {
 		_ = conn.SetReadDeadline(time.Now().Add(90 * time.Second))
@@ -240,12 +247,20 @@ func (s *MQTTServer) serveConn(ctx context.Context, conn net.Conn) {
 		case 3: // PUBLISH
 			s.handlePublish(ctx, conn, ci, flags, payload)
 		case 6: // PUBREL — QoS 2 second leg; respond PUBCOMP
+			if ci.version == 5 {
+				if len(payload) < 2 {
+					return
+				}
+				pid := append([]byte{}, payload[:2]...)
+				s.writePacket(conn, 0x70, append(pid, 0x00, 0x00)) // PUBCOMP: reason 0x00, no props
+				return
+			}
 			if len(payload) != 2 {
 				return
 			}
 			s.writePacket(conn, 0x70, payload) // PUBCOMP with same packet id
 		case 8: // SUBSCRIBE — refused: this is a publish-only ingress gateway
-			if !s.handleSubscribeRefusal(conn, payload) {
+			if !s.handleSubscribeRefusal(conn, ci, payload) {
 				return
 			}
 		case 12: // PINGREQ
@@ -256,6 +271,21 @@ func (s *MQTTServer) serveConn(ctx context.Context, conn net.Conn) {
 			return // fail-closed on anything unexpected
 		}
 	}
+}
+
+func (s *MQTTServer) writeConnAck(conn net.Conn, ci connectInfo, reasonCode byte, reason string) {
+	if ci.version == 5 {
+		body := append([]byte{0x00, reasonCode}, connAckProps(reasonCode, reason)...)
+		s.writePacket(conn, 0x20, body)
+		return
+	}
+	// v4 CONNACK return codes: 0x00 accepted, 0x01 bad protocol version,
+	// 0x02 identifier rejected, 0x04 bad username/password, 0x05 not authorized.
+	v4 := map[byte]byte{0x82: 0x02, 0x84: 0x04, 0x87: 0x05, 0x86: 0x05}
+	if v4code, ok := v4[reasonCode]; ok {
+		reasonCode = v4code
+	}
+	s.writePacket(conn, 0x20, []byte{0x00, reasonCode})
 }
 
 func (s *MQTTServer) authenticate(ci connectInfo) bool {
@@ -286,6 +316,15 @@ func (s *MQTTServer) handlePublish(ctx context.Context, conn net.Conn, ci connec
 		packetID = binary.BigEndian.Uint16(rest)
 		rest = rest[2:]
 	}
+	if ci.version == 5 {
+		// PUBLISH carries a property section before the payload in v5.
+		_, remaining, err := parseProperties(rest)
+		if err != nil {
+			_ = conn.Close() // fail-closed on malformed properties
+			return
+		}
+		rest = remaining
+	}
 	route, ok := s.routeFor(topic)
 	if !ok {
 		// Unmapped topic: no route to forward to. Closing the connection
@@ -313,18 +352,33 @@ func (s *MQTTServer) handlePublish(ctx context.Context, conn net.Conn, ci connec
 	}
 	switch qos {
 	case 1:
+		if ci.version == 5 {
+			s.writePacket(conn, 0x40, append(uint16Bytes(packetID), 0x00, 0x00)) // PUBACK: reason 0x00, no props
+			return
+		}
 		s.writePacket(conn, 0x40, uint16Bytes(packetID)) // PUBACK
 	case 2:
+		if ci.version == 5 {
+			s.writePacket(conn, 0x50, append(uint16Bytes(packetID), 0x00, 0x00)) // PUBREC: reason 0x00, no props
+			return
+		}
 		s.writePacket(conn, 0x50, uint16Bytes(packetID)) // PUBREC (PUBREL -> PUBCOMP)
 	}
 }
 
-func (s *MQTTServer) handleSubscribeRefusal(conn net.Conn, payload []byte) bool {
+func (s *MQTTServer) handleSubscribeRefusal(conn net.Conn, ci connectInfo, payload []byte) bool {
 	if len(payload) < 2 {
 		return false
 	}
 	pktID := payload[:2]
 	rest := payload[2:]
+	if ci.version == 5 {
+		_, remaining, err := parseProperties(rest)
+		if err != nil {
+			return false
+		}
+		rest = remaining
+	}
 	var grants []byte
 	for len(rest) > 0 {
 		_, n, err := readPrefixedString(rest) // filter
@@ -332,14 +386,24 @@ func (s *MQTTServer) handleSubscribeRefusal(conn net.Conn, payload []byte) bool 
 			return false
 		}
 		rest = rest[n:]
-		if len(rest) < 1 { // requested QoS byte
+		if len(rest) < 1 { // options byte (both versions have one here)
 			return false
 		}
 		rest = rest[1:]
-		grants = append(grants, 0x80) // failure
+		if ci.version == 5 {
+			grants = append(grants, 0x87) // not authorized (publish-only gateway)
+			continue
+		}
+		grants = append(grants, 0x80) // failure (v4)
+	}
+	if ci.version == 5 {
+		body := append(append([]byte{}, pktID...), 0x00) // properties length 0
+		body = append(body, grants...)
+		s.writePacket(conn, 0x90, body)
+		return true
 	}
 	body := append(append([]byte{}, pktID...), grants...)
-	s.writePacket(conn, 0x90, body) // SUBACK with per-filter failure
+	s.writePacket(conn, 0x90, body)
 	return true
 }
 
@@ -444,6 +508,7 @@ func appendVarint(b []byte, v int) []byte {
 // flags, keepalive, then client id / will / username / password).
 func parseConnect(payload []byte) (connectInfo, error) {
 	var ci connectInfo
+	ci.version = 4
 	r := payload
 	_, n, err := readPrefixedString(r)
 	if err != nil {
@@ -519,4 +584,19 @@ func readBinary(b []byte) ([]byte, int, error) {
 		return nil, 0, errors.New("truncated binary")
 	}
 	return b[2 : 2+l], 2 + l, nil
+}
+
+// parseConnectAuto detects the protocol level and dispatches to the v4 or v5 parser.
+func parseConnectAuto(payload []byte) (connectInfo, error) {
+	_, n, err := readPrefixedString(payload)
+	if err != nil {
+		return connectInfo{}, err
+	}
+	if len(payload) < n+1 {
+		return connectInfo{}, errors.New("connect: truncated level")
+	}
+	if payload[n] == 5 {
+		return parseConnectV5(payload)
+	}
+	return parseConnect(payload)
 }

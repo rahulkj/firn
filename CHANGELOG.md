@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — 2026-11-19c (integrations batch 3: Kafka, CDC sources, MQTT 5.0)
+
+Batch 3 lands the connectors and protocol work originally gated on driver decisions (ADR-019). Everything remains separate-process, client-API-only, at-least-once; no storage-path changes.
+
+- **Kafka source connector** (`firn-ingest -source-kafka`) and **Kafka sink** (`firn-egress type: kafka`) — franz-go (ADR-019); consume-partitions with no consumer groups; checkpoint positions per partition; acks=all, SASL plain/scram-sha-256/512, optional TLS CA; **live-verified against the in-memory fake cluster (kfake)**.
+- **Postgres CDC** (`firn-ingest -source-postgres`) — logical replication slot `firn_cdc` + publication `firn_cdc_pub` (auto-created FOR ALL TABLES when privileged); pgoutput v1 decoded via pglogrepl/pgx-v5 in-process; replica-identity key columns in output; **live-verified** against debezium/postgres:16 (insert/update/delete round trips + checkpoint resume).
+- **MongoDB change streams** (`firn-ingest -source-mongo`) — `Watch()` with `updateLookup`; base64 resume-token checkpoints; **live-verified** against mongo:7 replica set.
+- **DynamoDB Streams** (`firn-ingest -source-dynamodb`) — per-shard checkpoints with parent→child continuity; **live-verified** against dynamodb-local.
+- **MQTT 5.0** — wire-correct v5 CONNACK/PUBLISH/QoS flows/SUBACK-refusal/DISCONNECT/properties parser; v4 behavior unchanged; publish-only, stateless sessions, extended auth refused (`0x86`).
+- Integration runner increments Prometheus counters (`-metrics-addr`).
+- ADR-019 records the driver decisions; ADR-013 register updated.
+
+**Not built:** NATS/Redpanda connectors, per-stage pipeline latency histograms, `firn-cli` mutation commands for routes (no control plane), extended auth/session state/shared subscriptions (refused by design), real-AWS validation of the S3 sink.
+
 ## Unreleased — 2026-11-19 (ADR-016/017/018 integrations: reference implementations)
 
 The three integration ADRs were accepted 2026-11-19 and their plans (007/008/009) were partially delivered. Everything ships as separate binaries talking to firnd through the client gRPC API; no storage-path or replication changes; at-least-once end-to-end.

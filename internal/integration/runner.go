@@ -21,6 +21,7 @@ type Runner struct {
 	DLQ       string // optional dead-letter topic (empty = park on failure)
 	BatchSize int    // max records per ProduceBatch (default 500)
 	IdleDelay time.Duration
+	Metrics   *Metrics // nil = no-op
 	Logger    func(format string, args ...any)
 }
 
@@ -83,12 +84,19 @@ func (r *Runner) step(ctx context.Context, checkpoints CheckpointStore) (int, er
 	if max <= 0 || max > 500 {
 		max = 500
 	}
+	fetchStart := time.Now()
 	recs, err := r.Connector.FetchBatch(ctx, pos, max)
+	if r.Metrics != nil {
+		r.Metrics.OpSeconds.WithLabelValues("ingest", "fetch").Observe(time.Since(fetchStart).Seconds())
+	}
 	if err != nil {
 		return 0, fmt.Errorf("fetch: %w", err)
 	}
 	if len(recs) == 0 {
 		return 0, nil
+	}
+	if r.Metrics != nil {
+		r.Metrics.RecordsIn.WithLabelValues("ingest", r.Connector.Name(), r.Topic, "ok").Add(float64(len(recs)))
 	}
 	if err := r.produce(ctx, recs); err != nil {
 		return 0, err
@@ -108,6 +116,9 @@ func (r *Runner) produce(ctx context.Context, recs []Record) error {
 		kv = append(kv, firngo.KeyValue{Key: rec.Key, Value: rec.Value})
 	}
 	if _, err := r.Client.ProduceBatch(ctx, r.Topic, kv); err == nil {
+		if r.Metrics != nil {
+			r.Metrics.RecordsProduced.WithLabelValues("ingest", r.Connector.Name(), r.Topic, "ok").Add(float64(len(recs)))
+		}
 		return nil
 	} else {
 		r.logf("batch produce failed (%v); falling back to per-record produce to isolate poison records", err)
@@ -128,6 +139,9 @@ func (r *Runner) produce(ctx context.Context, recs []Record) error {
 		if lastErr != nil {
 			if dlqErr := r.deadLetter(ctx, rec, "produce", lastErr); dlqErr != nil {
 				return fmt.Errorf("record %d: produce failed (%v) and DLQ failed: %w", i, lastErr, dlqErr)
+			}
+			if r.Metrics != nil {
+				r.Metrics.DLQTotal.WithLabelValues("ingest", r.Connector.Name(), "produce").Add(1)
 			}
 			r.logf("record %d dead-lettered: %v", i, lastErr)
 		}

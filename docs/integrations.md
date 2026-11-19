@@ -4,8 +4,8 @@ Firn ships three companion processes that move data in and out of the broker wit
 
 | Binary | Purpose |
 |---|---|
-| `firn-ingest` | HTTP(S) ingest endpoints, MQTT 3.1.1 publish listener for IoT devices, and a reference file-tail source connector |
-| `firn-egress` | Forward selected topics/queues to external systems: JSONL files (stage for data-lake/Databricks auto-loader paths) and HTTP(S)/webhook endpoints (incl. IoT) |
+| `firn-ingest` | HTTP(S) ingest endpoints, MQTT 3.1.1/5.0 publish listener for IoT devices, and source connectors: file-tail (reference), Kafka, Postgres CDC, MongoDB change streams, DynamoDB Streams |
+| `firn-egress` | Forward selected topics/queues to external systems: JSONL files (data-lake/Databricks staging), HTTP(S)/webhooks, Databricks UC Volumes, S3, Kafka |
 | `firn-pipeline` | Declarative transformation pipelines: filter/project/map/enrich/route, plus opt-in AI-assisted stages |
 
 All three are **at-least-once**. None of them provides exactly-once end-to-end; duplicates on crash/retry are possible and are documented per sink/stage. Offsets are committed (queue acks sent) only **after** the external system durably accepted the data (`after_sink_confirm`).
@@ -54,7 +54,7 @@ TLS on the ingest listener is optional; set `tls_cert`/`tls_key`. The Firn dial 
 
 ### 1.2 MQTT ingress gateway (IoT)
 
-Minimal MQTT 3.1.1 **publish-only** endpoint (MQTT 5.0 clients connect in 3.1.1 mode). Devices connect, authenticate, and `PUBLISH`; subscriptions are refused (`SUBACK 0x80`) — there is no broker fan-out here.
+Minimal **publish-only** endpoint speaking both MQTT 3.1.1 and the wire-correct MQTT 5.0 surface (CONNECT/CONNACK v5 with properties and reason codes, PUBLISH property sections, QoS 0/1/2 flows, SUBSCRIBE refused with per-filter `0x87`, DISCONNECT reason codes, wildcard/`#` topic mapping). Session state is stateless; subscriptions are refused; extended authentication is refused with `0x86`. There is no broker fan-out.
 
 ```json
 {
@@ -95,7 +95,21 @@ firn-ingest -source-file /var/log/app/outbox.ndjson -topic inbox \
 
 Emits each complete line of an append-only file as one record; position = byte offset persisted in a JSON checkpoint file (atomic rename, `0600`). Rotation is not detected; truncation resets to 0 (re-reads, at-least-once). Lines without a trailing newline are not emitted until completed. This connector exists to prove and exercise the checkpoint runtime without external dependencies.
 
-**Not built (dependency-gated, see ADR-016 and plan 007):** Kafka/Redpanda/NATS source connectors and SQL CDC (Postgres logical replication) / NoSQL change-stream connectors. They require third-party client libraries and an explicit dependency decision, which has not been made.
+### 1.4 Source connectors (delivered 2026-11-19, live-tested)
+
+All source connectors share the checkpoint runtime (`integration.Runner`): positions are persisted **after** Firn accepts the batch; crash ⇒ replay, never silent loss. Every connector speaks Firn through the client API only.
+
+**Kafka** (`firn-ingest -source-kafka kafka.json -topic in -checkpoint cp.json`) — pulls one topic, tracks per-partition offsets in the checkpoint (no Kafka consumer groups). Config: `{"brokers":["b:9092"],"topic":"src","start":"earliest","connector_name":"kafka-in"}`. Live-tested against an in-memory fake cluster (`kfake`) in CI/tests.
+
+**Postgres CDC** (`firn-ingest -source-postgres pg.json -topic in -checkpoint cp.json`) — logical replication slot (`firn_cdc` default) + `firn_cdc_pub` publication (created `FOR ALL TABLES` if the role can); `pgoutput` v1 decoded in-process. Emits `{"schema","table","op":"c|u|d|t","lsn","columns":[{"name","oid","value"}],"key":{...}}` per row change. **Requires `wal_level=logical`** (and a replica the operator manages — slot bloat is on you). Live-tested against `debezium/postgres:16` in this environment.
+
+**MongoDB change streams** (`firn-ingest -source-mongo mongo.json -topic in -checkpoint cp.json`) — `Watch()` on one collection; checkpoint = base64 resume token. Config: `{"uri_env":"MONGO_URI","database":"app","collection":"events","full_document":"updateLookup","connector_name":"mongo-in"}`. **Requires a replica set** (single-node with `replSet` is fine). Live-tested against `mongo:7` here.
+
+**DynamoDB Streams** (`firn-ingest -source-dynamodb ddb.json -topic in -checkpoint cp.json`) — `DescribeStream`/`GetShardIterator`/`GetRecords`; per-shard checkpoints (`TRIM_HORIZON` for new shards, `AFTER_SEQUENCE_NUMBER` for seen shards, parent→child shard continuity). Config: `{"stream_arn":"arn:aws:dynamodb:...","region":"us-east-1","endpoint":"http://127.0.0.1:58000"}` (`endpoint` optional; empty = AWS). Live-tested against `amazon/dynamodb-local` here.
+
+Kafka consumes with `franz-go` (ADR-019); Postgres via `pglogrepl` (+`pgx/v5`); Mongo via the official `mongo-driver/v2`; DynamoDB via `aws-sdk-go-v2`. All four are pinned in `go.mod` by ADR-019.
+
+**Checkpoint format:** every connector emits an opaque position string into the checkpoint file (`0600`, atomic rename); positions only advance **after** Firn accepts the batch. Truncated/rotated files or slot losses fall back to a full re-read (at-least-once).
 
 ---
 
@@ -132,6 +146,16 @@ firn-egress -config egress.json -validate
 ```
 
 ### Sinks
+
+**`kafka`** — franz-go producer, `acks=all`:
+
+```json
+"sink": { "type": "kafka", "brokers": ["kafka-1:9092"], "topic": "events.ingested", 
+          "ca_env": "KAFKA_CA_PATH",
+          "sasl": { "mechanism": "scram-sha-512", "username": "firn-egress", "password_env": "KAFKA_PASSWORD" } }
+```
+
+Keys pass through unchanged (null-keyed records use Kafka's partitioner). All produce errors are retryable in this implementation; after the route's retry budget the batch dead-letters per policy. `ca_env` is a PEM CA bundle for TLS to the broker (system roots are otherwise used). Live-tested against an in-memory fake cluster in this environment.
 
 **`file` (JSONL staging — flat files for data-lake / Databricks Auto Loader paths)**
 Each batch lands as `<dir>/<route>/topic-p<partition>-<first>-<last>.jsonl` written to `*.tmp`, fsynced, then renamed; a `*.manifest.json` sidecar records `{route, partition, first_offset, last_offset, count, crc32c}`. Re-delivery of the same offset range is skipped idempotently. Records are base64-encoded (`value`/`key`, with `*_encoding: "base64"` markers) to guarantee lossless bytes.
@@ -292,4 +316,4 @@ Prints a proposed `project`/`map` fragment for human review — never mutates de
 
 ## Known gaps (tracked in ADR-013)
 
-Kafka/NATS/Redpanda source and sink connectors and SQL CDC (Postgres logical replication) / NoSQL change-stream connectors remain **dependency-gated** and are not built. Route management mutations in `firn-cli` (there is no control plane to mutate) and per-stage pipeline latency histograms are not built. MQTT 5.0 native and multi-instance checkpoint coordination are not built. The S3 sink is stub-tested, not validated against a real AWS account.
+Route management mutations in `firn-cli` (there is no control plane to mutate) and per-stage pipeline latency histograms are not built. MQTT 5.0 support covers the publish-only surface (no session state, no shared subscriptions, no extended auth — refused by design). The S3 sink is stub-tested, not validated against a real AWS account. DynamoDB Streams connector is live-tested against `dynamodb-local`; production validation against a real account is recommended. MongoDB connector requires a replica set. The Postgres connector's logical slot is retained on the server; slot bloat/orphans are the operator's responsibility.

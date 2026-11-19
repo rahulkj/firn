@@ -88,6 +88,19 @@ type SinkConfig struct {
 	Region          string `json:"region"`            // falls back to AWS_REGION / AWS_DEFAULT_REGION
 	ForcePathStyle  bool   `json:"force_path_style"`  // MinIO-style addressing
 	Endpoint        string `json:"endpoint"`          // optional S3-compatible endpoint URL (e.g. https://play.min.io)
+
+	// kafka sink
+	Brokers []string    `json:"brokers"` // e.g. ["kafka-1:9092"]
+	Topic   string      `json:"topic"`   // destination topic
+	CAEnv   string      `json:"ca_env"`  // optional env var holding a PEM CA bundle path for the broker
+	SASL    *KafkaSASL  `json:"sasl"`    // optional; omit for plaintext/PLAIN or SASL per broker config
+}
+
+// KafkaSASL configures optional SASL for the kafka sink.
+type KafkaSASL struct {
+	Mechanism   string `json:"mechanism"`     // plain | scram-sha-256 | scram-sha-512
+	Username    string `json:"username"`
+	PasswordEnv string `json:"password_env"`  // env var holding the password
 }
 
 // RetryConfig bounds sink retry behavior.
@@ -240,8 +253,25 @@ func (c *Config) Validate() (*Config, error) {
 					return nil, fmt.Errorf("egress: route %q: env %s is required for s3 sink", r.Name, v)
 				}
 			}
+		case "kafka":
+			if len(r.Sink.Brokers) == 0 || r.Sink.Topic == "" {
+				return nil, fmt.Errorf("egress: route %q: kafka sink requires brokers and topic", r.Name)
+			}
+			if r.Sink.SASL != nil {
+				switch r.Sink.SASL.Mechanism {
+				case "plain", "scram-sha-256", "scram-sha-512":
+				default:
+					return nil, fmt.Errorf("egress: route %q: sasl mechanism must be plain|scram-sha-256|scram-sha-512", r.Name)
+				}
+				if r.Sink.SASL.Username == "" || r.Sink.SASL.PasswordEnv == "" {
+					return nil, fmt.Errorf("egress: route %q: kafka sasl requires username and password_env", r.Name)
+				}
+				if os.Getenv(r.Sink.SASL.PasswordEnv) == "" {
+					return nil, fmt.Errorf("egress: route %q: env %s is empty", r.Name, r.Sink.SASL.PasswordEnv)
+				}
+			}
 		default:
-			return nil, fmt.Errorf("egress: route %q: unknown sink type %q (file|http|databricks|s3)", r.Name, r.Sink.Type)
+			return nil, fmt.Errorf("egress: route %q: unknown sink type %q (file|http|databricks|s3|kafka)", r.Name, r.Sink.Type)
 		}
 	}
 	return c, nil

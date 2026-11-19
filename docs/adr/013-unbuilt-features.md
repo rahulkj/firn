@@ -68,11 +68,11 @@ The ingress/egress/pipeline ADRs (016–018) were accepted 2026-11-19 and delive
 - [x] **HTTP(S) ingest gateway** (`firn-ingest -http`) — bearer/HMAC auth, rate limit, DLQ, `202`-after-commit (ADR-016, plan 007).
 - [x] **MQTT 3.1.1 publish-only IoT ingress** (`firn-ingest -mqtt`) — minimal stdlib server; subscriptions refused; retained forwarded as regular records (ADR-016, plan 007).
 - [x] **Tail-file source connector + checkpoint runtime** (`firn-ingest -source-file`) — reference connector with byte-offset checkpoints (ADR-016, plan 007).
-- [ ] **Kafka/NATS/Redpanda source connectors** — dependency-gated (no driver added); plan 007 slice 4 remainder.
-- [ ] **SQL CDC (Postgres logical replication) / NoSQL change-stream connectors** — dependency-gated; plan 007 slice 5.
+- [x] **Kafka source + sink** (franz-go, ADR-019 approved 2026-11-19) — consume-partitions with checkpoint positions (no groups); produce with acks=all; SASL plain/SCRAM-SHA-256/512; live-verified against kfake. Delivered 2026-11-19.
+- [x] **SQL CDC (Postgres logical replication, pglogrepl) and NoSQL change streams (MongoDB, mongo-driver/v2; DynamoDB Streams, aws-sdk-go-v2)** — all live-verified against dockerized instances in this environment (debezium/postgres:16, mongo:7, dynamodb-local). Delivered 2026-11-19.
 - [x] **File/object-stage sink** (`firn-egress -config …` `type: file`) — JSONL + manifest, idempotent re-delivery, pre-Databricks-staging shape (ADR-017, plan 008).
 - [x] **HTTP(S)/IoT webhook sink** — `Idempotency-Key`, bearer/HMAC, retry budget, 4xx→DLQ (ADR-017, plan 008).
-- [x] **S3-compatible sink** (stdlib SigV4 PUT, stub-tested, ADR-017 addendum 2026-11-19b) and **direct Databricks UC Volumes Files API sink** (stdlib, ADR-017 addendum 2026-11-19b) — both delivered 2026-11-19 without new dependencies. Kafka sink remains dependency-gated (plan 008 slice 4).
+- [x] **S3-compatible sink** (stdlib SigV4 PUT, stub-tested) and **direct Databricks UC Volumes Files API sink** (stdlib) — both delivered 2026-11-19 without new dependencies. **Kafka sink delivered 2026-11-19** (franz-go, ADR-019) — plan 008 slice 4.
 - [x] **Route lag surface + `firn-cli integrations` (validate, lag)** — `firn_egress_lag_records` gauge, `firn-egress -lag`, delivered 2026-11-19. Mutation commands deliberately not built (no control plane).
 - [x] **Declarative pipeline engine** (`firn-pipeline`) — filter/project/map/enrich(JSONL)/route; single input; DLQ lineage (ADR-018, plan 009).
 - [x] **AI-assisted stage (opt-in)** — `mock` + OpenAI-compatible providers via stdlib HTTP; contract-validated output; per-minute cap; daily circuit breaker; HTTPS+env-only keys (ADR-018, plan 009).
