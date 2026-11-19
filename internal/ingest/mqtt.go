@@ -159,6 +159,7 @@ type MQTTServer struct {
 	client  *firngo.Client
 	connSem chan struct{}
 	users   map[string]string // username -> resolved password
+	Metrics *integration.Metrics
 }
 
 // NewMQTTServer builds the server (does not listen).
@@ -167,7 +168,9 @@ func NewMQTTServer(cfg *MQTTConfig, client *firngo.Client) (*MQTTServer, error) 
 	for _, u := range cfg.Users {
 		users[u.Username] = os.Getenv(u.PasswordEnv)
 	}
-	return &MQTTServer{cfg: cfg, client: client, connSem: make(chan struct{}, cfg.MaxConnections), users: users}, nil
+	s := &MQTTServer{cfg: cfg, client: client, connSem: make(chan struct{}, cfg.MaxConnections), users: users}
+	s.Metrics = integration.NewMetrics("ingest")
+	return s, nil
 }
 
 // ListenAndServe serves MQTT until ctx is cancelled.
@@ -194,8 +197,10 @@ func (s *MQTTServer) ListenAndServe(ctx context.Context) error {
 			_ = c.Close() // connection cap reached; drop
 			continue
 		}
+		s.Metrics.ConnectionsActive.WithLabelValues("ingest", "mqtt").Inc()
 		go func() {
 			defer func() { <-s.connSem }()
+			defer s.Metrics.ConnectionsActive.WithLabelValues("ingest", "mqtt").Dec()
 			s.serveConn(ctx, c)
 		}()
 	}
@@ -290,8 +295,15 @@ func (s *MQTTServer) handlePublish(ctx context.Context, conn net.Conn, ci connec
 		return
 	}
 	key := recordKeyFor(route, ci)
+	produceStart := time.Now()
+	s.Metrics.RecordsIn.WithLabelValues("ingest", route.Name, "mqtt", "ok").Add(1)
 	_, _, err = s.produceWithRetry(ctx, route.Topic, key, rest)
+	s.Metrics.OpSeconds.WithLabelValues("ingest", "produce").Observe(time.Since(produceStart).Seconds())
+	if err == nil {
+		s.Metrics.RecordsProduced.WithLabelValues("ingest", route.Name, route.Topic, "ok").Add(1)
+	}
 	if err != nil {
+		s.Metrics.DLQTotal.WithLabelValues("ingest", route.Name, "produce").Add(1)
 		if dlqErr := s.deadLetter(ctx, route, topic, key, rest, err); dlqErr != nil {
 			// Produce failed and DLQ unavailable (or absent): close
 			// without ack; at-least-once clients will retry.

@@ -55,6 +55,11 @@ func (c *Config) Process(rec Record, stats *Stats, rev string) ([]OutputRecord, 
 	if !ok {
 		return nil, &ProcessError{Stage: "parse", Err: errors.New("record value is not a JSON object")}
 	}
+	if rec.Source != "" {
+		if _, exists := doc["_source"]; !exists {
+			doc["_source"] = rec.Source
+		}
+	}
 
 	mk := func(out string, d map[string]any) (OutputRecord, error) {
 		v, err := json.Marshal(d)

@@ -13,12 +13,13 @@ Scope note: ships a reference file/object-storage sink and an HTTP(S)/IoT webhoo
 | Slice | Delivers | Review gate |
 |---|---|---|
 | 1 (**delivered 2026-11-19**) | Route model + sink contract: versioned route config (**JSON**), `after_sink_confirm` ack policy only (`on_write` dropped as redundant — documented), sink interface (`Write/IsTerminal/Close`), topic sources via generation-0 monotonic group commits, queue sources via `Pull`/`AckBatch`, DLQ contract + idempotent confirm (unconfirmed batch re-served) | API + design review — done (in-session, autonomous) |
-| 2 (**partial — local fs delivered 2026-11-19**) | File sink: JSONL batches, `tmp`→fsync→rename, `*.manifest.json` with CRC32C + offset range, base64 lossless encoding, idempotent re-delivery of the same offset range. **S3/object-store backend NOT delivered — dependency-gated (aws-sdk-go-v2)** | S3 dependency approval — open |
+| 2 (**delivered 2026-11-19**) | File sink: JSONL batches, per-partition split, `tmp`→fsync→rename, `*.manifest.json` (route/partition/offset range/count/CRC32C), base64 lossless encoding, idempotent re-delivery. **S3 backend delivered 2026-11-19 via stdlib SigV4 PUT** (no AWS SDK; env-only creds; stub-tested) | S3 dependency approval — moot (no dep taken) |
+| 2b (**delivered 2026-11-19**) | **Databricks UC Volumes Files API sink** (stdlib `net/http`): PUT `.jsonl` then `.manifest.json` with overwrite=true; manifest gating; no atomic rename (documented) | review — done |
 | 3 (**delivered 2026-11-19**) | HTTP(S)/IoT webhook sink: POST batches, `Idempotency-Key` stable across retries, bearer/HMAC auth, bounded timeout, retry+backoff (budget 5), 4xx→DLQ | security review — done (in-session, autonomous) |
 | 4 (not delivered) | External messaging sink (Kafka-compatible): needs driver approval | **dependency approval + review** — open |
-| 5 (not delivered) | Analytics sink: staged-file path **works today** (slice 2 file sink feeds Auto Loader); direct Databricks Files/UC API client NOT delivered — dependency-gated | **dependency approval + review** — open |
-| 6 (**partial — 2026-11-19**) | Route management via `firn-egress -config … [-route name] [-validate] [-routes]` + `-debug` pprof (loopback only). **`firn-cli integrations route …` subcommands and `firn_egress_lag_records` Prometheus metric NOT delivered** | API review — open (folded into docs) |
-| 7 (**delivered 2026-11-19**) | `docs/integrations.md` (semantics, DLQ redrive, security, capacity), ADR-017 validation addendum | docs review — done (in-session, autonomous) |
+| 5 (**delivered 2026-11-19**) | Analytics sink: staged-file path (slice 2) unchanged; **direct Databricks endpoint shipped as `databricks` sink (stdlib Files API, no dependency)** | review — done |
+| 6 (**delivered 2026-11-19**) | Route surface: `firn-egress -config … [-route name] [-validate] [-routes] [-lag] [-metrics-addr]` + `-debug` pprof (loopback only); **`firn-cli integrations validate` and `firn-cli integrations lag`** shipped; **`firn_egress_lag_records` gauge** (15s refresh); mutations deliberately absent (no control plane) | API review — done |
+| 7 (**delivered 2026-11-19 + 2026-11-19b**) | `docs/integrations.md` (semantics, DLQ redrive, security, capacity, databricks/s3 sinks, lag, metrics), ADR-017 validation addendum + 2026-11-19b addendum | docs review — done (in-session, autonomous) |
 
 ## Delivery notes (2026-11-19)
 

@@ -17,15 +17,26 @@ import (
 // re-sent; sinks must tolerate or dedupe (file sink is idempotent by
 // construction; HTTP sink carries Idempotency-Key).
 type Runner struct {
-	Route  Route
-	Src    Source
-	Sink   Sink
-	Client *firngo.Client // for DLQ produce
-	Logger func(format string, args ...any)
+	Route   Route
+	Src     Source
+	Sink    Sink
+	Client  *firngo.Client // for DLQ produce
+	Metrics *integration.Metrics
+	Logger  func(format string, args ...any)
+}
+
+type lagReporter interface {
+	Lag(ctx context.Context, scanCap int) (map[int32]int64, error)
+	Topic() string
 }
 
 // Run drains forever until ctx is cancelled or a fatal error occurs.
 func (r *Runner) Run(ctx context.Context) error {
+	lagDone := make(chan struct{})
+	defer close(lagDone)
+	if r.Metrics != nil {
+		go r.lagLoop(ctx, lagDone)
+	}
 	for {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -41,6 +52,9 @@ func (r *Runner) Run(ctx context.Context) error {
 		if len(batch) == 0 {
 			continue
 		}
+		if r.Metrics != nil {
+			r.Metrics.RecordsIn.WithLabelValues("egress", r.Route.Name, r.Src.Name(), "ok").Add(float64(len(batch)))
+		}
 		if err := r.deliver(ctx, batch); err != nil {
 			// Deliver failed and no DLQ absorbed it: back off and retry
 			// the whole batch (source position was not advanced).
@@ -55,7 +69,15 @@ func (r *Runner) Run(ctx context.Context) error {
 func (r *Runner) deliver(ctx context.Context, batch []Delivery) error {
 	var lastErr error
 	for attempt := 0; attempt <= r.Route.Retry.Budget; attempt++ {
-		if err := r.Sink.Write(ctx, r.Route.Name, batch); err == nil {
+		writeStart := time.Now()
+		err := r.Sink.Write(ctx, r.Route.Name, batch)
+		if r.Metrics != nil {
+			r.Metrics.OpSeconds.WithLabelValues("egress", "write").Observe(time.Since(writeStart).Seconds())
+		}
+		if err == nil {
+			if r.Metrics != nil {
+				r.Metrics.RecordsProduced.WithLabelValues("egress", r.Route.Name, r.Route.Sink.Type, "ok").Add(float64(len(batch)))
+			}
 			return r.Src.Confirm(ctx, batch)
 		} else if r.Sink.IsTerminal(err) {
 			lastErr = err
@@ -72,6 +94,9 @@ func (r *Runner) deliver(ctx context.Context, batch []Delivery) error {
 		}
 	}
 	// Exhausted or terminal: dead-letter the batch, then confirm.
+	if r.Metrics != nil {
+		r.Metrics.DLQTotal.WithLabelValues("egress", r.Route.Name, "sink").Add(float64(len(batch)))
+	}
 	if dlqErr := r.deadLetter(ctx, batch, lastErr); dlqErr != nil {
 		return fmt.Errorf("route %s: sink failed (%v) and DLQ failed: %w", r.Route.Name, lastErr, dlqErr)
 	}
@@ -113,6 +138,33 @@ func lastOffset(batch []Delivery) int64 {
 func (r *Runner) logf(format string, args ...any) {
 	if r.Logger != nil {
 		r.Logger(format, args...)
+	}
+}
+
+// lagLoop refreshes the firn_egress_lag_records gauge every 15 seconds.
+func (r *Runner) lagLoop(ctx context.Context, done <-chan struct{}) {
+	lag, ok := r.Src.(lagReporter)
+	if !ok {
+		return // queue sources: no scan-based lag
+	}
+	topic := lag.Topic()
+	t := time.NewTicker(15 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			m, err := lag.Lag(ctx, 10000)
+			if err != nil {
+				continue
+			}
+			for p, n := range m {
+				r.Metrics.LagRecords.WithLabelValues(r.Route.Name, topic, fmt.Sprint(p)).Set(float64(n))
+			}
+		}
 	}
 }
 

@@ -1,6 +1,7 @@
 package egress
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -43,6 +44,10 @@ func NewSink(r Route) (Sink, error) {
 		return &FileSink{dir: fi.Dir}, nil
 	case "http":
 		return newHTTPSink(r)
+	case "databricks":
+		return newDatabricksSink(r)
+	case "s3":
+		return newS3Sink(r)
 	default:
 		return nil, fmt.Errorf("egress: unknown sink %q", r.Sink.Type)
 	}
@@ -64,11 +69,63 @@ type FileSink struct {
 }
 
 func (f *FileSink) Write(_ context.Context, route string, batch []Delivery) error {
-	if len(batch) == 0 {
-		return nil
+	parts, err := renderPartitions(route, batch)
+	if err != nil {
+		return err
 	}
-	// Split by source/partition so each file carries exactly one partition's
-	// offset range (deterministic names → idempotent re-delivery).
+	for _, p := range parts {
+		base := filepath.Join(f.dir, route)
+		final := filepath.Join(base, p.filename)
+		tmp := final + ".tmp"
+		manifest := final + ".manifest.json"
+		if st, err := os.Stat(final); err == nil && st.Size() > 0 {
+			if _, err := os.Stat(manifest); err == nil {
+				continue // already committed
+			}
+		}
+		if err := os.MkdirAll(base, 0o700); err != nil {
+			return err
+		}
+		if err := os.WriteFile(tmp, p.jsonl, 0o600); err != nil {
+			return err
+		}
+		fh, err := os.OpenFile(tmp, os.O_RDWR, 0o600)
+		if err == nil {
+			_ = fh.Sync()
+			_ = fh.Close()
+		}
+		if err := os.WriteFile(manifest+".tmp", p.manifest, 0o600); err != nil {
+			_ = os.Remove(tmp)
+			return err
+		}
+		if err := os.Rename(tmp, final); err != nil {
+			_ = os.Remove(tmp)
+			return err
+		}
+		if err := os.Rename(manifest+".tmp", manifest); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// batchArtifact is one rendered partition batch: the .jsonl payload and its
+// manifest, with deterministic filenames derived from offset ranges.
+type batchArtifact struct {
+	filename string
+	manifest []byte
+	jsonl    []byte
+	first    int64
+	last     int64
+	count    int
+}
+
+// renderPartitions renders each partition of a mixed-partition batch to its
+// own artifact (deterministic name ⇒ idempotent re-delivery).
+func renderPartitions(route string, batch []Delivery) ([]batchArtifact, error) {
+	if len(batch) == 0 {
+		return nil, nil
+	}
 	groups := map[string][]Delivery{}
 	var order []string
 	for _, d := range batch {
@@ -79,43 +136,34 @@ func (f *FileSink) Write(_ context.Context, route string, batch []Delivery) erro
 		}
 		groups[key] = append(groups[key], d)
 	}
+	out := make([]batchArtifact, 0, len(order))
 	for _, key := range order {
-		if err := f.writePartition(route, key, groups[key]); err != nil {
-			return err
+		art, err := renderPartition(route, key, groups[key])
+		if err != nil {
+			return nil, err
 		}
+		out = append(out, art)
 	}
-	return nil
+	return out, nil
 }
 
-func (f *FileSink) writePartition(route, key string, group []Delivery) error {
+func renderPartition(route, key string, group []Delivery) (batchArtifact, error) {
+	var art batchArtifact
 	src, part := sourceLabel(group[0])
-	first := group[0].Offset
-	last := group[len(group)-1].Offset
-	base := filepath.Join(f.dir, route)
-	name := fmt.Sprintf("%s-%d-%d.jsonl", key, first, last)
-	final := filepath.Join(base, name)
-	tmp := final + ".tmp"
-	manifest := final + ".manifest.json"
-	if st, err := os.Stat(final); err == nil && st.Size() > 0 {
-		if _, err := os.Stat(manifest); err == nil {
-			return nil // already committed
-		}
-	}
-	if err := os.MkdirAll(base, 0o700); err != nil {
-		return err
-	}
-	fh, err := os.OpenFile(tmp, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
+	art.first = group[0].Offset
+	art.last = group[len(group)-1].Offset
+	art.count = len(group)
+	art.filename = fmt.Sprintf("%s-%d-%d.jsonl", key, art.first, art.last)
+
+	var buf bytes.Buffer
 	h := crc32.New(crc32.MakeTable(crc32.Castagnoli))
-	w := io.MultiWriter(fh, h)
+	w := io.MultiWriter(&buf, h)
 	md := map[string]any{
 		"route":        route,
 		"source":       src,
 		"partition":    part,
-		"first_offset": first,
-		"last_offset":  last,
+		"first_offset": art.first,
+		"last_offset":  art.last,
 		"count":        len(group),
 	}
 	for _, d := range group {
@@ -124,7 +172,6 @@ func (f *FileSink) writePartition(route, key string, group []Delivery) error {
 			rec["key"] = base64.StdEncoding.EncodeToString(d.Key)
 		}
 		rec["key_encoding"] = "base64"
-		// Preserve payload bytes losslessly.
 		rec["value"] = base64.StdEncoding.EncodeToString(d.Value)
 		rec["value_encoding"] = "base64"
 		if d.DeliveryID != "" {
@@ -132,43 +179,23 @@ func (f *FileSink) writePartition(route, key string, group []Delivery) error {
 		}
 		line, err := json.Marshal(rec)
 		if err != nil {
-			_ = fh.Close()
-			_ = os.Remove(tmp)
-			return err
+			return art, err
 		}
 		if _, err := w.Write(line); err != nil {
-			_ = fh.Close()
-			_ = os.Remove(tmp)
-			return err
+			return art, err
 		}
 		if _, err := w.Write([]byte("\n")); err != nil {
-			_ = fh.Close()
-			_ = os.Remove(tmp)
-			return err
+			return art, err
 		}
 	}
-	if err := fh.Sync(); err != nil {
-		_ = fh.Close()
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := fh.Close(); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
+	art.jsonl = buf.Bytes()
 	md["crc32c"] = fmt.Sprintf("%08x", h.Sum32())
-	mbuf, _ := json.MarshalIndent(md, "", "  ")
-	if err := os.WriteFile(manifest+".tmp", mbuf, 0o600); err != nil {
-		return err
+	mbuf, err := json.MarshalIndent(md, "", "  ")
+	if err != nil {
+		return art, err
 	}
-	if err := os.Rename(tmp, final); err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(manifest+".tmp", manifest); err != nil {
-		return err
-	}
-	return nil
+	art.manifest = mbuf
+	return art, nil
 }
 
 func (f *FileSink) IsTerminal(err error) bool {

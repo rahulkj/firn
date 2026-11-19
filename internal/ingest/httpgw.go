@@ -156,13 +156,14 @@ func (l *rateLimiter) allow(ip string) bool {
 
 // Server serves the HTTP ingest routes.
 type Server struct {
-	cfg    *HTTPConfig
-	client *firngo.Client
-	mux    *http.ServeMux
-	limit  *rateLimiter
-	token  string // resolved bearer (if configured)
-	hmac   []byte // resolved HMAC secret (if configured)
-	http   *http.Server
+	cfg     *HTTPConfig
+	client  *firngo.Client
+	mux     *http.ServeMux
+	limit   *rateLimiter
+	token   string // resolved bearer (if configured)
+	hmac    []byte // resolved HMAC secret (if configured)
+	http    *http.Server
+	Metrics *integration.Metrics
 }
 
 // NewServer builds the ingest server (does not listen).
@@ -181,6 +182,7 @@ func NewServer(cfg *HTTPConfig, client *firngo.Client) (*Server, error) {
 		}
 	}
 	s := &Server{cfg: cfg, client: client, mux: http.NewServeMux(), limit: &rateLimiter{windows: map[string]*rateWindow{}, perMin: cfg.RatePerMinute}, token: token, hmac: hmacKey}
+	s.Metrics = integration.NewMetrics("ingest")
 	for _, r := range cfg.Routes {
 		route := r
 		s.mux.HandleFunc(route.Path, s.handleRoute(route))
@@ -280,8 +282,12 @@ func (s *Server) handleRoute(route HTTPRoute) http.HandlerFunc {
 			s.reject(w, r, body, route, kerr)
 			return
 		}
+		produceStart := time.Now()
+		s.Metrics.RecordsIn.WithLabelValues("ingest", route.Name, "http", "ok").Add(1)
 		partition, offset, perr := s.client.Produce(r.Context(), route.Topic, key, body)
+		s.Metrics.OpSeconds.WithLabelValues("ingest", "produce").Observe(time.Since(produceStart).Seconds())
 		if perr == nil {
+			s.Metrics.RecordsProduced.WithLabelValues("ingest", route.Name, route.Topic, "ok").Add(1)
 			writeJSON(w, http.StatusAccepted, map[string]any{"produce": "committed", "partition": partition, "offset": offset})
 			return
 		}
@@ -300,6 +306,7 @@ func (s *Server) handleRoute(route HTTPRoute) http.HandlerFunc {
 				ValueBase64: base64.StdEncoding.EncodeToString(body),
 			})
 			if _, _, derr := s.client.Produce(r.Context(), s.cfg.DLQTopic, key, payload); derr == nil {
+				s.Metrics.DLQTotal.WithLabelValues("ingest", route.Name, "produce").Add(1)
 				writeJSON(w, http.StatusAccepted, map[string]any{"produce": "dlq", "topic": s.cfg.DLQTopic})
 				return
 			}

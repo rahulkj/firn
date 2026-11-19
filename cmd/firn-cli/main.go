@@ -141,6 +141,8 @@ func main() {
 		err = cmdDLQ(args[1:])
 	case "federation":
 		err = cmdFederation(args[1:])
+	case "integrations":
+		err = cmdIntegrations(args[1:])
 	default:
 		usage()
 		os.Exit(2)
@@ -651,7 +653,7 @@ func bearerKey() (string, bool) {
 func usage() {
 	fmt.Fprint(os.Stderr, `usage: firn-cli [--addr gRPC] [--http-addr HTTP] [--api-key KEY] [--ca-cert PEM] [--json] <command> [flags]
 
-commands: create-topic create-queue list produce fetch groups dlq create-apikey revoke-apikey list-apikeys mesh-ca federation
+commands: create-topic create-queue list produce fetch groups dlq create-apikey revoke-apikey list-apikeys mesh-ca federation integrations
 see -h on any command for its flags (e.g. firn-cli produce -h)
 `)
 }

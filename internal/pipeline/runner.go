@@ -21,6 +21,7 @@ type Runner struct {
 	Client   *firngo.Client
 	Revision string
 	Stats    *Stats
+	Metrics  *integration.Metrics
 	Logger   func(format string, args ...any)
 }
 
@@ -40,6 +41,9 @@ func (r *Runner) Run(ctx context.Context) error {
 		}
 		if len(batch) == 0 {
 			continue
+		}
+		if r.Metrics != nil {
+			r.Metrics.RecordsIn.WithLabelValues("pipeline", r.Config.Name, r.Src.Name(), "ok").Add(float64(len(batch)))
 		}
 		if err := r.processBatch(ctx, batch); err != nil {
 			// Outputs not durable (or DLQ failed): do not confirm the input;
@@ -65,7 +69,7 @@ func (r *Runner) processBatch(ctx context.Context, batch []egress.Delivery) erro
 	}
 	outputs := []pendingOutput{}
 	for _, d := range batch {
-		rec := Record{Key: d.Key, Value: d.Value, Source: sourceLabel(d), Partition: d.Partition, Offset: d.Offset, DeliveryID: d.DeliveryID}
+		rec := Record{Key: d.Key, Value: d.Value, Source: r.Src.Name(), Partition: d.Partition, Offset: d.Offset, DeliveryID: d.DeliveryID}
 		outRecords, err := r.Config.Process(rec, r.Stats, revision)
 		if err != nil {
 			var pe *ProcessError
@@ -77,6 +81,9 @@ func (r *Runner) processBatch(ctx context.Context, batch []egress.Delivery) erro
 				return fmt.Errorf("process failed (%v) and DLQ failed: %w", err, dlqErr)
 			}
 			r.Stats.DLQ++
+			if r.Metrics != nil {
+				r.Metrics.DLQTotal.WithLabelValues("pipeline", r.Config.Name, "process").Add(1)
+			}
 			continue
 		}
 		for _, out := range outRecords {
@@ -101,13 +108,21 @@ func (r *Runner) processBatch(ctx context.Context, batch []egress.Delivery) erro
 				for _, o := range recs[start:end] {
 					kv = append(kv, firngo.KeyValue{Key: o.key, Value: o.value})
 				}
+				produceStart := time.Now()
 				if _, err := r.Client.ProduceBatch(ctx, def.Topic, kv); err != nil {
 					return fmt.Errorf("produce output %q (%s): %w", name, def.Topic, err)
+				}
+				if r.Metrics != nil {
+					r.Metrics.OpSeconds.WithLabelValues("pipeline", "produce").Observe(time.Since(produceStart).Seconds())
+					r.Metrics.RecordsProduced.WithLabelValues("pipeline", r.Config.Name, name, "ok").Add(float64(end - start))
 				}
 			case "firn_queue":
 				for _, o := range recs[start:end] {
 					if _, _, err := r.Client.Produce(ctx, def.Queue, o.key, o.value); err != nil {
 						return fmt.Errorf("produce output %q (queue %s): %w", name, def.Queue, err)
+					}
+					if r.Metrics != nil {
+						r.Metrics.RecordsProduced.WithLabelValues("pipeline", r.Config.Name, name, "ok").Add(1)
 					}
 				}
 			}

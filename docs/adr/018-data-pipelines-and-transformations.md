@@ -97,3 +97,11 @@ What shipped vs the decision record, honestly:
 - **AI stage shipped, opt-in**: providers `mock` (tests) and `openai_compatible` (stdlib HTTP, no new dependencies) with contract-validated JSON output (`output_contract` types), bounded retries (`on_invalid: retry` caps at 3), per-minute rate cap (default 60), daily call budget with circuit breaker (default 10000; exhaustion ⇒ records DLQ until midnight reset or budget raise), hard timeout, HTTPS-only endpoints, env-only keys, fields merged into the record. Payloads/prompts are never logged. Removing a guardrail is a release blocker per spec.
 - **Runtime**: `firn-pipeline -config … [-validate|-dry-run -sample f.jsonl]`; revision = SHA-256 of config (or `-revision`); input position advances only after all outputs are durable; unconfirmed batches re-served; input at-least-once, duplicates possible across restarts.
 - **Not built:** slice 5 design-time mapping assistant, multi-source inputs, Prometheus metrics for stages, `firn-cli` integration, executable user code (requires its own sandboxing ADR).
+
+## Implementation notes (2026-11-19b): multi-input, _source injection, suggest-map, metrics
+
+- **Multiple inputs shipped**: `"inputs": [...]` (list) replaces `"input"`; per-input consumer group (default `firn-pipeline-<name>-<i>`), own runner goroutine, independent confirm. **Ordering across inputs is undefined** (documented); correlation only via `enrich`. Every input must be topic or queue (validated); one pipeline, one stage graph shared by all inputs.
+- **`_source` injected**: each record doc gains `"_source": "topic:name"|"queue:name"` before stages run (even single-input); never overwrites an existing `_source` key.
+- **Prometheus metrics** (`-metrics-addr`): records in/out, DLQ totals, `op_seconds` for produce. Per-stage stage-latency histograms not yet wired (documented).
+- **Design-time assistant shipped** (`firn-pipeline -suggest-map`): goal + one sample record → proposed `project`/`map` fragment printed for human review; never mutates deployed configs; providers `mock` (offline) and `openai_compatible` (HTTPS + env key). Design-time only.
+- Still not built: stage-level latency metrics, exactly-once anything, user-provided code/plugins, control plane.

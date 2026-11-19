@@ -308,3 +308,48 @@ func TestEndToEndProjectPipeline(t *testing.T) {
 		}
 	}
 }
+
+func TestResolvedInputs(t *testing.T) {
+	cfg := &Config{Name: "m"}
+	cfg.Inputs = []InputDef{{Topic: "a"}, {Queue: "q"}}
+	cfg.Outputs = map[string]OutputDef{"out": {Type: "firn_topic", Topic: "out"}}
+	cfg.DLQ = "dlq"
+	if _, err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.ResolvedInputs()
+	if len(got) != 2 {
+		t.Fatalf("inputs=%d", len(got))
+	}
+	if got[0].Group != "firn-pipeline-m-0" || got[1].Group != "firn-pipeline-m-1" {
+		t.Fatalf("default groups wrong: %+v", got)
+	}
+	// Single-input mode keeps the legacy field working.
+	cfg = &Config{Name: "s"}
+	cfg.Input.Topic = "in"
+	cfg.Outputs = map[string]OutputDef{"out": {Type: "firn_topic", Topic: "out"}}
+	if _, err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	got = cfg.ResolvedInputs()
+	if len(got) != 1 || got[0].Group != "firn-pipeline-s" {
+		t.Fatalf("single input wrong: %+v", got)
+	}
+}
+
+func TestProcessInjectsSource(t *testing.T) {
+	cfg := baseConfig()
+	cfg.Stages = []Stage{{Type: "project", Keep: []string{"_source", "x"}}}
+	if _, err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	outs, err := cfg.Process(Record{Value: mustJSON(t, map[string]any{"x": 1}), Source: "topic:raw-a"}, NewStats(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]any{}
+	_ = json.Unmarshal(outs[0].Value, &got)
+	if got["_source"] != "topic:raw-a" {
+		t.Fatalf("_source not injected: %v", got)
+	}
+}

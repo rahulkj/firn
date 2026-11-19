@@ -105,16 +105,24 @@ type AISpec struct {
 	TimeoutMs      int                `json:"timeout_ms"`           // default 15000
 }
 
+// InputDef names one input source. Multi-input pipelines fan records from
+// every input into the same stage graph; ordering across inputs is undefined
+// (documented). Each input runs under its own consumer group.
+type InputDef struct {
+	Topic      string  `json:"topic"`
+	Queue      string  `json:"queue"`
+	Partitions []int32 `json:"partitions"`
+	Group      string  `json:"group"` // default firn-pipeline-<name>[-<i>]
+}
+
 // Config is the versioned pipeline definition (pipeline.json).
 type Config struct {
 	Name string `json:"name"`
-	// v1: exactly one input. Multi-source correlation is a documented follow-up.
-	Input struct {
-		Topic      string  `json:"topic"`
-		Queue      string  `json:"queue"`
-		Partitions []int32 `json:"partitions"`
-		Group      string  `json:"group"` // topic input; default firn-pipeline-<name>
-	} `json:"input"`
+	// Single input: use "input". Multiple inputs: use "inputs" (a list of
+	// InputDef). Multi-input pipelines inject a "_source" field into each
+	// record's doc before stages run ("topic:name" or "queue:name").
+	Input  InputDef   `json:"input"`
+	Inputs []InputDef `json:"inputs"`
 	Stages  []Stage            `json:"stages"`
 	Outputs map[string]OutputDef `json:"outputs"`
 	DLQ     string             `json:"dlq"` // dead-letter topic (optional; strongly recommended)
@@ -140,12 +148,15 @@ func (c *Config) Validate() (*Config, error) {
 	if c.Name == "" {
 		return nil, errors.New("pipeline: name required")
 	}
-	t, q := c.Input.Topic, c.Input.Queue
-	if (t == "") == (q == "") {
-		return nil, errors.New("pipeline: input requires exactly one of topic or queue")
+	inputs := c.ResolvedInputs()
+	if len(inputs) == 0 {
+		return nil, errors.New("pipeline: at least one input is required (input or inputs)")
 	}
-	if t != "" && c.Input.Group == "" {
-		c.Input.Group = "firn-pipeline-" + c.Name
+	for i, in := range inputs {
+		t, q := in.Topic, in.Queue
+		if (t == "") == (q == "") {
+			return nil, fmt.Errorf("pipeline: inputs[%d]: exactly one of topic or queue required", i)
+		}
 	}
 	if len(c.Outputs) == 0 {
 		return nil, errors.New("pipeline: at least one output required")
@@ -194,6 +205,26 @@ func (c *Config) Validate() (*Config, error) {
 		}
 	}
 	return c, nil
+}
+
+// ResolvedInputs returns the effective input list, normalizing defaults
+// (group names). Exactly one of c.Input or c.Inputs must be set.
+func (c *Config) ResolvedInputs() []InputDef {
+	if c.Input.Topic != "" || c.Input.Queue != "" {
+		out := c.Input
+		if out.Topic != "" && out.Group == "" {
+			out.Group = "firn-pipeline-" + c.Name
+		}
+		return []InputDef{out}
+	}
+	out := make([]InputDef, len(c.Inputs))
+	for i, in := range c.Inputs {
+		if in.Group == "" {
+			in.Group = fmt.Sprintf("firn-pipeline-%s-%d", c.Name, i)
+		}
+		out[i] = in
+	}
+	return out
 }
 
 // Validate checks one stage against the whole config (outputs exist, types known).

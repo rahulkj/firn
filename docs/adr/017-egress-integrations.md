@@ -103,3 +103,14 @@ What shipped vs the decision record, honestly:
 - **Offsets**: topic sources commit group offsets with generation 0 (monotonic advance; fencing intentionally off) under a dedicated group (`firn-egress-<route>`). **One forwarder instance per route.** Queue sources use `Pull`/`AckBatch` (broker DLQ handles poison messages before the forwarder sees them). An unconfirmed batch is re-served until `Confirm` succeeds (this fix landed with the slice: advancing positions at fetch time would have silently skipped failed batches in-instance).
 - **Not built (dependency-gated):** S3-compatible object-store sink, direct Databricks Files/UC API client, Kafka messaging sink, mTLS client-cert auth for the HTTP sink, multi-topic fan-in per route, Prometheus metrics for routes, `firn-cli` subcommands. Each is named in plan 008 and tracked in ADR-013.
 - At-least-once end-to-end everywhere; sinks dedupe by construction (file) or by idempotency key (HTTP); no storage-path or replication changes.
+
+## Implementation notes (2026-11-19b): S3 sink, Databricks sink, lag, metrics, firn-cli surface
+
+Second batch, still honoring "runtime remains outside firnd":
+
+- **`s3` sink shipped** — minimal hand-rolled AWS Signature V4 (PUT only, path-style and virtual-hosted addressing; optional `endpoint` for S3-compatible/MinIO via `force_path_style`, blocked on http unless `insecure_http`). No AWS SDK dependency. Credentials from env only. Keys `{prefix}/{route}/{file}` are a pure function of the offset range ⇒ retry-safe. **Verified against a conformance stub** (signature structure, determinism, error→terminal/retry mapping); not yet run against a real AWS account — validate before production use.
+- **`databricks` sink shipped** — UC Volumes Files API (`PUT .../fs/files/...?overwrite=true`), stdlib only, `.jsonl` then `.manifest.json`, both overwrite for retry idempotency; manifest gating documented (no atomic rename over the API).
+- **Lag reporting**: `firn_egress_lag_records{route,topic,partition}` gauge (refresh 15s) plus `firn-egress -lag` and `firn-cli integrations lag|validate`; estimates are `committed → scanned HWM`, capped (`+` marker at 10k). Queue sources report lease-managed position (no scan).
+- **Prometheus metrics on all three binaries** (`-metrics-addr`): records-in/produced, DLQ totals, op latency histograms, MQTT connection gauge.
+- **Databricks staged path** now has two options: slice-2 file sink (unchanged) and direct UC Volumes PUT.
+- **Still not built (dependency-gated):** Kafka messaging sink (driver approval needed).

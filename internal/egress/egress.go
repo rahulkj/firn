@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/rahulkj/firn/internal/integration"
 )
@@ -74,7 +75,19 @@ type SinkConfig struct {
 	AuthEnv         string `json:"auth_env"`         // env var name for bearer token / HMAC secret
 	TimeoutMs       int    `json:"timeout_ms"`       // default 10000
 	InsecureHTTP    bool   `json:"insecure_http"`    // allow http:// (dev only)
-	MaxBatchBytes   int    `json:"max_batch_bytes"`  // truncate/split? not used — enforced at 1 MiB hard cap
+	MaxBatchBytes   int    `json:"max_batch_bytes"`  // informational; not enforced
+
+	// databricks sink (Files API over Unity Catalog Volumes)
+	WorkspaceURL string `json:"workspace_url"` // https://dbc-<id>.cloud.databricks.com
+	VolumePath   string `json:"volume_path"`   // /Volumes/<catalog>/<schema>/<volume>/<dir>
+	TokenEnv     string `json:"token_env"`     // env var holding the Databricks bearer token
+
+	// s3 sink (AWS S3 and S3-compatible endpoints, e.g. MinIO)
+	Bucket          string `json:"bucket"`
+	Prefix          string `json:"prefix"`            // optional key prefix
+	Region          string `json:"region"`            // falls back to AWS_REGION / AWS_DEFAULT_REGION
+	ForcePathStyle  bool   `json:"force_path_style"`  // MinIO-style addressing
+	Endpoint        string `json:"endpoint"`          // optional S3-compatible endpoint URL (e.g. https://play.min.io)
 }
 
 // RetryConfig bounds sink retry behavior.
@@ -191,8 +204,44 @@ func (c *Config) Validate() (*Config, error) {
 			if r.Sink.TimeoutMs > 0 && r.Sink.TimeoutMs < 100 {
 				return nil, fmt.Errorf("egress: route %q: sink.timeout_ms too small (min 100)", r.Name)
 			}
+		case "databricks":
+			if r.Sink.WorkspaceURL == "" || r.Sink.VolumePath == "" || r.Sink.TokenEnv == "" {
+				return nil, fmt.Errorf("egress: route %q: databricks sink requires workspace_url, volume_path and token_env", r.Name)
+			}
+			if !urlHasScheme(r.Sink.WorkspaceURL, "https") && !r.Sink.InsecureHTTP {
+				return nil, fmt.Errorf("egress: route %q: databricks workspace_url must be https (or insecure_http: true for dev)", r.Name)
+			}
+			if !strings.HasPrefix(r.Sink.VolumePath, "/Volumes/") {
+				return nil, fmt.Errorf("egress: route %q: volume_path must start with /Volumes/", r.Name)
+			}
+			if os.Getenv(r.Sink.TokenEnv) == "" {
+				return nil, fmt.Errorf("egress: route %q: env %s is empty", r.Name, r.Sink.TokenEnv)
+			}
+		case "s3":
+			if r.Sink.Bucket == "" {
+				return nil, fmt.Errorf("egress: route %q: s3 sink requires bucket", r.Name)
+			}
+			region := r.Sink.Region
+			if region == "" {
+				region = os.Getenv("AWS_REGION")
+			}
+			if region == "" {
+				region = os.Getenv("AWS_DEFAULT_REGION")
+			}
+			if region == "" {
+				return nil, fmt.Errorf("egress: route %q: s3 region required (sink.region or AWS_REGION)", r.Name)
+			}
+			r.Sink.Region = region
+			if r.Sink.Endpoint != "" && !urlHasScheme(r.Sink.Endpoint, "https") && !r.Sink.InsecureHTTP {
+				return nil, fmt.Errorf("egress: route %q: s3 endpoint must be https (or insecure_http: true for local/MinIO)", r.Name)
+			}
+			for _, v := range []string{"AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"} {
+				if os.Getenv(v) == "" {
+					return nil, fmt.Errorf("egress: route %q: env %s is required for s3 sink", r.Name, v)
+				}
+			}
 		default:
-			return nil, fmt.Errorf("egress: route %q: unknown sink type %q (file|http)", r.Name, r.Sink.Type)
+			return nil, fmt.Errorf("egress: route %q: unknown sink type %q (file|http|databricks|s3)", r.Name, r.Sink.Type)
 		}
 	}
 	return c, nil

@@ -60,6 +60,39 @@ func NewTopicSource(ctx context.Context, client *firngo.Client, topic string, pa
 
 func (t *TopicSource) Name() string { return "topic:" + t.topic }
 
+// Lag returns, per partition, how many records remain unread from the
+// committed position (scanned, capped at scanCap). Capped estimates are
+// returned as-is; callers should disambiguate with a scan cap log line.
+func (t *TopicSource) Lag(ctx context.Context, scanCap int) (map[int32]int64, error) {
+	if scanCap <= 0 {
+		scanCap = 10000
+	}
+	out := map[int32]int64{}
+	for _, p := range t.parts {
+		off := t.next[p]
+		n := int64(0)
+		for n < int64(scanCap) {
+			recs, err := t.client.Fetch(ctx, t.topic, p, off, 500)
+			if err != nil {
+				break
+			}
+			if len(recs) == 0 {
+				break
+			}
+			n += int64(len(recs))
+			off = recs[len(recs)-1].Offset + 1
+			if len(recs) < 500 {
+				break
+			}
+		}
+		out[p] = n
+	}
+	return out, nil
+}
+
+// Topic returns the source topic name.
+func (t *TopicSource) Topic() string { return t.topic }
+
 func (t *TopicSource) Next(ctx context.Context) ([]Delivery, error) {
 	if len(t.pending) > 0 {
 		return t.pending, nil // unconfirmed batch is re-served until Confirm

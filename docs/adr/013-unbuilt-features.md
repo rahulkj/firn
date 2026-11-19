@@ -72,10 +72,10 @@ The ingress/egress/pipeline ADRs (016–018) were accepted 2026-11-19 and delive
 - [ ] **SQL CDC (Postgres logical replication) / NoSQL change-stream connectors** — dependency-gated; plan 007 slice 5.
 - [x] **File/object-stage sink** (`firn-egress -config …` `type: file`) — JSONL + manifest, idempotent re-delivery, pre-Databricks-staging shape (ADR-017, plan 008).
 - [x] **HTTP(S)/IoT webhook sink** — `Idempotency-Key`, bearer/HMAC, retry budget, 4xx→DLQ (ADR-017, plan 008).
-- [ ] **S3-compatible sink, direct Databricks API sink, Kafka sink** — dependency-gated; plan 008 slices 2/4/5.
-- [ ] **Route management in `firn-cli` + `firn_egress_lag_records` metric** — plan 008 slice 6 remainder.
+- [x] **S3-compatible sink** (stdlib SigV4 PUT, stub-tested, ADR-017 addendum 2026-11-19b) and **direct Databricks UC Volumes Files API sink** (stdlib, ADR-017 addendum 2026-11-19b) — both delivered 2026-11-19 without new dependencies. Kafka sink remains dependency-gated (plan 008 slice 4).
+- [x] **Route lag surface + `firn-cli integrations` (validate, lag)** — `firn_egress_lag_records` gauge, `firn-egress -lag`, delivered 2026-11-19. Mutation commands deliberately not built (no control plane).
 - [x] **Declarative pipeline engine** (`firn-pipeline`) — filter/project/map/enrich(JSONL)/route; single input; DLQ lineage (ADR-018, plan 009).
 - [x] **AI-assisted stage (opt-in)** — `mock` + OpenAI-compatible providers via stdlib HTTP; contract-validated output; per-minute cap; daily circuit breaker; HTTPS+env-only keys (ADR-018, plan 009).
-- [ ] **Design-time mapping assistant (slice 5)** — stretch, not scheduled.
-- [ ] **Multi-source pipelines / correlation** — needs its own spec; not in scope of ADR-018's initial cut.
-- [ ] **Prometheus metrics for integration binaries** — observability currently via structured logs only.
+- [x] **Design-time mapping assistant (slice 5)** — `firn-pipeline -suggest-map`, delivers a proposed fragment for human review; shipped 2026-11-19.
+- [x] **Multi-source pipelines** — `inputs` list with per-input groups and `_source` injection; correlation only via `enrich`, ordering across inputs undefined. Shipped 2026-11-19.
+- [x] **Prometheus metrics for integration binaries** — `-metrics-addr` on all three binaries; records in/out, DLQ, op latency, MQTT connections, egress lag gauge. Shipped 2026-11-19.

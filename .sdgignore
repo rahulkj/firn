@@ -1,5 +1,7 @@
-# .sdgignore — documented false positives
-# Both files reference environment variable NAMES in config examples/tests.
-# No credential values are committed anywhere in this repo.
+# .sdgignore — documented false positives (fixtures only)
+# These files contain environment variable NAMES and AWS/Databricks
+# documentation-style placeholder fixtures used by tests; no real
+# credentials are committed anywhere in this repo.
 docs/integrations.md
 internal/ingest/ingest_test.go
+internal/egress/new_sinks_test.go

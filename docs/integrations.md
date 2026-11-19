@@ -236,6 +236,60 @@ firn-pipeline -config pipeline.json -dry-run -sample in.jsonl  # no writes
 - `firn-egress -debug` exposes pprof and is off by default; bind it to loopback only.
 - Audit: integration actions show up as ordinary client operations in Firn's logs/audit; add your own structured-log shipping for the integration processes.
 
+### Sink types (2026-11-19): `file` | `http` | `databricks` | `s3`
+
+**`databricks`** — PUT each batch to a Unity Catalog Volume via the [Files API](https://docs.databricks.com/api/workspace/files) (`{workspace_url}/api/2.0/fs/files{volume_path}/{route}/{file}?overwrite=true`):
+
+```json
+"sink": { "type": "databricks", "workspace_url": "https://dbc-123.cloud.databricks.com", "volume_path": "/Volumes/cat/schema/vol/landing", "token_env": "DATABRICKS_TOKEN" }
+```
+
+`.jsonl` is PUT first, then `.manifest.json` (both `overwrite=true` — retry-safe). There is no atomic rename over the Files API; consumers should gate on the manifest. Auth is a workspace bearer token from env only.
+
+**`s3`** — minimal AWS Signature V4 signer (no AWS SDK; PUT only), compatible with AWS S3 and S3-compatible endpoints (MinIO via `endpoint` + `force_path_style`):
+
+```json
+"sink": { "type": "s3", "bucket": "data-lake", "prefix": "raw/telemetry", "region": "us-east-1" }
+"sink": { "type": "s3", "bucket": "lake", "region": "us-east-1", "endpoint": "https://minio.internal:9000", "force_path_style": true }
+```
+
+Credentials: `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (+ optional `AWS_SESSION_TOKEN`) from env. Keys are `{prefix}/{route}/{file}` — a pure function of the offset range, so retries are idempotent. Validated against a conformance stub (signature shape, deterministic signing, error mapping); **validate against your endpoint before production use.**
+
+### Lag and metrics (all binaries)
+
+All three binaries accept `-metrics-addr 127.0.0.1:PORT` serving `/metrics`:
+
+- `firn_integration_records_in_total{component,route,source,result}`
+- `firn_integration_records_produced_total{component,route,output,result}`
+- `firn_integration_dlq_total{component,route,stage}`
+- `firn_integration_op_seconds{component,op}`
+- `firn_egress_lag_records{route,topic,partition}` (egress only; committed → scanned HWM, capped at 10k per partition, refreshed every 15s)
+- `firn_integration_connections_active{component,listener}` (ingest only)
+
+`firn-egress -lag -config egress.json` prints the same lag as a one-shot table (`+` suffix when capped). `firn-cli integrations lag -config egress.json [-route r] [-max-scan N]` does the same from the CLI; `firn-cli integrations validate -config egress.json` validates without running.
+
+### Multi-input pipelines
+
+`"inputs"` (list) replaces `"input"` for fan-in; every input runs under its own consumer group, and each record's doc gains a `_source` field (`topic:name` / `queue:name`) before stages run — correlate sources via `enrich`, never via ordering:
+
+```json
+"inputs": [
+  { "topic": "raw-orders" },
+  { "topic": "fraud-scores" },
+  { "queue": "review-jobs" }
+]
+```
+
+Exactly one of `input`/`inputs` is required (validated). `_source` is also injected in single-input mode.
+
+### Design-time AI mapping assistant (`firn-pipeline -suggest-map`)
+
+```sh
+firn-pipeline -suggest-map -sample events.jsonl   -goal "keep user_id, drop email"   -provider openai_compatible -endpoint https://api.example.com/v1 -model gpt-4o-mini -ai-key-env LLM_API_KEY
+```
+
+Prints a proposed `project`/`map` fragment for human review — never mutates deployed configs. `-provider mock` runs fully offline for tests/dev.
+
 ## Known gaps (tracked in ADR-013)
 
-Kafka/CDC source connectors, S3/Databricks sinks, multi-source pipelines, route/pipeline CLIs inside `firn-cli`, Prometheus metrics for routes, and the AI mapping *design-time* assistant are all intentionally not built yet — they need dependency decisions and dedicated slices.
+Kafka/NATS/Redpanda source and sink connectors and SQL CDC (Postgres logical replication) / NoSQL change-stream connectors remain **dependency-gated** and are not built. Route management mutations in `firn-cli` (there is no control plane to mutate) and per-stage pipeline latency histograms are not built. MQTT 5.0 native and multi-instance checkpoint coordination are not built. The S3 sink is stub-tested, not validated against a real AWS account.

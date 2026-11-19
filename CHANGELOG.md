@@ -9,7 +9,19 @@ The three integration ADRs were accepted 2026-11-19 and their plans (007/008/009
 - **`firn-pipeline`** (pipelines, ADR-018): declarative stages `filter → project → map → enrich(JSONL reference) → route → outputs`; `route` terminal, required for multiple outputs; opt-in `ai` stage (`mock` and OpenAI-compatible providers via stdlib HTTP; no new dependencies) with contract-validated output, per-minute cap, daily-call circuit breaker, HTTPS-only endpoints, env-only keys; `-dry-run` mode; revision tagging.
 - Shared `internal/testutil` in-process broker fixture; `go vet ./... && go test ./... -count=1` and `-race` green.
 
-**Not built (deliberate):** Kafka/CDC/NoSQL source connectors, S3/Databricks/Kafka-direct sinks, multi-source pipelines, route metrics + `firn-cli` integration, design-time AI mapping assistant — all require dependency decisions and live in plan 007/008/009 as named follow-ups (tracked in ADR-013).
+## Unreleased — 2026-11-19b (integrations batch 2: metrics, Databricks, S3, multi-source)
+
+Second integration batch; stdlib-only, no new dependencies.
+
+- **Metrics on all three binaries** (`-metrics-addr`): `firn_integration_records_in_total`, `firn_integration_records_produced_total`, `firn_integration_dlq_total`, `firn_integration_op_seconds`, `firn_egress_lag_records{route,topic,partition}` (15s refresh), `firn_integration_connections_active`.
+- **Lag reporting**: `firn-egress -lag` one-shot table (capped, `+` marker at 10k); `firn-cli integrations lag [-route r] [-max-scan N]` and `firn-cli integrations validate` added.
+- **`databricks` sink**: Unity Catalog Volumes Files API (PUT .jsonl then .manifest.json, overwrite=true) via stdlib HTTP; no dependency.
+- **`s3` sink**: minimal AWS SigV4 signer (PUT only; path-style + virtual-hosted; optional `endpoint` for MinIO); no AWS SDK; deterministic-signature and error-mapping tests; stub-tested, not yet run against AWS.
+- **Multi-input pipelines**: `"inputs"` list replaces `"input"` for fan-in; per-input consumer groups; `_source` injected into record docs; correlation only via `enrich`; ordering across inputs undefined.
+- **`firn-pipeline -suggest-map`**: design-time AI mapping assistant (provider abstraction, human-approved output only; `mock` provider for offline dev).
+- Databricks/S3/Kafka-source/CDC drivers: Kafka sink/source and Postgres CDC remain dependency-gated (not built).
+
+**Remaining gated items (not built):** Kafka/NATS/Redpanda source and sink connectors; SQL CDC (Postgres logical replication) and NoSQL change-stream connectors; MQTT 5.0 native; multi-instance checkpoint coordination; per-stage pipeline latency histograms; `firn-cli` mutation commands for routes (no control plane exists). Each is named in plans 007–009 and ADR-013.
 
 ## v0.1.0 — 2026-11-13
 

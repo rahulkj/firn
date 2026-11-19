@@ -12,6 +12,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -35,6 +36,7 @@ func main() {
 	firnInsecure := flag.Bool("firn-insecure", false, "plaintext Firn dial (dev only; never for production)")
 	dlqTopic := flag.String("dlq", "", "dead-letter topic for the tail connector (optional)")
 	checkpoint := flag.String("checkpoint", "", "checkpoint file path for the tail connector (required)")
+	metricsAddr := flag.String("metrics-addr", "", "if set, serve Prometheus metrics on this address (e.g. 127.0.0.1:9466)")
 
 	flag.Parse()
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
@@ -90,6 +92,9 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		if *metricsAddr != "" {
+			go serveMetrics(*metricsAddr, srv.Metrics.Handler(), log.Printf)
+		}
 		log.Printf("http ingest listening on %s (%d routes, dlq=%q)", cfg.Listen, len(cfg.Routes), cfg.DLQTopic)
 		if err := srv.ListenAndServe(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			log.Fatal(err)
@@ -119,6 +124,9 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+		if *metricsAddr != "" {
+			go serveMetrics(*metricsAddr, srv.Metrics.Handler(), log.Printf)
+		}
 		log.Printf("mqtt ingest listening on %s (%d routes, %d users, dlq=%q)", cfg.Listen, len(cfg.Routes), len(cfg.Users), cfg.DLQTopic)
 		if err := srv.ListenAndServe(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			log.Fatal(err)
@@ -143,6 +151,10 @@ func main() {
 			log.Fatal(err)
 		}
 		r := &integration.Runner{Connector: conn, Client: client, Topic: *tailTopic, DLQ: *dlqTopic, Logger: log.Printf}
+		if *metricsAddr != "" {
+			tailMetrics := integration.NewMetrics("ingest")
+			go serveMetrics(*metricsAddr, tailMetrics.Handler(), log.Printf)
+		}
 		log.Printf("tail connector %q: %s -> topic %q (checkpoint %s)", *tailName, *tailSource, *tailTopic, *checkpoint)
 		if err := r.Run(ctx, cp); err != nil && !errors.Is(err, context.Canceled) {
 			log.Fatal(err)
@@ -181,4 +193,11 @@ func mustValidate(path string) {
 		log.Fatal(err)
 	}
 	fmt.Printf("http config OK: %d routes, listen %s\n", len(cfg.Routes), cfg.Listen)
+}
+
+func serveMetrics(addr string, h http.Handler, logf func(string, ...any)) {
+	logf("metrics listening on %s/metrics", addr)
+	if err := http.ListenAndServe(addr, h); err != nil {
+		logf("metrics listener failed: %v", err)
+	}
 }
