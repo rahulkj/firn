@@ -23,3 +23,7 @@
 
 # Go
 vendor/
+
+/firn-ingest
+/firn-egress
+/firn-pipeline

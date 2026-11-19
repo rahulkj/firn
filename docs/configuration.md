@@ -100,6 +100,58 @@ list-apikeys
 
 `dlq redrive` works entirely over the gRPC path: it fetches `<queue>.dlq` and re-produces into `<queue>` — no HTTP admin route is involved.
 
+## Integration binaries — `firn-ingest`, `firn-egress`, `firn-pipeline`
+
+Three companion processes move data in and out of firnd via the **client gRPC API** — never the storage path. Full reference: [`docs/integrations.md`](integrations.md); migration recipes: [`docs/migration-playbooks.md`](migration-playbooks.md).
+
+All three accept `-metrics-addr <127.0.0.1:PORT>` serving Prometheus metrics on `/metrics`, and all honor `SIGINT`/`SIGTERM` with graceful drain. All read JSON configs (unknown fields are rejected at load — missing required values fail closed; secrets come from env vars named by the config).
+
+### `firn-ingest` — inbound
+
+| Mode | Purpose | Key flags |
+|---|---|---|
+| `-http cfg.json` | HTTP(S) ingest endpoints → Firn | `-firn` (default `localhost:9461`), `-firn-key-env` (`FIRN_API_KEY`), `-firn-ca-env`, `-firn-insecure`, `-metrics-addr`, `-validate` (config check only) |
+| `-mqtt cfg.json` | MQTT 3.1.1/5.0 publish listener | same firn dial flags + `-metrics-addr` |
+| `-source-file f.ndjson` | Tail-file reference connector | `-topic`, `-checkpoint`, `-dlq`, `-connector-name`, `-firn`, `-firn-key-env` |
+| `-source-kafka f.json` | Kafka → Firn (franz-go) | `-topic`, `-checkpoint`, `-dlq` |
+| `-source-postgres f.json` | Postgres logical replication CDC (pgoutput) | `-topic`, `-checkpoint`, `-dlq` |
+| `-source-mongo f.json` | MongoDB change streams | `-topic`, `-checkpoint`, `-dlq` |
+| `-source-dynamodb f.json` | DynamoDB Streams | `-topic`, `-checkpoint`, `-dlq` |
+| `-source-sql f.json` | any RDBMS via watermark polling | `-topic`, `-checkpoint`, `-dlq` |
+| `-source-amqp f.json` | RabbitMQ (AMQP 0.9.1) | `-topic`, `-checkpoint`, `-dlq` |
+| `-source-nats f.json` | NATS JetStream durable pull consumer | `-topic`, `-checkpoint`, `-dlq` |
+| `-source-redis-streams f.json` | Redis Streams XREADGROUP | `-topic`, `-checkpoint`, `-dlq` |
+| `-source-ibmmq f.json` | IBM MQ mqweb REST (peek→produce→delete) | `-topic`, `-checkpoint`, `-dlq` |
+
+`-validate <cfg.json>` checks `-http`/`-mqtt` configs without dialing; `-source-*` modes currently require the binary to start (a `-validate` for source configs is planned; for now use `-validate` on the JSON by eye or `-dry-run` equivalents where they exist).
+
+Source `connector_name` doubles as the checkpoint identity; changing it restarts from the beginning (at-least-once). Checkpoint files (`0600`, atomic rename) are the only durable resume state — treat them like replicas.
+
+### `firn-egress` — outbound
+
+```sh
+firn-egress -config egress.json [-route NAME] [-validate] [-routes] [-lag] [-metrics-addr 127.0.0.1:PORT] [-debug 127.0.0.1:6060]
+```
+
+Config shape: `{ "firn": { "addr","api_key_env" }, "routes": [ { "name", "sources": [...], "ack_policy": "after_sink_confirm", "batch": {...}, "retry": {...}, "dlq": "topic", "sink": {...} } ] }`.
+
+Sink types: `file`, `s3`, `databricks`, `http`, `kafka`, `sql`, `rabbitmq`, `nats`, `redis-streams`, `elasticsearch`, `clickhouse`, `ibmmq` — full configs + delivery semantics in [`docs/integrations.md`](integrations.md) §"Sink types". Rules of engagement:
+
+- `after_sink_confirm` only — offsets commit after the sink durably accepts.
+- One source per route in v1; dedicated group `firn-egress-<route>` (override with `group`); **one forwarder instance per route**.
+- Queue sources use Firn queue semantics (`Pull`/`AckBatch`) — the broker's DLQ handles poison messages before the forwarder ever sees them.
+- Backpressure: sink stalled ⇒ consumption pauses ⇒ backlog accumulates in Firn (bounded by retention).
+
+### `firn-pipeline` — consume → transform → fan-out
+
+```sh
+firn-pipeline -config pipeline.json [-validate] [-dry-run -sample in.jsonl] [-suggest-map -sample in.jsonl -goal "…"] [-metrics-addr 127.0.0.1:PORT] [-stats-interval 10s]
+```
+
+Config shape: `{ "name", "input": {"topic":…} }` *or* `"inputs": […]` (fan-in, per-input consumer groups, `_source` injected into each record's doc), `"dlq": "topic"`, `"stages": [ filter|project|map|enrich|route|ai ]`, `"outputs": {…} `, `"on_error": "dlq"|"fail"`.
+
+See [`docs/integrations.md`](integrations.md) §"Stage reference" for per-stage semantics, `-dry-run` for offline validation on samples, and `firn-playground` nothing — dry-run is the safety net.
+
 ## Retention horizon rules (all modes)
 
 1. Deletion never touches the **active** (newest, writable) segment of a partition log.

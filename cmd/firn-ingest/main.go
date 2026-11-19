@@ -33,7 +33,7 @@ func main() {
 	sourceNATS := flag.String("source-nats", "", "path to a NATS JetStream source config (JSON)")
 	sourceRedis := flag.String("source-redis-streams", "", "path to a Redis Streams source config (JSON)")
 	sourceIBMMQ := flag.String("source-ibmmq", "", "path to an IBM MQ source config (JSON)")
-	validate := flag.String("validate", "", "validate a config file and exit (http|mqtt by content)")
+	validate := flag.Bool("validate", false, "validate the config from -http/-mqtt/-source-* and exit")
 
 	connectorName := flag.String("connector-name", "", "checkpoint identity for file/kafka/postgres/mongo/dynamodb sources (default: derived from type)")
 	topic := flag.String("topic", "", "Firn topic for source connector records")
@@ -49,8 +49,32 @@ func main() {
 	log.SetFlags(log.LstdFlags | log.Lmsgprefix)
 	log.SetPrefix("firn-ingest ")
 
-	if *validate != "" {
-		mustValidate(*validate)
+	if *validate {
+		if *httpCfg != "" {
+			mustValidate(*httpCfg)
+			return
+		}
+		if *mqttCfg != "" {
+			mustValidate(*mqttCfg)
+			return
+		}
+		srcArgs := map[string]string{
+			"source-file": *sourceFile, "source-kafka": *sourceKafka, "source-postgres": *sourcePostgres,
+			"source-mongo": *sourceMongo, "source-dynamodb": *sourceDynamoDB,
+			"source-amqp": *sourceAMQP, "source-nats": *sourceNATS, "source-redis-streams": *sourceRedis, "source-ibmmq": *sourceIBMMQ,
+		}
+		for name, v := range srcArgs {
+			if v != "" {
+				cfg := readSourceConfig(*sourceFile, *sourceKafka, *sourcePostgres, *sourceMongo, *sourceDynamoDB, *sourceAMQP, *sourceNATS, *sourceRedis, *sourceIBMMQ)
+				conn, err := buildSourceConnector(cfg)
+				if err != nil {
+					log.Fatalf("%s: %v", name, err)
+				}
+				fmt.Printf("%s config OK: connector=%q type=%s\n", name, conn.Name(), cfg.Type)
+				return
+			}
+		}
+		log.Fatal("-validate requires one of -http/-mqtt/-source-* to point at a config")
 		return
 	}
 

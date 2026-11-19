@@ -4,13 +4,33 @@ Firn ships three companion processes that move data in and out of the broker wit
 
 | Binary | Purpose |
 |---|---|
-| `firn-ingest` | HTTP(S) ingest endpoints, MQTT 3.1.1/5.0 publish listener for IoT devices, and source connectors: file-tail (reference), Kafka, Postgres CDC, MongoDB change streams, DynamoDB Streams |
-| `firn-egress` | Forward selected topics/queues to external systems: JSONL files (data-lake/Databricks staging), HTTP(S)/webhooks, Databricks UC Volumes, S3, Kafka |
-| `firn-pipeline` | Declarative transformation pipelines: filter/project/map/enrich/route, plus opt-in AI-assisted stages |
+| `firn-ingest` | HTTP(S) ingest endpoints, MQTT 3.1.1/5.0 publish listener; source connectors: file-tail, Kafka, Postgres CDC, MongoDB change streams, DynamoDB Streams, **SQL polling (any RDBMS)**, **RabbitMQ**, **NATS JetStream**, **Redis Streams**, **IBM MQ (REST)** |
+| `firn-egress` | Forward topics/queues to external systems: **SQL upsert (any RDBMS)**, JSONL files, HTTP(S)/webhooks, Databricks UC Volumes, S3, Kafka, **RabbitMQ**, **NATS**, **Redis Streams**, **IBM MQ (REST)**, **Elasticsearch**, **ClickHouse** |
+| `firn-pipeline` | Declarative transformation pipelines: filter/project/map/enrich/route, opt-in AI stages, multi-input fan-in |
 
 All three are **at-least-once**. None of them provides exactly-once end-to-end; duplicates on crash/retry are possible and are documented per sink/stage. Offsets are committed (queue acks sent) only **after** the external system durably accepted the data (`after_sink_confirm`).
 
 Non-negotiables (all binaries): no storage-path code, no wire compatibility layer, no implicit broker-side delivery, secrets only via environment variables, fail-closed config validation (unknown fields rejected, auth required unless explicitly disabled).
+
+All binaries share these conventions:
+
+- **Config files are JSON.** Unknown fields are rejected at load; missing required fields fail closed. Every secret-bearing value is an environment variable (never inline), so configs are safe to check in.
+- **Where the Firn Bearer key comes from**: `firn-ingest` reads `firn.api_key_env` from the JSON config (default env name `FIRN_API_KEY`); `firn-pipeline` takes `-firn-key-env` (default `FIRN_API_KEY`); `firn-egress` is config-only (`firn.api_key_env`). `-firn-insecure` / `firn.insecure: true` dials plaintext — dev only; production dials TLS (`firn.ca_env` for a custom CA) whenever the broker enforces auth.
+- **`-metrics-addr 127.0.0.1:PORT`** serves Prometheus metrics on `/metrics` (all binaries).
+- **`-validate`** loads and validates configs without producing anything (`-http`, `-mqtt`, `-source-*`, `-config`).
+- **`-checkpoint`** (source connectors only): path of the JSON checkpoint file; write-ahead of produces is the at-least-once contract. Back it up with the data.
+- **`-dlq`**: dead-letter topic; poison records are diverted there, never silently dropped. Configure it for every production route.
+- **Lag**: `firn-egress -lag` or `firn-cli integrations lag` prints committed-offset → scanned-HWM backlog per partition (capped at 10k; `+` suffix when capped).
+
+```sh
+firn-ingest -source-kafka kafka.json -topic firn-in -checkpoint /state/cp.json -dlq ingest-dlq \
+            -firn localhost:9461 -firn-key-env FIRN_API_KEY
+firn-egress -config egress.json -route telemetry-archive -lag
+firn-cli integrations lag -config egress.json -route telemetry-archive
+firn-cli integrations validate -config egress.json
+```
+
+(Note: each `-source-*` method names its JSON config, which holds the connector type's own fields; `-connector-name` exists but only sets checkpoint identity, not the target topic. `-firn-key-env` applies to `firn-ingest`/`firn-pipeline`; `-firn-egress` reads `firn.api_key_env` from its JSON config.)
 
 ---
 
@@ -38,7 +58,7 @@ Accepts authenticated HTTP(S) `POST`s and produces the raw body to a Firn topic.
 
 ```sh
 firn-ingest -http http-ingest.json
-firn-ingest -validate http-ingest.json
+firn-ingest -http http-ingest.json -validate
 ```
 
 Behavior contract:
@@ -155,31 +175,97 @@ firn-egress -config egress.json -route telemetry-archive
 firn-egress -config egress.json -validate
 ```
 
-### Sinks
+### Sink types
+
+Every sink below is validated at config load: unknown types/fields rejected, `after_sink_confirm` required, route coherent (one source, existing topics/queues checked via `GetMetadata` where resolvable). Choose by the destination's write model:
+
+| Sink | Use when | Delivery shape | Auth |
+|---|---|---|---|
+| `file` | data-lake / Databricks Auto Loader / flat-file export | JSONL batches + manifest, idempotent re-delivery | filesystem perms |
+| `s3` | AWS/S3-compatible object store | one object per partition-batch; SigV4 (bytes in body, no SDK) | `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` (+ `AWS_SESSION_TOKEN`) |
+| `databricks` | Unity Catalog Volumes landing zone | PUT .jsonl then PUT .manifest.json (both overwrite=true) | `DATABRICKS_TOKEN` (env) |
+| `sql` | any RDBMS you ship row data to | `INSERT ... ON CONFLICT`/`MERGE` upsert (or `append_only: true`), one transaction per batch | DB DSN env (`pgx`/`mysql`/`sqlserver`/`oracle`/`sqlite`) |
+| `kafka` | downstream Kafka cluster | `acks=all`; key/header passthrough; `Idempotency` not needed (broker handles) | `sasl` (plain/scram-sha-256/512) + optional `ca_env` |
+| `rabbitmq` | AMQP 0.9.1 | persistent messages, broker publish-confirms | `amqp_url_env` |
+| `nats` | JetStream (recommended) or fire-and-forget core | JetStream publish w/ broker ack when `nats_stream` set | `nats_url_env` |
+| `redis-streams` | Redis Streams consumer group | `XADD MAXLEN ~10000`, one stream per route | `redis_url_env` |
+| `elasticsearch` | search index / analytics rollup | `_bulk`, optional `pipeline` and `_id` | `bearer_env` |
+| `clickhouse` | columnar analytics | `INSERT ... FORMAT JSONEachRow` | `user_env`/`password_env` (sent as X-ClickHouse-User/Key) |
+| `ibmmq` | IBM MQ (REST/no client libs) | POST persistent + `ibm-mq-md-correlationId` | mqweb basic auth |
+| `http` | generic webhook/IoT endpoint | POST JSON with `Idempotency-Key`, retries, 4xx→DLQ | `bearer_env` \| `hmac_env` \| `none` |
+
+Complete examples for each:
+
+**`sql`** (dialect-aware upsert; table + key columns required):
+
+```json
+"sink": { "type": "sql", "driver": "pgx", "dsn_env": "PG_DSN", "table": "imported.orders",
+          "key_columns": ["id"], "columns": ["id", "note", "qty"], "append_only": false }
+```
+
+**`rabbitmq`**:
+
+```json
+"sink": { "type": "rabbitmq", "amqp_url_env": "AMQP_URL", "amqp_queue": "legacy.orders" }
+```
+
+**`nats`** (JetStream recommended for durability; without `nats_stream` it's at-most-once core publish):
+
+```json
+"sink": { "type": "nats", "nats_url_env": "NATS_URL", "nats_subject": "events.data", "nats_stream": "EVENTS" }
+```
+
+**`redis-streams`**:
+
+```json
+"sink": { "type": "redis-streams", "redis_url_env": "REDIS_URL", "redis_stream": "events" }
+```
+
+**`elasticsearch`**:
+
+```json
+"sink": { "type": "elasticsearch", "url": "http://127.0.0.1:9200", "index": "products",
+          "auth": "bearer_env", "auth_env": "ES_TOKEN", "pipeline": "ingest-geo" }
+```
+
+**`clickhouse`** (`index` doubles as the table name; `database` optional, default `default`):
+
+```json
+"sink": { "type": "clickhouse", "url": "http://127.0.0.1:8123", "index": "fact_sales",
+          "database": "warehouse", "user_env": "CH_USER", "password_env": "CH_PASS" }
+```
+
+**`ibmmq`** (mqweb REST; no IBM client libraries):
+
+```json
+"sink": { "type": "ibmmq", "mqweb_url": "https://mq.internal:9443/ibmmq/rest/v3",
+          "mqweb_queue_mgr": "QM1", "mqweb_queue": "LEGACY.QUEUE",
+          "mqweb_user": "app", "mqweb_pass_env": "MQ_PASS", "mqweb_ca_env": "MQ_CA_PATH" }
+```
 
 **`kafka`** — franz-go producer, `acks=all`:
 
 ```json
-"sink": { "type": "kafka", "brokers": ["kafka-1:9092"], "topic": "events.ingested", 
+"sink": { "type": "kafka", "brokers": ["kafka-1:9092"], "topic": "events.ingested",
           "ca_env": "KAFKA_CA_PATH",
           "sasl": { "mechanism": "scram-sha-512", "username": "firn-egress", "password_env": "KAFKA_PASSWORD" } }
 ```
 
-Keys pass through unchanged (null-keyed records use Kafka's partitioner). All produce errors are retryable in this implementation; after the route's retry budget the batch dead-letters per policy. `ca_env` is a PEM CA bundle for TLS to the broker (system roots are otherwise used). Live-tested against an in-memory fake cluster in this environment.
+Kafka semantics: keys pass through unchanged (null-keyed records use Kafka's partitioner). All produce errors are retryable in this implementation; after the route's retry budget the batch dead-letters per policy. `ca_env` is a PEM CA bundle for TLS to the broker (system roots are otherwise used). Live-tested against an in-memory fake cluster in this environment.
 
-**`sql` (any RDBMS)** — JSON row records to a table, one explicit transaction per batch. Dialect-aware upsert: pgx/SQLite `ON CONFLICT DO UPDATE`, MySQL `ON DUPLICATE KEY UPDATE`, SQL Server/Oracle `MERGE` with `FROM dual` and parenthesized ON. `append_only: true` for plain INSERT; `key_columns` (unique constraint) required for upsert; `columns` allow-list optional. **Live-verified** here: SQLite, MariaDB 11, Oracle Free 23ai. SQL Server locally blocked (emulation) — same builder, stub-tested.
+SQL semantics (`type: sql`): JSON row records to a table, one explicit transaction per batch. Dialect-aware upsert: pgx/SQLite `ON CONFLICT DO UPDATE`, MySQL `ON DUPLICATE KEY UPDATE`, SQL Server/Oracle `MERGE` with `FROM dual` and parenthesized ON. `append_only: true` for plain INSERT; `key_columns` (unique constraint) required for upsert; `columns` allow-list optional. **Live-verified** here: SQLite, MariaDB 11, Oracle Free 23ai. SQL Server locally blocked (emulation) — same builder, stub-tested.
 
-**`rabbitmq` (AMQP 0.9.1)** — durable, persistent, broker publish-confirms. Default exchange routes by queue name. **Live-verified** here.
+RabbitMQ (`type: rabbitmq`): durable, persistent, broker publish-confirms. Default exchange routes by queue name. **Live-verified** here.
 
-**`nats` (JetStream when `nats_stream` is set; core NATS otherwise)** — JetStream: synchronous publish with broker ack (at-least-once). Core: no delivery guarantee (at-most-once). **Live-verified** here.
+NATS (`type: nats`): JetStream when `nats_stream` is set — synchronous publish with broker ack (at-least-once); core NATS otherwise — no delivery guarantee (at-most-once). **Live-verified** here.
 
-**`redis-streams`** — XADD with MAXLEN ~ 10000; one stream per route. **Live-verified** here.
+Redis Streams (`type: redis-streams`): XADD with MAXLEN ~ 10000; one stream per route. **Live-verified** here.
 
-**`ibmmq` (mqweb REST)** — publish (POST) with persistent mode + correlationId; single-consumer queues advised. **Stub-tested only** (see ADR-020).
+IBM MQ (`type: ibmmq`): publish (POST) with persistent mode + correlationId; single-consumer queues advised. **Stub-tested only** (see ADR-020).
 
-**`elasticsearch`** — `_bulk` index; optional `pipeline` and `_id` from record key. Auth: `bearer_env`. **Live-verified** here (`elasticsearch:7.17`).
+Elasticsearch (`type: elasticsearch`): `_bulk` index; optional `pipeline` and `_id` from record key. Auth: `bearer_env`. **Live-verified** here (`elasticsearch:7.17`).
 
-**`clickhouse`** — `INSERT ... FORMAT JSONEachRow` via HTTP; optional `user_env`/`password_env` (sends X-ClickHouse-User/Key). **Live-verified** here.
+ClickHouse (`type: clickhouse`): `INSERT ... FORMAT JSONEachRow` via HTTP; optional `user_env`/`password_env` (sends X-ClickHouse-User/Key). **Live-verified** here.
 
 **`file` (JSONL staging — flat files for data-lake / Databricks Auto Loader paths)**
 Each batch lands as `<dir>/<route>/topic-p<partition>-<first>-<last>.jsonl` written to `*.tmp`, fsynced, then renamed; a `*.manifest.json` sidecar records `{route, partition, first_offset, last_offset, count, crc32c}`. Re-delivery of the same offset range is skipped idempotently. Records are base64-encoded (`value`/`key`, with `*_encoding: "base64"` markers) to guarantee lossless bytes.
@@ -193,11 +279,11 @@ Headers: `Idempotency-Key: <route>:<source>:<partition>:<first-last>` (stable ac
 - **Ack policy**: only `after_sink_confirm` exists (offsets committed / queue acks sent after sink success). The sketched `on_write` policy was dropped as redundant.
 - **Queue sources** pull through Firn queue semantics (`Pull`/`AckBatch`), so DLQ-after-3-attempts is handled by the broker before data reaches the forwarder.
 - **Topic sources** use a dedicated group (`firn-egress-<route>` by default) with generation-0 offset commits (monotonic advance, no generation fencing). **One forwarder instance per route**; scaling out means partitioning routes, not adding replicas to the same group (there is no rebalance yet).
-- **v1 limits**: one source per route; no S3/Databricks-direct sinks (files are the staged delivery); no multi-tenant ACLs.
+- **v1 limits**: one source per route; no multi-tenant ACLs; SQL sinks have no bulk-load path (row-by-row, explicit transactions).
 - **Backpressure**: a stalled sink pauses consumption for that route; backlog accumulates in Firn (bounded by retention).
-- Observability: structured logs per route (`running`, `deliver error`, DLQ events). Prometheus metrics for routes are not wired yet — alert on log lines + `firn fetch` lag until they are.
+- Observability: `firn-egress -metrics-addr 127.0.0.1:PORT` serves Prometheus metrics (`firn_integration_records_in_total`, `records_produced_total`, `dlq_total`, `op_seconds`, `firn_egress_lag_records{route,topic,partition}`), refreshed every 15s; plus `firn-egress -lag` / `firn-cli integrations lag` for one-shot checks. Alert on consumer lag + DLQ growth.
 
-**Not built (dependency-gated, see plan 008):** Kafka-compatible messaging sink, S3-compatible object-store sink, direct Databricks Files/UC API client.
+**Not built:** native per-dialect CDC (MySQL binlog etc.); IBM MQ native client (needs the MQ C client); Snowflake/BigQuery/Redshift; route mutation CLI in `firn-cli`. See `docs/migration-playbooks.md` for the migration paths that ARE supported.
 
 ---
 
@@ -284,7 +370,7 @@ firn-pipeline -config pipeline.json -dry-run -sample in.jsonl  # no writes
 - `firn-egress -debug` exposes pprof and is off by default; bind it to loopback only.
 - Audit: integration actions show up as ordinary client operations in Firn's logs/audit; add your own structured-log shipping for the integration processes.
 
-### Sink types (2026-11-19): `file` | `http` | `databricks` | `s3`
+### `s3` and `databricks` (details)
 
 **`databricks`** — PUT each batch to a Unity Catalog Volume via the [Files API](https://docs.databricks.com/api/workspace/files) (`{workspace_url}/api/2.0/fs/files{volume_path}/{route}/{file}?overwrite=true`):
 
