@@ -29,6 +29,10 @@ func main() {
 	sourcePostgres := flag.String("source-postgres", "", "path to a Postgres CDC (logical replication) source config (JSON)")
 	sourceMongo := flag.String("source-mongo", "", "path to a MongoDB change-stream source config (JSON)")
 	sourceDynamoDB := flag.String("source-dynamodb", "", "path to a DynamoDB Streams source config (JSON)")
+	sourceAMQP := flag.String("source-amqp", "", "path to a RabbitMQ (AMQP) source config (JSON)")
+	sourceNATS := flag.String("source-nats", "", "path to a NATS JetStream source config (JSON)")
+	sourceRedis := flag.String("source-redis-streams", "", "path to a Redis Streams source config (JSON)")
+	sourceIBMMQ := flag.String("source-ibmmq", "", "path to an IBM MQ source config (JSON)")
 	validate := flag.String("validate", "", "validate a config file and exit (http|mqtt by content)")
 
 	connectorName := flag.String("connector-name", "", "checkpoint identity for file/kafka/postgres/mongo/dynamodb sources (default: derived from type)")
@@ -59,6 +63,10 @@ func main() {
 		{*sourcePostgres != "", "source-postgres"},
 		{*sourceMongo != "", "source-mongo"},
 		{*sourceDynamoDB != "", "source-dynamodb"},
+		{*sourceAMQP != "", "source-amqp"},
+		{*sourceNATS != "", "source-nats"},
+		{*sourceRedis != "", "source-redis-streams"},
+		{*sourceIBMMQ != "", "source-ibmmq"},
 	}
 	sources := 0
 	for _, s := range sourceModes {
@@ -83,12 +91,20 @@ func main() {
   firn-ingest -source-postgres pg.json     -topic inbox -checkpoint ./state/cp.json [-dlq topic]
   firn-ingest -source-mongo mongo.json     -topic inbox -checkpoint ./state/cp.json [-dlq topic]
   firn-ingest -source-dynamodb ddb.json    -topic inbox -checkpoint ./state/cp.json [-dlq topic]
+  firn-ingest -source-amqp amqp.json        -topic inbox -checkpoint ./state/cp.json [-dlq topic]
+  firn-ingest -source-nats nats.json        -topic inbox -checkpoint ./state/cp.json [-dlq topic]
+  firn-ingest -source-redis-streams redis.json -topic inbox -checkpoint ./state/cp.json [-dlq topic]
+  firn-ingest -source-ibmmq ibmmq.json      -topic inbox -checkpoint ./state/cp.json [-dlq topic]
 
 Source configs (JSON):
   kafka:     {"brokers":["b:9092"],"topic":"src","start":"earliest","connector_name":"kafka-in"}
   postgres:  {"dsn_env":"PG_CDC_DSN","slot":"firn_cdc","connector_name":"pg-in"}
   mongo:     {"uri_env":"MONGO_URI","database":"app","collection":"events","full_document":"updateLookup","connector_name":"mongo-in"}
-  dynamodb:  {"stream_arn":"arn:aws:dynamodb:...","region":"us-east-1","endpoint":"","connector_name":"ddb-in"}`)
+  dynamodb:  {"stream_arn":"arn:aws:dynamodb:...","region":"us-east-1","endpoint":"","connector_name":"ddb-in"}
+  amqp:      {"url_env":"AMQP_URL","amqp_queue":"events","prefetch":64,"connector_name":"rmq-in"}
+  nats:      {"url_env":"NATS_URL","stream":"EVENTS","subject":"evt.>","consumer":"firn-evt","connector_name":"nats-in"}
+  redis:     {"url_env":"REDIS_URL","redis_stream":"events","group":"firn","redis_consumer":"firn-1","connector_name":"redis-in"}
+  ibmmq:     {"url":"https://mq:9443/ibmmq/rest/v3","qmgr":"QM1","ibmmq_queue":"EVENTS","user":"app","pass_env":"MQ_PASS","ca_env":"MQ_CA_PATH","connector_name":"ibmmq-in"}`)
 		os.Exit(2)
 	}
 
@@ -167,7 +183,7 @@ Source configs (JSON):
 		}
 
 	default: // source connector modes
-		cfg := readSourceConfig(*sourceFile, *sourceKafka, *sourcePostgres, *sourceMongo, *sourceDynamoDB)
+		cfg := readSourceConfig(*sourceFile, *sourceKafka, *sourcePostgres, *sourceMongo, *sourceDynamoDB, *sourceAMQP, *sourceNATS, *sourceRedis, *sourceIBMMQ)
 		if *topic == "" {
 			log.Fatal("-topic is required for source connectors")
 		}
@@ -209,6 +225,25 @@ type sourceConfig struct {
 	Type string `json:"-"`
 	// shared
 	ConnectorName string `json:"connector_name"`
+	// amqp
+	URLEnv     string `json:"url_env"`
+	AMQPQueue  string `json:"amqp_queue"`
+	Prefetch   int    `json:"prefetch"`
+	// nats
+	Stream   string `json:"stream"`
+	Subject  string `json:"subject"`
+	Consumer string `json:"consumer"`
+	// redis
+	RedisStream   string `json:"redis_stream"`
+	Group         string `json:"group"`
+	RedisConsumer string `json:"redis_consumer"`
+	// ibmmq
+	IBMMQURL    string `json:"url"`
+	IBMMQMgr    string `json:"qmgr"`
+	IBMMQueue   string `json:"ibmmq_queue"`
+	IBMMUser    string `json:"user"`
+	IBMMPassEnv string `json:"pass_env"`
+	IBMMQCAEnv  string `json:"ca_env"`
 	// kafka
 	Brokers []string `json:"brokers"`
 	Topic   string   `json:"topic"`
@@ -229,7 +264,7 @@ type sourceConfig struct {
 	rawPath string
 }
 
-func readSourceConfig(file, kafka, postgres, mongo, dynamodb string) sourceConfig {
+func readSourceConfig(file, kafka, postgres, mongo, dynamodb, amqp, nats, redis, ibmmq string) sourceConfig {
 	var c sourceConfig
 	var path string
 	switch {
@@ -248,6 +283,18 @@ func readSourceConfig(file, kafka, postgres, mongo, dynamodb string) sourceConfi
 	case dynamodb != "":
 		c.Type = "dynamodb"
 		path = dynamodb
+	case amqp != "":
+		c.Type = "amqp"
+		path = amqp
+	case nats != "":
+		c.Type = "nats"
+		path = nats
+	case redis != "":
+		c.Type = "redis-streams"
+		path = redis
+	case ibmmq != "":
+		c.Type = "ibmmq"
+		path = ibmmq
 	default:
 		log.Fatal("no source config selected")
 	}
@@ -298,6 +345,14 @@ func buildSourceConnector(cfg sourceConfig) (integration.SourceConnector, error)
 		return integration.NewMongoChangeStreamConnector(name, cfg.URIEnv, cfg.Database, cfg.Collection, cfg.FullDocument)
 	case "dynamodb":
 		return integration.NewDynamoDBStreamsConnector(name, cfg.StreamArn, cfg.Region, cfg.Endpoint)
+	case "amqp":
+		return integration.NewAMQPSourceConnector(name, cfg.URLEnv, cfg.AMQPQueue, cfg.Prefetch)
+	case "nats":
+		return integration.NewNATSJetStreamSourceConnector(name, cfg.URLEnv, cfg.Stream, cfg.Subject, cfg.Consumer, 0)
+	case "redis-streams":
+		return integration.NewRedisStreamsSourceConnector(name, cfg.URLEnv, cfg.RedisStream, cfg.Group, cfg.RedisConsumer, 0)
+	case "ibmmq":
+		return integration.NewIBMSinkSource(name, cfg.IBMMQURL, cfg.IBMMQMgr, cfg.IBMMQueue, cfg.IBMMUser, cfg.IBMMPassEnv, cfg.IBMMQCAEnv)
 	default:
 		return nil, fmt.Errorf("unknown source type %q", cfg.Type)
 	}

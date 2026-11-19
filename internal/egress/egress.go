@@ -94,6 +94,44 @@ type SinkConfig struct {
 	Topic   string      `json:"topic"`   // destination topic
 	CAEnv   string      `json:"ca_env"`  // optional env var holding a PEM CA bundle path for the broker
 	SASL    *KafkaSASL  `json:"sasl"`    // optional; omit for plaintext/PLAIN or SASL per broker config
+
+	// sql sink (any RDBMS via database/sql)
+	Driver     string   `json:"driver"`      // pgx|mysql|sqlserver|oracle|sqlite
+	Table      string   `json:"table"`       // validated identifier, optionally schema-qualified
+	DSNEnv     string   `json:"dsn_env"`     // env var holding the DSN
+	KeyColumns []string `json:"key_columns"` // columns forming the uniqueness constraint
+	Columns    []string `json:"columns"`     // optional allow-list of columns to write (default all)
+	AppendOnly bool     `json:"append_only"` // plain INSERT, ignore conflicts (default false = upsert)
+
+	// http-family sinks (stdlib)
+	Index       string `json:"index"`        // elasticsearch index or clickhouse table
+	Pipeline    string `json:"pipeline"`     // elasticsearch ingest pipeline (optional)
+	Database    string `json:"database"`     // clickhouse database (default default)
+	CHUserEnv   string `json:"user_env"`     // clickhouse: env var holding the user (default "default")
+	CHPasswordEnv string `json:"password_env"` // clickhouse: env var holding the password
+
+	// rabbitmq sink
+	AMQPURLEnv string `json:"amqp_url_env"` // env var holding the AMQP URL
+	AMQPQueue  string `json:"amqp_queue"`   // destination queue
+
+	// nats sink
+	NatsURLEnv    string `json:"nats_url_env"`    // env var holding the NATS URL
+	NatsSubject   string `json:"nats_subject"`    // destination subject
+	NatsStream    string `json:"nats_stream"`     // optional JetStream stream name (PULL consumers use it)
+
+	// redis sink
+	RedisURLEnv string `json:"redis_url_env"` // env var holding the Redis connection URL
+	RedisStream string `json:"redis_stream"`  // destination stream key
+
+	// IBM MQ sink (mqweb REST API, stdlib)
+	MQWebURL     string `json:"mqweb_url"`      // e.g. https://mq:9443/ibmmq/rest/v3
+	MQWebQueueMgr string `json:"mqweb_queue_mgr"`
+	MQWebQueue   string `json:"mqweb_queue"`
+	MQWebUser    string `json:"mqweb_user"`
+	MQWebPassEnv string `json:"mqweb_pass_env"` // env var holding the mqweb password
+	MQWebCAEnv   string `json:"mqweb_ca_env"`   // optional env var with PEM CA bundle (empty = system roots)
+
+	// IBM MQ source uses the same fields on ingest side (mqtt/etc. use their own readers).
 }
 
 // KafkaSASL configures optional SASL for the kafka sink.
@@ -270,8 +308,57 @@ func (c *Config) Validate() (*Config, error) {
 					return nil, fmt.Errorf("egress: route %q: env %s is empty", r.Name, r.Sink.SASL.PasswordEnv)
 				}
 			}
+		case "sql":
+			if r.Sink.Driver == "" || r.Sink.DSNEnv == "" || r.Sink.Table == "" {
+				return nil, fmt.Errorf("egress: route %q: sql sink requires driver, dsn_env and table", r.Name)
+			}
+		case "rabbitmq":
+			if r.Sink.AMQPURLEnv == "" || r.Sink.AMQPQueue == "" {
+				return nil, fmt.Errorf("egress: route %q: rabbitmq sink requires amqp_url_env and amqp_queue", r.Name)
+			}
+			if os.Getenv(r.Sink.AMQPURLEnv) == "" {
+				return nil, fmt.Errorf("egress: route %q: env %s is empty", r.Name, r.Sink.AMQPURLEnv)
+			}
+		case "nats":
+			if r.Sink.NatsURLEnv == "" || r.Sink.NatsSubject == "" {
+				return nil, fmt.Errorf("egress: route %q: nats sink requires nats_url_env and nats_subject", r.Name)
+			}
+			if os.Getenv(r.Sink.NatsURLEnv) == "" {
+				return nil, fmt.Errorf("egress: route %q: env %s is empty", r.Name, r.Sink.NatsURLEnv)
+			}
+		case "redis-streams":
+			if r.Sink.RedisURLEnv == "" || r.Sink.RedisStream == "" {
+				return nil, fmt.Errorf("egress: route %q: redis-streams sink requires redis_url_env and redis_stream", r.Name)
+			}
+			if os.Getenv(r.Sink.RedisURLEnv) == "" {
+				return nil, fmt.Errorf("egress: route %q: env %s is empty", r.Name, r.Sink.RedisURLEnv)
+			}
+		case "ibmmq":
+			if r.Sink.MQWebURL == "" || r.Sink.MQWebQueueMgr == "" || r.Sink.MQWebQueue == "" || r.Sink.MQWebUser == "" || r.Sink.MQWebPassEnv == "" {
+				return nil, fmt.Errorf("egress: route %q: ibmmq sink requires mqweb_url, mqweb_queue_mgr, mqweb_queue, mqweb_user and mqweb_pass_env", r.Name)
+			}
+			if !strings.HasPrefix(r.Sink.MQWebURL, "https://") {
+				return nil, fmt.Errorf("egress: route %q: mqweb_url must be https", r.Name)
+			}
+			if os.Getenv(r.Sink.MQWebPassEnv) == "" {
+				return nil, fmt.Errorf("egress: route %q: env %s is empty", r.Name, r.Sink.MQWebPassEnv)
+			}
+		case "elasticsearch":
+			if r.Sink.URL == "" || r.Sink.Index == "" {
+				return nil, fmt.Errorf("egress: route %q: elasticsearch sink requires url and index", r.Name)
+			}
+			if os.Getenv(r.Sink.AuthEnv) == "" && r.Sink.AuthEnv != "" {
+				return nil, fmt.Errorf("egress: route %q: env %s is empty", r.Name, r.Sink.AuthEnv)
+			}
+			if r.Sink.Auth != "none" && r.Sink.Auth != "" && r.Sink.Auth != "bearer_env" {
+				return nil, fmt.Errorf("egress: route %q: elasticsearch auth must be bearer_env|none (got %q)", r.Name, r.Sink.Auth)
+			}
+		case "clickhouse":
+			if r.Sink.URL == "" || r.Sink.Index == "" {
+				return nil, fmt.Errorf("egress: route %q: clickhouse sink requires url and table (use index for table name)", r.Name)
+			}
 		default:
-			return nil, fmt.Errorf("egress: route %q: unknown sink type %q (file|http|databricks|s3|kafka)", r.Name, r.Sink.Type)
+			return nil, fmt.Errorf("egress: route %q: unknown sink type %q (file|http|databricks|s3|kafka|sql|rabbitmq|nats|redis-streams|ibmmq|elasticsearch|clickhouse)", r.Name, r.Sink.Type)
 		}
 	}
 	return c, nil

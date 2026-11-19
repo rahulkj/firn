@@ -79,3 +79,17 @@ The ingress/egress/pipeline ADRs (016–018) were accepted 2026-11-19 and delive
 - [x] **Design-time mapping assistant (slice 5)** — `firn-pipeline -suggest-map`, delivers a proposed fragment for human review; shipped 2026-11-19.
 - [x] **Multi-source pipelines** — `inputs` list with per-input groups and `_source` injection; correlation only via `enrich`, ordering across inputs undefined. Shipped 2026-11-19.
 - [x] **Prometheus metrics for integration binaries** — `-metrics-addr` on all three binaries; records in/out, DLQ, op latency, MQTT connections, egress lag gauge. Shipped 2026-11-19.
+
+## Addendum (2026-11-19): migration connectors (ADR-020)
+
+- [x] **Generic SQL source + sink** (postgres/mysql/sqlserver/oracle/sqlite via `database/sql`) — live-verified SQLite/MariaDB 11/Oracle Free 23ai; SQL Server builder-verified only (this host can't run it).
+- [x] **RabbitMQ in/out** (AMQP 0.9.1) — live-verified here.
+- [x] **NATS in/out** (JetStream pull + core publish) — live-verified here.
+- [x] **Redis Streams in/out** — live-verified here.
+- [x] **IBM MQ in/out via mqweb REST** — stub-tested only (image requires x86-64-v3).
+- [x] **Elasticsearch sink (`_bulk`)** and **ClickHouse sink (JSONEachRow)** — live-verified here.
+- [ ] **Native per-dialect CDC** (MySQL binlog, SQL Server CDC, Oracle LogMiner) — deferred to demand.
+- [ ] **IBM MQ native client (mq-golang)** — needs the MQ C client installed; deferred.
+- [ ] **SQL Server local verification** — needs x86 host; code path identical to Oracle's MERGE.
+- [ ] **Snowflake / BigQuery / Redshift native sinks** — each needs its own ADR.
+- [ ] **DB2 (cgo driver)** — needs own ADR and license check.

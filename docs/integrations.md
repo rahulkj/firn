@@ -107,7 +107,17 @@ All source connectors share the checkpoint runtime (`integration.Runner`): posit
 
 **DynamoDB Streams** (`firn-ingest -source-dynamodb ddb.json -topic in -checkpoint cp.json`) — `DescribeStream`/`GetShardIterator`/`GetRecords`; per-shard checkpoints (`TRIM_HORIZON` for new shards, `AFTER_SEQUENCE_NUMBER` for seen shards, parent→child shard continuity). Config: `{"stream_arn":"arn:aws:dynamodb:...","region":"us-east-1","endpoint":"http://127.0.0.1:58000"}` (`endpoint` optional; empty = AWS). Live-tested against `amazon/dynamodb-local` here.
 
-Kafka consumes with `franz-go` (ADR-019); Postgres via `pglogrepl` (+`pgx/v5`); Mongo via the official `mongo-driver/v2`; DynamoDB via `aws-sdk-go-v2`. All four are pinned in `go.mod` by ADR-019.
+**Any RDBMS (watermark polling)** (`firn-ingest -source-sql sql.json -topic out -checkpoint cp.json`) — one connector, every RDBMS with a `database/sql` driver. Query: `SELECT cols FROM table WHERE watermark_col > ? ORDER BY watermark_col ASC LIMIT batch`. Types: `int64` (sequences, auto-increment pk) or `timestamp` (RFC 3339/ISO 8601 column). Config: `{"driver":"pgx|mysql|sqlserver|oracle|sqlite","dsn_env":"SQL_DSN","table":"schema.table","watermark_column":"id","watermark_type":"int64","key_columns":["id"],"batch":1000}`. **Live-verified here**: SQLite (in-memory, resume semantics), MariaDB 11 (upsert via ON DUPLICATE KEY UPDATE), Oracle Free 23ai (MERGE with FROM dual — Oracle ≤19c compatible). SQL Server locally blocked (arm64 emulation) — same builder, stub-tested.
+
+**RabbitMQ** (`firn-ingest -source-amqp amqp.json ...`) — AMQP 0.9.1; queue (durable) must exist; `auto_ack=false` (ack only after Firn accepts). Config: `{"url_env":"AMQP_URL","amqp_queue":"legacy.orders","prefetch":64,"connector_name":"rmq-in"}`. **Live-verified** here (`rabbitmq:3`).
+
+**NATS JetStream** (`firn-ingest -source-nats nats.json ...`) — durable pull consumer; ack only after Firn accepts. Config: `{"url_env":"NATS_URL","stream":"EVENTS","subject":"evt.>","consumer":"firn-evt","connector_name":"nats-in"}`. **Live-verified** here (`nats:2 -js`).
+
+**Redis Streams** (`firn-ingest -source-redis-streams redis.json ...`) — XREADGROUP consumer group created at entry `0`; XADD MAXLEN ~ 10000. Config: `{"url_env":"REDIS_URL","redis_stream":"events","group":"firn","redis_consumer":"firn-1","connector_name":"redis-in"}`. **Live-verified** here (`redis:7`).
+
+**IBM MQ** (`firn-ingest -source-ibmmq mq.json ...`) — mqweb REST API (stdlib HTTP, no client libraries): peek (GET) → produce → consume (DELETE), one message per call; throughput ceiling is the REST API's. **Stub-tested only** — the IBM MQ image does not run on this arm64 host.
+
+Kafka consumes with `franz-go` (ADR-019); Postgres via `pglogrepl` (+`pgx/v5`); Mongo via the official `mongo-driver/v2`; DynamoDB via `aws-sdk-go-v2`; RDBMS via `database/sql`; RabbitMQ via `rabbitmq/amqp091-go`; NATS via `nats-io/nats.go`; Redis via `redis/go-redis/v9`; IBM MQ via mqweb REST (stdlib). The drivers are pinned in `go.mod`; ADR-019/020 record the decisions. **S3-compatible object storage is covered by the stdlib SigV4 sink (no SDK).**
 
 **Checkpoint format:** every connector emits an opaque position string into the checkpoint file (`0600`, atomic rename); positions only advance **after** Firn accepts the batch. Truncated/rotated files or slot losses fall back to a full re-read (at-least-once).
 
@@ -156,6 +166,20 @@ firn-egress -config egress.json -validate
 ```
 
 Keys pass through unchanged (null-keyed records use Kafka's partitioner). All produce errors are retryable in this implementation; after the route's retry budget the batch dead-letters per policy. `ca_env` is a PEM CA bundle for TLS to the broker (system roots are otherwise used). Live-tested against an in-memory fake cluster in this environment.
+
+**`sql` (any RDBMS)** — JSON row records to a table, one explicit transaction per batch. Dialect-aware upsert: pgx/SQLite `ON CONFLICT DO UPDATE`, MySQL `ON DUPLICATE KEY UPDATE`, SQL Server/Oracle `MERGE` with `FROM dual` and parenthesized ON. `append_only: true` for plain INSERT; `key_columns` (unique constraint) required for upsert; `columns` allow-list optional. **Live-verified** here: SQLite, MariaDB 11, Oracle Free 23ai. SQL Server locally blocked (emulation) — same builder, stub-tested.
+
+**`rabbitmq` (AMQP 0.9.1)** — durable, persistent, broker publish-confirms. Default exchange routes by queue name. **Live-verified** here.
+
+**`nats` (JetStream when `nats_stream` is set; core NATS otherwise)** — JetStream: synchronous publish with broker ack (at-least-once). Core: no delivery guarantee (at-most-once). **Live-verified** here.
+
+**`redis-streams`** — XADD with MAXLEN ~ 10000; one stream per route. **Live-verified** here.
+
+**`ibmmq` (mqweb REST)** — publish (POST) with persistent mode + correlationId; single-consumer queues advised. **Stub-tested only** (see ADR-020).
+
+**`elasticsearch`** — `_bulk` index; optional `pipeline` and `_id` from record key. Auth: `bearer_env`. **Live-verified** here (`elasticsearch:7.17`).
+
+**`clickhouse`** — `INSERT ... FORMAT JSONEachRow` via HTTP; optional `user_env`/`password_env` (sends X-ClickHouse-User/Key). **Live-verified** here.
 
 **`file` (JSONL staging — flat files for data-lake / Databricks Auto Loader paths)**
 Each batch lands as `<dir>/<route>/topic-p<partition>-<first>-<last>.jsonl` written to `*.tmp`, fsynced, then renamed; a `*.manifest.json` sidecar records `{route, partition, first_offset, last_offset, count, crc32c}`. Re-delivery of the same offset range is skipped idempotently. Records are base64-encoded (`value`/`key`, with `*_encoding: "base64"` markers) to guarantee lossless bytes.
@@ -316,4 +340,11 @@ Prints a proposed `project`/`map` fragment for human review — never mutates de
 
 ## Known gaps (tracked in ADR-013)
 
-Route management mutations in `firn-cli` (there is no control plane to mutate) and per-stage pipeline latency histograms are not built. MQTT 5.0 support covers the publish-only surface (no session state, no shared subscriptions, no extended auth — refused by design). The S3 sink is stub-tested, not validated against a real AWS account. DynamoDB Streams connector is live-tested against `dynamodb-local`; production validation against a real account is recommended. MongoDB connector requires a replica set. The Postgres connector's logical slot is retained on the server; slot bloat/orphans are the operator's responsibility.
+- SQL Server local verification blocked (arm64 emulation); same builder as Oracle's MERGE.
+- IBM MQ: REST-level only; no native client; stub-tested. Live verification needs x86 hardware.
+- Deep per-dialect CDC (binlog/LogMiner/SQL Server CDC) is deferred to demand.
+- Route mutation CLI in `firn-cli` is not built (no control plane).
+- SQL sinks have no bulk-load path (row-by-row, explicit transactions; fine for migration at moderate rates, not >50k rows/s bulk loads).
+- Elasticsearch sink is bearer-only; no signing/mTLS to ES yet.
+- S3 sink remains stub-tested (no AWS account here).
+- MQTT 5.0: publish-only, stateless, no shared subscriptions/extended auth.

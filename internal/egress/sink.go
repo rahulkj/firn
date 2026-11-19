@@ -50,6 +50,20 @@ func NewSink(r Route) (Sink, error) {
 		return newS3Sink(r)
 	case "kafka":
 		return newKafkaSink(r)
+	case "sql":
+		return newSqlSink(r)
+	case "rabbitmq":
+		return newRabbitMQSink(r)
+	case "nats":
+		return newNATSSink(r)
+	case "redis-streams":
+		return newRedisStreamsSink(r)
+	case "ibmmq":
+		return newIBMSink(r)
+	case "elasticsearch":
+		return newElasticsearchSink(r)
+	case "clickhouse":
+		return newClickHouseSink(r)
 	default:
 		return nil, fmt.Errorf("egress: unknown sink %q", r.Sink.Type)
 	}

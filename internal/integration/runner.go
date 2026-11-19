@@ -10,6 +10,13 @@ import (
 	"github.com/rahulkj/firn/sdk/firngo"
 )
 
+// AckableSource is implemented by sources whose messages must be confirmed
+// AFTER Firn accepts the batch (AMQP manual ack, JetStream AckExplicit,
+// XACK). Ack is called by the runner before the checkpoint advances.
+type AckableSource interface {
+	Ack(ctx context.Context, records []Record) error
+}
+
 // Runner drains a SourceConnector into one Firn topic using the client API.
 // Semantics (ADR-016): at-least-once. Checkpoints advance only after the
 // produce to Firn is acknowledged; a crash between produce and checkpoint
@@ -100,6 +107,11 @@ func (r *Runner) step(ctx context.Context, checkpoints CheckpointStore) (int, er
 	}
 	if err := r.produce(ctx, recs); err != nil {
 		return 0, err
+	}
+	if a, ok := r.Connector.(AckableSource); ok {
+		if err := a.Ack(ctx, recs); err != nil {
+			return 0, fmt.Errorf("ack: %w", err)
+		}
 	}
 	last := recs[len(recs)-1].Position
 	if last != "" {

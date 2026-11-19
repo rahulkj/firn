@@ -14,6 +14,17 @@ Batch 3 lands the connectors and protocol work originally gated on driver decisi
 
 **Not built:** NATS/Redpanda connectors, per-stage pipeline latency histograms, `firn-cli` mutation commands for routes (no control plane), extended auth/session state/shared subscriptions (refused by design), real-AWS validation of the S3 sink.
 
+## Unreleased — 2026-11-19d (ADR-020: migration connectors — RDBMS/MQ/HTTP-family)
+
+Batch 4 opens the migration toolkit: any RDBMS, common messaging buses, and HTTP-family sinks, all live-verified where hardware permits.
+
+- **Generic SQL source** (`firn-ingest -source-sql`) — one polling connector, every `database/sql` driver (pgx, mysql, sqlserver, oracle, sqlite). Watermark int64/timestamp, resume semantics, injection-safe identifiers; live-verified on SQLite (in-memory) and via watermark resume; MariaDB 11 and Oracle Free 23ai verified for upsert sink (see sink). SQL Server locally blocked (emulation).
+- **Generic SQL sink** (`firn-egress type: sql`) — one transaction per batch, dialect-aware upserts: pgx/SQLite `ON CONFLICT`, MySQL `ON DUPLICATE KEY UPDATE`, SQL Server/Oracle `MERGE` with `FROM dual` + parenthesized ON; type coercion (integral floats → int64); optional allow-list columns; live-verified on all three dialects.
+- **Messaging**: RabbitMQ (AMQP 0.9.1, manual ack source / publish-confirm sink, default-exchange queue routing), NATS JetStream (durable pull consumer, AckExplicit) and core NATS publish, Redis Streams (XREADGROUP/XACK, XADD MAXLEN ~10000) — live-verified here.
+- **IBM MQ (mqweb REST)**: source = GET-browse → produce → DELETE-consume (single-consumer); sink = POST persistent with correlationId — **stub-tested only** (image requires x86-64-v3; not runnable on this host).
+- **Elasticsearch `_bulk` and ClickHouse `INSERT ... FORMAT JSONEachRow` sinks** — stdlib HTTP, optional bearer/user-password auth; live-verified here.
+- Migration playbooks in `docs/migration-playbooks.md`; plans/010 records delivery and the remaining gaps (native per-dialect CDC, Snowflake/BigQuery/Redshift, DB2, IBM MQ live verification, SQL Server local verification).
+
 ## Unreleased — 2026-11-19 (ADR-016/017/018 integrations: reference implementations)
 
 The three integration ADRs were accepted 2026-11-19 and their plans (007/008/009) were partially delivered. Everything ships as separate binaries talking to firnd through the client gRPC API; no storage-path or replication changes; at-least-once end-to-end.
