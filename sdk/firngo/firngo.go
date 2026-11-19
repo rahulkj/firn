@@ -207,17 +207,34 @@ func (c *Client) SubscribePartition(ctx context.Context, topic string, partition
 
 // CommitOffset commits a group offset (idempotent under consumer-group rebalance).
 func (c *Client) CommitOffset(ctx context.Context, groupID, topic string, partition int32, offset int64) error {
+	return c.CommitOffsetGeneration(ctx, groupID, topic, partition, offset, 1)
+}
+
+// CommitOffsetGeneration commits with an explicit generation. generation 0
+// bypasses generation fencing (offset monotonicity is still enforced) —
+// intended for single-instance forwarders outside a consumer group.
+func (c *Client) CommitOffsetGeneration(ctx context.Context, groupID, topic string, partition int32, offset, generation int64) error {
 	_, err := c.fc.CommitOffset(c.authCtx(ctx), &firnpb.CommitOffsetRequest{
 		GroupId:      groupID,
 		Topic:        topic,
 		Partition:    partition,
 		Offset:       offset,
-		GenerationId: 1,
+		GenerationId: generation,
 	})
 	if err != nil {
 		return fmt.Errorf("firngo: commit offset: %w", err)
 	}
 	return nil
+}
+
+// FetchOffset returns the folded committed offset for (group, topic, partition).
+// found=false means nothing committed yet (start from 0).
+func (c *Client) FetchOffset(ctx context.Context, groupID, topic string, partition int32) (int64, bool, error) {
+	resp, err := c.fc.FetchOffset(c.authCtx(ctx), &firnpb.FetchOffsetRequest{GroupId: groupID, Topic: topic, Partition: partition})
+	if err != nil {
+		return 0, false, fmt.Errorf("firngo: fetch offset: %w", err)
+	}
+	return resp.Offset, resp.Found, nil
 }
 
 // JoinGroup asks the broker to rebalance; the response includes the member's assignment.

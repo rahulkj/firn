@@ -60,3 +60,22 @@ ADR-001, ADR-002, ADR-007, ADR-008 all referenced a "Go SDK" (then Python). None
 - Every unbuilt claim is now either delivered (flip the checkbox in this register) or tracked here with an honest status — no silent "coming soon".
 - Client-side teams no longer need to read `firn.proto` to produce a message; the Go path is SDK-supported, others use `firn-cli` or generate stubs from the proto.
 - The register is the canonical backlog; new feature ideas append here first, promoted to a numbered plan/ADR only when planned.
+
+## Addendum (2026-11-19): integrations register (ADR-016/017/018 delivered)
+
+The ingress/egress/pipeline ADRs (016–018) were accepted 2026-11-19 and delivered in reference form. Register of what now works and what deliberately does not:
+
+- [x] **HTTP(S) ingest gateway** (`firn-ingest -http`) — bearer/HMAC auth, rate limit, DLQ, `202`-after-commit (ADR-016, plan 007).
+- [x] **MQTT 3.1.1 publish-only IoT ingress** (`firn-ingest -mqtt`) — minimal stdlib server; subscriptions refused; retained forwarded as regular records (ADR-016, plan 007).
+- [x] **Tail-file source connector + checkpoint runtime** (`firn-ingest -source-file`) — reference connector with byte-offset checkpoints (ADR-016, plan 007).
+- [ ] **Kafka/NATS/Redpanda source connectors** — dependency-gated (no driver added); plan 007 slice 4 remainder.
+- [ ] **SQL CDC (Postgres logical replication) / NoSQL change-stream connectors** — dependency-gated; plan 007 slice 5.
+- [x] **File/object-stage sink** (`firn-egress -config …` `type: file`) — JSONL + manifest, idempotent re-delivery, pre-Databricks-staging shape (ADR-017, plan 008).
+- [x] **HTTP(S)/IoT webhook sink** — `Idempotency-Key`, bearer/HMAC, retry budget, 4xx→DLQ (ADR-017, plan 008).
+- [ ] **S3-compatible sink, direct Databricks API sink, Kafka sink** — dependency-gated; plan 008 slices 2/4/5.
+- [ ] **Route management in `firn-cli` + `firn_egress_lag_records` metric** — plan 008 slice 6 remainder.
+- [x] **Declarative pipeline engine** (`firn-pipeline`) — filter/project/map/enrich(JSONL)/route; single input; DLQ lineage (ADR-018, plan 009).
+- [x] **AI-assisted stage (opt-in)** — `mock` + OpenAI-compatible providers via stdlib HTTP; contract-validated output; per-minute cap; daily circuit breaker; HTTPS+env-only keys (ADR-018, plan 009).
+- [ ] **Design-time mapping assistant (slice 5)** — stretch, not scheduled.
+- [ ] **Multi-source pipelines / correlation** — needs its own spec; not in scope of ADR-018's initial cut.
+- [ ] **Prometheus metrics for integration binaries** — observability currently via structured logs only.

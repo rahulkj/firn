@@ -19,6 +19,11 @@ Firn is a from-scratch event broker in Go providing **streaming** (topics/partit
 - `internal/broker` — produce/fetch orchestration, partition assignment
 - `internal/queue` — ack/redelivery/DLQ on the same log
 - `internal/api` — gRPC/HTTP surface (clean API, **not** wire-compatible with any other broker)
+- `internal/integration` — integration contract shared by source connectors (records, checkpoints, DLQ) (ADR-016)
+- `internal/ingest` — HTTP(S) ingest + MQTT 3.1.1 publish-only IoT gateways (ADR-016, `cmd/firn-ingest`)
+- `internal/egress` — route/forward topics & queues to external systems; file + HTTP(S) sinks (ADR-017, `cmd/firn-egress`)
+- `internal/pipeline` — declarative filter/project/map/enrich/route engine + opt-in AI stages (ADR-018, `cmd/firn-pipeline`)
+- `internal/testutil` — shared in-process broker test fixtures
 - `docs/adr` — architecture decision records (read 003 before touching storage; read 012 for the component/topology map)
 - `docs/plans` — implementation plans; work proceeds slice by slice
 

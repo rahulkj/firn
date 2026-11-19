@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — 2026-11-19 (ADR-016/017/018 integrations: reference implementations)
+
+The three integration ADRs were accepted 2026-11-19 and their plans (007/008/009) were partially delivered. Everything ships as separate binaries talking to firnd through the client gRPC API; no storage-path or replication changes; at-least-once end-to-end.
+
+- **`firn-ingest`** (ingress, ADR-016): HTTP(S) ingest gateway (bearer/HMAC auth, per-IP fixed-window rate limit, 1 MiB body cap, 202-after-commit, DLQ for terminal errors, key extraction via `key_json_pointer`/`key_header`); MQTT 3.1.1 publish-only listener for IoT (stdlib implementation, no new dependencies; subscriptions refused `SUBACK 0x80`; retained publishes forwarded as regular records; QoS 0/1/2 all at-least-once end-to-end); tail-file reference connector with a file-based checkpoint store (`0600`, atomic rename) proving the shared checkpoint runtime.
+- **`firn-egress`** (egress, ADR-017): route config (validated JSON) with `after_sink_confirm` commits (generation-0 monotonic offsets, dedicated groups) after sink success; file sink (JSONL batches, `tmp`→fsync→rename, `*.manifest.json` with CRC32C, base64 lossless encoding, idempotent re-delivery) suitable for data-lake/Databricks Auto Loader staging; HTTP(S)/webhook sink (`Idempotency-Key`, bearer/HMAC, retry budget, 4xx→DLQ); queue sources via `Pull`/`AckBatch`; batches re-served until confirmed (at-least-once).
+- **`firn-pipeline`** (pipelines, ADR-018): declarative stages `filter → project → map → enrich(JSONL reference) → route → outputs`; `route` terminal, required for multiple outputs; opt-in `ai` stage (`mock` and OpenAI-compatible providers via stdlib HTTP; no new dependencies) with contract-validated output, per-minute cap, daily-call circuit breaker, HTTPS-only endpoints, env-only keys; `-dry-run` mode; revision tagging.
+- Shared `internal/testutil` in-process broker fixture; `go vet ./... && go test ./... -count=1` and `-race` green.
+
+**Not built (deliberate):** Kafka/CDC/NoSQL source connectors, S3/Databricks/Kafka-direct sinks, multi-source pipelines, route metrics + `firn-cli` integration, design-time AI mapping assistant — all require dependency decisions and live in plan 007/008/009 as named follow-ups (tracked in ADR-013).
+
 ## v0.1.0 — 2026-11-13
 
 First MVP release against the ADR-005 definition of "working". Single-node; no replication, exactly-once, wire protocols, or auth (ADR-001 non-goals).

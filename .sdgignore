@@ -1,0 +1,5 @@
+# .sdgignore — documented false positives
+# Both files reference environment variable NAMES in config examples/tests.
+# No credential values are committed anywhere in this repo.
+docs/integrations.md
+internal/ingest/ingest_test.go
